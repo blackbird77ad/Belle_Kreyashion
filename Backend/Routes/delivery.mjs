@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { getPublicZones, getAllZones, createZone, updateZone, deleteZone } from '../Controllers/deliveryController.mjs';
+import { protect } from '../Middlewares/auth.mjs';
+const router = Router();
+router.get('/public', getPublicZones);
+router.get('/', protect, getAllZones);
+router.post('/', protect, createZone);
+router.put('/:id', protect, updateZone);
+router.delete('/:id', protect, deleteZone);
+export default router;
