@@ -9,6 +9,8 @@ import orderRoutes        from './Routes/orders.mjs';
 import trainingRoutes     from './Routes/training.mjs';
 import deliveryRoutes     from './Routes/delivery.mjs';
 import consultationRoutes from './Routes/consultation.mjs';
+import blogRoutes         from './Routes/blog.mjs';
+import featuredRoutes     from './Routes/featured.mjs';
 
 await connectDB();
 
@@ -21,16 +23,12 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean);
 
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
-    else cb(new Error('Not allowed by CORS'));
-  },
+  origin: (origin, cb) => (!origin || ALLOWED_ORIGINS.includes(origin)) ? cb(null, true) : cb(new Error('CORS')),
   credentials: true,
 }));
 
-app.use(express.json());
-
-app.get('/', (_, res) => res.json({ message: 'Belle Kreyashon API running ✅' }));
+app.use(express.json({ limit: '10mb' }));
+app.get('/', (_, res) => res.json({ message: 'Belle Kreyashon API ✅' }));
 
 app.use('/api/auth',         authRoutes);
 app.use('/api/customers',    customerRoutes);
@@ -39,6 +37,8 @@ app.use('/api/orders',       orderRoutes);
 app.use('/api/training',     trainingRoutes);
 app.use('/api/delivery',     deliveryRoutes);
 app.use('/api/consultation', consultationRoutes);
+app.use('/api/blog',         blogRoutes);
+app.use('/api/featured',     featuredRoutes);
 
 const PORT = process.env.PORT || 8002;
-app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ Belle Kreyashon API running on port ${PORT}`));

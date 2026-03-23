@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPublicTraining, getAllTraining, createTraining, updateTraining, deleteTraining, verifyAndCreateBooking, getAllBookings } from '../Controllers/trainingController.mjs';
+import { getPublicTraining, getAllTraining, createTraining, updateTraining, deleteTraining, toggleTraining, verifyAndCreateBooking, getAllBookings, getCustomerBookings } from '../Controllers/trainingController.mjs';
 import { protect } from '../Middlewares/auth.mjs';
 const router = Router();
 router.get('/public', getPublicTraining);
@@ -7,6 +7,8 @@ router.get('/', protect, getAllTraining);
 router.post('/', protect, createTraining);
 router.put('/:id', protect, updateTraining);
 router.delete('/:id', protect, deleteTraining);
+router.patch('/:id/toggle', protect, toggleTraining);
 router.post('/book/verify', verifyAndCreateBooking);
 router.get('/bookings', protect, getAllBookings);
+router.get('/bookings/customer/:phone', getCustomerBookings);
 export default router;

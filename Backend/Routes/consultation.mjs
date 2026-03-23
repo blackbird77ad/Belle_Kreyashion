@@ -1,7 +1,11 @@
 import { Router } from 'express';
-import { getSettings, updateSettings } from '../Controllers/consultationController.mjs';
+import { getPublicConsultations, getAllConsultations, createConsultation, updateConsultation, deleteConsultation, toggleConsultation } from '../Controllers/consultationController.mjs';
 import { protect } from '../Middlewares/auth.mjs';
 const router = Router();
-router.get('/settings', getSettings);
-router.put('/settings', protect, updateSettings);
+router.get('/public', getPublicConsultations);
+router.get('/', protect, getAllConsultations);
+router.post('/', protect, createConsultation);
+router.put('/:id', protect, updateConsultation);
+router.delete('/:id', protect, deleteConsultation);
+router.patch('/:id/toggle', protect, toggleConsultation);
 export default router;

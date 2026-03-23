@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { getActiveFeatured, getAllFeatured, createFeatured, updateFeatured, deleteFeatured, toggleFeatured } from '../Controllers/featuredController.mjs';
+import { protect } from '../Middlewares/auth.mjs';
+const router = Router();
+router.get('/public', getActiveFeatured);
+router.get('/', protect, getAllFeatured);
+router.post('/', protect, createFeatured);
+router.put('/:id', protect, updateFeatured);
+router.delete('/:id', protect, deleteFeatured);
+router.patch('/:id/toggle', protect, toggleFeatured);
+export default router;

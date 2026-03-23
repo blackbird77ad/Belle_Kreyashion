@@ -2,8 +2,11 @@ import mongoose from 'mongoose';
 
 const bookingSchema = new mongoose.Schema({
   bookingId:   { type: String, unique: true },
-  type:        { type: String, enum: ['training', 'consultation'], required: true },
-  trainingId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Training', default: null },
+  type:             { type: String, enum: ['training', 'consultation'], required: true },
+  trainingId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Training', default: null },
+  trainingTitle:    { type: String, default: '' },
+  consultationId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Consultation', default: null },
+  consultationTitle:{ type: String, default: '' },
   customer:    { name: String, phone: String },
   amount:      Number,
   paymentRef:  String,

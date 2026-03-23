@@ -1,0 +1,12 @@
+import { Router } from 'express';
+import { getPublicPosts, getPublicPost, getAllPosts, createPost, updatePost, deletePost, togglePublish } from '../Controllers/blogController.mjs';
+import { protect } from '../Middlewares/auth.mjs';
+const router = Router();
+router.get('/public', getPublicPosts);
+router.get('/public/:id', getPublicPost);
+router.get('/', protect, getAllPosts);
+router.post('/', protect, createPost);
+router.put('/:id', protect, updatePost);
+router.delete('/:id', protect, deletePost);
+router.patch('/:id/toggle', protect, togglePublish);
+export default router;
