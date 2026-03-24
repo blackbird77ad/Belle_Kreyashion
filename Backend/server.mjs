@@ -41,4 +41,4 @@ app.use('/api/blog',         blogRoutes);
 app.use('/api/featured',     featuredRoutes);
 
 const PORT = process.env.PORT || 8002;
-app.listen(PORT, () => console.log(`✅ Belle Kreyashon API running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Belle Kreyashon API running on port ${PORT}`));
