@@ -19,6 +19,9 @@ const app = express();
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:3000',
+  'https://bellekreyashon.com',
+  'https://www.bellekreyashon.com',
+  'https://belle-kreyashion.pages.dev',
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
