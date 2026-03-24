@@ -45,11 +45,12 @@ const cleanBody = (body) => {
 
 export const getPublicProducts = async (req, res) => {
   try {
-    const { category, search, featured, fastSelling, limit } = req.query;
+    const { category, search, featured, fastSelling, isPreOrder, limit } = req.query;
     const query = { available: true };
     if (category && category !== 'All') query.category = category;
     if (featured === 'true') query.featured = true;
     if (fastSelling === 'true') query.fastSelling = true;
+    if (isPreOrder === 'true') query.isPreOrder = true;
     if (search) query.$or = [
       { name: { $regex: search, $options: 'i' } },
       { desc: { $regex: search, $options: 'i' } },
@@ -90,11 +91,13 @@ export const getPublicProduct = async (req, res) => {
 
 export const getAllProducts = async (req, res) => {
   try {
-    const { search } = req.query;
-    const query = search ? { $or: [
+    const { search, isPartner } = req.query;
+    const query = {};
+    if (isPartner === 'true') query.isPartner = true;
+    if (search) query.$or = [
       { name: { $regex: search, $options: 'i' } },
       { category: { $regex: search, $options: 'i' } },
-    ]} : {};
+    ];
     res.json(await Product.find(query).sort({ createdAt: -1 }));
   } catch { res.status(500).json({ message: 'Server error' }); }
 };

@@ -37,8 +37,8 @@ function Layout() {
         <Routes>
           <Route path="/"                element={<Home />} />
           <Route path="/shop"            element={<Shop />} />
-          <Route path="/shop/:id"        element={<Product />} />
           <Route path="/shop/checkout"   element={<Checkout />} />
+          <Route path="/shop/:id"        element={<Product />} />
           <Route path="/services"        element={<Services />} />
           <Route path="/blog"            element={<Blog />} />
           <Route path="/blog/:id"        element={<BlogPost />} />

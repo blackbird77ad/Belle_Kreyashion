@@ -12,10 +12,17 @@ export function CustomerProvider({ children }) {
     else localStorage.removeItem('bk_customer');
   }, [customer]);
 
+  // Save address to customer profile
+  const saveAddress = (address) => {
+    if (!customer) return;
+    const updated = { ...customer, savedAddress: address };
+    setCustomer(updated);
+  };
+
   const logout = () => setCustomer(null);
 
   return (
-    <CustomerContext.Provider value={{ customer, setCustomer, logout }}>
+    <CustomerContext.Provider value={{ customer, setCustomer, saveAddress, logout }}>
       {children}
     </CustomerContext.Provider>
   );

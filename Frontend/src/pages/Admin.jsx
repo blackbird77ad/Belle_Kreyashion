@@ -3,7 +3,7 @@ import { api } from '../hooks/useApi';
 import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play } from 'lucide-react';
 import { CATEGORIES, CATEGORY_VALUES } from '../data/categories';
 
-const TABS = ['Products','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured'];
+const TABS = ['Products','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured','Invoice'];
 
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
 const convertDrive = (url) => {
@@ -12,14 +12,164 @@ const convertDrive = (url) => {
   return m ? `https://drive.google.com/uc?export=view&id=${m[1]}` : url;
 };
 
-const EMPTY_PROD = { name:'',desc:'',category:'',images:[''],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''} };
+const EMPTY_PROD = { name:'',desc:'',category:'',images:[''],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:false,partnerBrand:'',partnerContact:'' };
 const EMPTY_TRAIN = { title:'',desc:'',date:'',venue:'',price:'',capacity:'',image:'' };
 const EMPTY_ZONE  = { name:'', fee:'' };
 const EMPTY_CONSULT = { title:'',desc:'',price:'',duration:'',validity:'',isFree:false };
 const EMPTY_BLOG = { title:'',excerpt:'',content:'',coverImage:'',videoUrl:'',mediaType:'image',tags:'',published:false };
-const EMPTY_FEATURED = { brandName:'',productName:'',desc:'',image:'',contactInfo:'',plan:1 };
+const EMPTY_FEATURED = { brandName:'',productName:'',desc:'',image:'',contactInfo:'',plan:1,category:'',price:'',stock:'',available:true,featured:true,fastSelling:false,isPreOrder:false,preOrderType:'',depositPercent:'',hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:true,partnerContact:'' };
 
 const PLANS = [1,3,6,9,12];
+
+
+// ─── INVOICE CREATOR ──────────────────────────────────────────────────────────
+function InvoiceCreator({ auth }) {
+  const [customerName,  setCustomerName]  = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerAddr,  setCustomerAddr]  = useState('');
+  const [items,         setItems]         = useState([{ desc: '', qty: 1, price: '' }]);
+  const [note,          setNote]          = useState('');
+  const [products,      setProducts]      = useState([]);
+  const inp2 = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
+
+  useEffect(() => {
+    api.get('/api/products', auth).then(r => setProducts(r.data)).catch(() => {});
+  }, [auth]);
+
+  const addItem = () => setItems(p => [...p, { desc: '', qty: 1, price: '' }]);
+  const removeItem = (i) => setItems(p => p.filter((_, idx) => idx !== i));
+  const updateItem = (i, key, val) => setItems(p => p.map((item, idx) => idx === i ? { ...item, [key]: val } : item));
+  const pickProduct = (i, productId) => {
+    const p = products.find(x => x._id === productId);
+    if (p) updateItem(i, 'desc', p.name);
+    if (p) updateItem(i, 'price', p.retailPrice);
+  };
+
+  const subtotal = items.reduce((s, i) => s + (Number(i.price) * Number(i.qty) || 0), 0);
+
+  const printInvoice = () => {
+    if (!customerName.trim()) return alert('Please enter customer name');
+    if (items.some(i => !i.desc.trim() || !i.price)) return alert('Please fill all item details');
+
+    const date = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    const refId = 'INV-' + Date.now().toString().slice(-6);
+
+    const itemsHtml = items.map(item => `
+      <tr>
+        <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px">${item.desc}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:center">${item.qty}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right">GHS ${Number(item.price).toLocaleString()}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:bold">GHS ${(Number(item.price)*Number(item.qty)).toLocaleString()}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+<title>Invoice ${refId}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;color:#222;background:#fff;padding:40px;max-width:700px;margin:0 auto}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px}
+.brand{font-size:22px;font-weight:900}.brand span{color:#FDC700}
+.inv{text-align:right}.inv h2{font-size:28px;font-weight:900;letter-spacing:2px}.inv p{font-size:13px;color:#666;margin-top:4px}
+hr.gold{border:none;border-top:3px solid #FDC700;margin:16px 0}
+hr.dark{border:none;border-top:2px solid #000;margin:20px 0}
+.info{display:flex;justify-content:space-between;margin-bottom:28px}
+.ib p{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+.ib h4{font-size:14px;font-weight:bold}.ib span{font-size:13px;color:#444;display:block;line-height:1.6}
+table{width:100%;border-collapse:collapse;margin-bottom:16px}
+th{background:#000;color:#fff;padding:10px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;text-align:left}
+th:nth-child(2){text-align:center}th:nth-child(3),th:nth-child(4){text-align:right}
+.totals{margin-left:auto;width:260px}
+.totals td{padding:6px 8px;font-size:13px}.totals td:last-child{text-align:right;font-weight:bold}
+.total-row td{border-top:2px solid #000;font-size:15px;font-weight:900;padding-top:10px}
+.note{background:#f9f9f9;border-left:3px solid #FDC700;padding:10px 14px;font-size:12px;color:#555;margin-top:16px}
+.footer{margin-top:36px;text-align:center;color:#aaa;font-size:11px;border-top:1px solid #eee;padding-top:16px}
+</style></head><body>
+<div class="header">
+  <div class="brand">BELLE <span>KREYASHON</span></div>
+  <div class="inv"><h2>INVOICE</h2><p>${refId}</p><p>${date}</p></div>
+</div>
+<hr class="gold"/>
+<div class="info">
+  <div class="ib"><p>Billed To</p><h4>${customerName}</h4><span>${customerPhone}</span>${customerAddr ? `<span>${customerAddr}</span>` : ''}</div>
+  <div class="ib" style="text-align:right"><p>From</p><h4>Belle Kreyashon</h4><span>Osu, Accra, Ghana</span><span>bellekreyashon.com</span></div>
+</div>
+<table>
+  <thead><tr><th>Item / Service</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead>
+  <tbody>${itemsHtml}</tbody>
+</table>
+<table class="totals">
+  <tr class="total-row"><td>Total</td><td>GHS ${subtotal.toLocaleString()}</td></tr>
+</table>
+${note ? `<div class="note">${note}</div>` : ''}
+<hr class="dark"/>
+<div class="footer">
+  <p>Thank you for choosing Belle Kreyashon</p>
+  <p style="margin-top:4px">Questions? WhatsApp us or visit bellekreyashon.com</p>
+  <p style="margin-top:8px;color:#ccc">In-person sales invoice — issued by Belle Kreyashon team.</p>
+</div>
+<script>window.onload=()=>window.print()</script>
+</body></html>`;
+
+    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
+  };
+
+  return (
+    <div className="col-span-3 bg-white rounded-2xl p-6 border border-gray-100 max-w-2xl">
+      <h2 className="font-extrabold text-lg mb-1">Invoice Creator</h2>
+      <p className="text-xs text-gray-400 mb-5">Create invoice/receipt for in-person or custom sales</p>
+
+      {/* Customer */}
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name *" className={inp2} />
+        <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone number" className={inp2} />
+        <input value={customerAddr} onChange={e => setCustomerAddr(e.target.value)} placeholder="Address (optional)" className={inp2 + ' sm:col-span-2'} />
+      </div>
+
+      {/* Items */}
+      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Items / Services</p>
+      <div className="flex flex-col gap-2 mb-3">
+        {items.map((item, i) => (
+          <div key={i} className="grid grid-cols-12 gap-2 items-center">
+            <div className="col-span-5">
+              <select onChange={e => pickProduct(i, e.target.value)} className={inp2 + ' mb-1'}>
+                <option value="">Pick from products...</option>
+                {products.map(p => <option key={p._id} value={p._id}>{p.name} — GHS {p.retailPrice}</option>)}
+              </select>
+              <input value={item.desc} onChange={e => updateItem(i,'desc',e.target.value)} placeholder="Or type description *" className={inp2} />
+            </div>
+            <div className="col-span-2">
+              <input value={item.qty} onChange={e => updateItem(i,'qty',e.target.value)} type="number" min="1" placeholder="Qty" className={inp2} />
+            </div>
+            <div className="col-span-3">
+              <input value={item.price} onChange={e => updateItem(i,'price',e.target.value)} type="number" placeholder="Price (GHS)" className={inp2} />
+            </div>
+            <div className="col-span-1 text-right">
+              <span className="text-xs font-bold text-gray-500">{item.price && item.qty ? 'GHS ' + (Number(item.price)*Number(item.qty)).toLocaleString() : ''}</span>
+            </div>
+            <div className="col-span-1 text-right">
+              {items.length > 1 && <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={addItem} className="text-xs font-bold text-gray-400 hover:text-black mb-4">+ Add Item</button>
+
+      {/* Note */}
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional — e.g. paid cash, balance due, etc.)" rows={2}
+        className={inp2 + ' resize-none mb-4'} />
+
+      {/* Total + Print */}
+      <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl mb-4">
+        <span className="font-bold text-sm text-gray-600">Total</span>
+        <span className="font-extrabold text-xl">GHS {subtotal.toLocaleString()}</span>
+      </div>
+      <button onClick={printInvoice}
+        className="w-full py-3.5 bg-black text-white font-extrabold rounded-2xl hover:bg-gray-900 transition-all flex items-center justify-center gap-2">
+        🖨️ Generate & Print Invoice
+      </button>
+    </div>
+  );
+}
 
 export default function Admin() {
   const [token,   setToken]   = useState(() => localStorage.getItem('bk_admin') || '');
@@ -45,6 +195,25 @@ export default function Admin() {
   const [form,     setForm]     = useState({});
 
   const auth = { headers: { Authorization: `Bearer ${token}` } };
+  const [orderFilter, setOrderFilter] = useState('all');
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  const downloadCSV = (data, filename) => {
+    if (!data.length) return;
+    const keys = ['orderId','createdAt','customer.name','customer.phone','customer.address','fulfillment','deliveryZone','subtotal','deliveryFee','total','status','paymentRef'];
+    const header = ['Order ID','Date','Customer Name','Phone','Address','Fulfillment','Zone','Subtotal','Delivery','Total','Status','Payment Ref'];
+    const rows = data.map(o => keys.map(k => {
+      const val = k.includes('.') ? k.split('.').reduce((obj,key) => obj?.[key], o) : o[k];
+      if (k === 'createdAt') return new Date(val).toLocaleDateString('en-GB');
+      return val ?? '';
+    }));
+    const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     api.get('/api/auth/status').then(r => setSetup(r.data.setup)).catch(() => {});
@@ -74,7 +243,7 @@ export default function Admin() {
     Products: '/api/products', Training: '/api/training',
     Delivery: '/api/delivery', Orders: '/api/orders',
     Abandoned: '/api/orders/abandoned', Consultations: '/api/consultation',
-    Blog: '/api/blog', Featured: '/api/featured', Bookings: '/api/training/bookings',
+    Blog: '/api/blog', Featured: '/api/products?isPartner=true', Bookings: '/api/training/bookings',
   };
 
   const load = useCallback(async (t, s) => {
@@ -145,7 +314,33 @@ export default function Admin() {
 
   const buildTrainingBody = (f) => ({ ...f, price: Number(f.price), capacity: f.capacity ? Number(f.capacity) : null, image: convertDrive(f.image) });
 
-  const buildFeaturedBody = (f) => ({ ...f, plan: Number(f.plan), image: convertDrive(f.image) });
+  const buildFeaturedBody = (f) => {
+    // Save as a regular product with partner + featured flags
+    const b = {
+      name:           f.productName || f.name || '',
+      desc:           f.desc || '',
+      category:       f.category || '',
+      images:         [convertDrive(f.image)].filter(Boolean),
+      retailPrice:    f.price ? Number(f.price) : 0,
+      stock:          f.stock !== '' && f.stock !== undefined ? Number(f.stock) : null,
+      available:      f.available !== false,
+      featured:       f.featured !== false,
+      fastSelling:    !!f.fastSelling,
+      isPreOrder:     !!f.isPreOrder,
+      preOrderType:   f.isPreOrder ? (f.preOrderType || null) : null,
+      depositPercent: f.isPreOrder && f.preOrderType === 'deposit' ? Number(f.depositPercent) : null,
+      isPartner:      true,
+      partnerBrand:   f.brandName || '',
+      partnerContact: f.contactInfo || '',
+      // Store plan/subscription info in a meta field
+      partnerPlanMonths: Number(f.plan) || 1,
+      partnerSubEnd:  (() => { const d = new Date(); d.setMonth(d.getMonth() + (Number(f.plan) || 1)); return d; })(),
+    };
+    if (f.hasDiscount) {
+      b.discount = { ...f.discount, value: Number(f.discount.value) || 0, active: true, limitCustomers: null, startDate: null, endDate: f.discount.endDate || null };
+    } else { b.discount = null; }
+    return b;
+  };
 
   const save = async () => {
     const ep = ENDPOINTS[tab];
@@ -247,7 +442,7 @@ export default function Admin() {
             </div>
           )}
           {['Abandoned','Delivery'].includes(tab) && <div className="flex-1" />}
-          {!['Orders','Abandoned','Bookings'].includes(tab) && (
+          {!['Orders','Abandoned','Bookings','Invoice'].includes(tab) && (
             <button onClick={openNew} className="flex items-center gap-1 px-4 py-2.5 bg-black text-white font-bold text-sm rounded-xl hover:bg-gray-900 shrink-0">
               <Plus size={15} /> Add
             </button>
@@ -301,7 +496,7 @@ export default function Admin() {
                 </div>
 
                 <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-xl">
-                  {[['available','Available'],['featured','Featured'],['fastSelling','Fast Selling'],['isPreOrder','Pre-Order'],['hasDiscount','Discount']].map(([k,l]) => (
+                  {[['available','Available'],['featured','Featured'],['fastSelling','Fast Selling'],['isPreOrder','Pre-Order'],['hasDiscount','Discount'],['isPartner','Partner Product']].map(([k,l]) => (
                     <label key={k} className="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
                       <input type="checkbox" checked={!!form[k]} onChange={e => sf(k,e.target.checked)} className="w-4 h-4 accent-black" /> {l}
                     </label>
@@ -317,6 +512,15 @@ export default function Admin() {
                       <option value="full">Full payment</option>
                     </select>
                     {form.preOrderType === 'deposit' && <input value={form.depositPercent||''} onChange={e => sf('depositPercent',e.target.value)} placeholder="Deposit %" type="number" className={inp} />}
+                  </div>
+                )}
+
+                {form.isPartner && (
+                  <div className="grid sm:grid-cols-2 gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                    <p className="sm:col-span-2 text-xs font-bold text-blue-800">Partner Info (Private — not shown to customers)</p>
+                    <input value={form.partnerBrand||''} onChange={e => sf('partnerBrand',e.target.value)} placeholder="Brand / business name *" className={inp} />
+                    <input value={form.partnerContact||''} onChange={e => sf('partnerContact',e.target.value)} placeholder="Brand contact (WhatsApp / email) *" className={inp} />
+                    <p className="sm:col-span-2 text-xs text-blue-600">Update the stock quantity field above daily after confirming with the partner.</p>
                   </div>
                 )}
 
@@ -400,17 +604,67 @@ export default function Admin() {
 
             {/* FEATURED form */}
             {tab === 'Featured' && (
-              <div className="grid sm:grid-cols-2 gap-3">
-                <input value={form.brandName||''} onChange={e => sf('brandName',e.target.value)} placeholder="Brand name *" className={inp} />
-                <input value={form.productName||''} onChange={e => sf('productName',e.target.value)} placeholder="Product / service to feature *" className={inp} />
-                <input value={form.contactInfo||''} onChange={e => sf('contactInfo',e.target.value)} placeholder="Brand contact (WhatsApp / email)" className={inp} />
-                <input value={form.image||''} onChange={e => sf('image',e.target.value)} placeholder="Product image URL or Drive link" className={inp} />
-                <input value={form.price||''} onChange={e => sf('price',e.target.value)} placeholder="Price (GHS) — leave blank to hide" type="number" className={inp} />
-                <input value={form.stock||''} onChange={e => sf('stock',e.target.value)} placeholder="Stock quantity (update daily with partner)" type="number" className={inp} />
-                <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Product description for featured display" rows={2} className={inp+' resize-none sm:col-span-2'} />
-                <div className="sm:col-span-2">
+              <div className="space-y-3">
+                {/* Partner info — private */}
+                <div className="grid sm:grid-cols-2 gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                  <p className="sm:col-span-2 text-xs font-bold text-blue-800">Partner Info (Private — not shown to customers)</p>
+                  <input value={form.brandName||''} onChange={e => sf('brandName',e.target.value)} placeholder="Brand / business name *" className={inp} />
+                  <input value={form.contactInfo||''} onChange={e => sf('contactInfo',e.target.value)} placeholder="Brand contact (WhatsApp / email) *" className={inp} />
+                </div>
+
+                {/* Product details */}
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <input value={form.productName||''} onChange={e => sf('productName',e.target.value)} placeholder="Product name (shown to customers) *" className={inp} />
+                  <div className="flex gap-2">
+                    <select value={form.category||''} onChange={e => sf('category',e.target.value)} className={inp+' flex-1'}>
+                      <option value="">Category</option>
+                      {allCats.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <input value={form.price||''} onChange={e => sf('price',e.target.value)} placeholder="Price (GHS)" type="number" className={inp} />
+                  <input value={form.stock||''} onChange={e => sf('stock',e.target.value)} placeholder="Stock quantity (update daily)" type="number" className={inp} />
+                  <input value={form.image||''} onChange={e => sf('image',e.target.value)} placeholder="Image URL or Drive link" className={inp} />
+                  <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Product description" rows={2} className={inp+' resize-none sm:col-span-2'} />
+                </div>
+
+                {/* Flags — same as product */}
+                <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-xl">
+                  {[['available','Available'],['featured','Featured'],['fastSelling','Fast Selling'],['isPreOrder','Pre-Order'],['hasDiscount','Discount']].map(([k,l]) => (
+                    <label key={k} className="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
+                      <input type="checkbox" checked={!!form[k]} onChange={e => sf(k,e.target.checked)} className="w-4 h-4 accent-black" /> {l}
+                    </label>
+                  ))}
+                </div>
+
+                {form.isPreOrder && (
+                  <div className="grid sm:grid-cols-2 gap-3 p-3 bg-yellow-50 rounded-xl border border-yellow-100">
+                    <p className="sm:col-span-2 text-xs font-bold text-yellow-800">Pre-Order</p>
+                    <select value={form.preOrderType||''} onChange={e => sf('preOrderType',e.target.value)} className={inp}>
+                      <option value="">Payment type *</option>
+                      <option value="deposit">Deposit only</option>
+                      <option value="full">Full payment</option>
+                    </select>
+                    {form.preOrderType === 'deposit' && <input value={form.depositPercent||''} onChange={e => sf('depositPercent',e.target.value)} placeholder="Deposit %" type="number" className={inp} />}
+                  </div>
+                )}
+
+                {form.hasDiscount && (
+                  <div className="grid sm:grid-cols-2 gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
+                    <p className="sm:col-span-2 text-xs font-bold text-green-800">Discount</p>
+                    <select value={form.discount?.type||'percent'} onChange={e => sfd('type',e.target.value)} className={inp}>
+                      <option value="percent">Percentage (%)</option>
+                      <option value="fixed">Fixed amount (GHS)</option>
+                    </select>
+                    <input value={form.discount?.value||''} onChange={e => sfd('value',e.target.value)} placeholder="Value" type="number" className={inp} />
+                    <input value={form.discount?.label||''} onChange={e => sfd('label',e.target.value)} placeholder='Label e.g. "Flash Sale!"' className={inp} />
+                    <input value={form.discount?.endDate||''} onChange={e => sfd('endDate',e.target.value)} type="date" className={inp} />
+                  </div>
+                )}
+
+                {/* Subscription plan */}
+                <div className="p-3 bg-gray-50 rounded-xl">
                   <p className="text-xs font-bold mb-1">Subscription Plan</p>
-                  <p className="text-xs text-gray-400 mb-2">Duration sets the auto-expiry date. Update stock daily by editing this listing.</p>
+                  <p className="text-xs text-gray-400 mb-2">Auto-expires after this duration. Update stock daily by editing.</p>
                   <div className="flex flex-wrap gap-2">
                     {PLANS.map(p => (
                       <button key={p} onClick={() => sf('plan',p)}
@@ -430,17 +684,33 @@ export default function Admin() {
           </div>
         )}
 
-        {/* Orders status filter */}
+        {/* Orders status filter + customer search + CSV */}
         {tab === 'Orders' && !loading && (
-          <div className="flex gap-2 flex-wrap mb-4">
-            {['all','new','processing','delivery-ongoing','delivered','cancelled'].map(s => (
-              <button key={s} onClick={() => {
-                const ep = s === 'all' ? '/api/orders' : `/api/orders?status=${s}`;
-                api.get(ep, auth).then(r => setData(r.data)).catch(() => {});
-              }} className="px-3 py-1.5 text-xs font-bold rounded-full border-2 border-gray-200 hover:border-black capitalize transition-all">
-                {s === 'all' ? 'All' : s.replace('-',' ')}
+          <div className="mb-4 space-y-3">
+            <div className="flex gap-2 flex-wrap">
+              {['all','new','processing','delivery-ongoing','delivered','cancelled'].map(s => (
+                <button key={s} onClick={() => {
+                  setOrderFilter(s);
+                  const ep = s === 'all' ? '/api/orders' : `/api/orders?status=${s}`;
+                  api.get(ep, auth).then(r => setData(r.data)).catch(() => {});
+                }} className={`px-3 py-1.5 text-xs font-bold rounded-full border-2 capitalize transition-all ${orderFilter===s?'bg-black text-white border-black':'border-gray-200 hover:border-black'}`}>
+                  {s === 'all' ? 'All' : s.replace('-',' ')}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
+                  placeholder="Filter by customer name or phone..."
+                  className="w-full pl-8 pr-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-black" />
+              </div>
+              {customerSearch && <button onClick={() => setCustomerSearch('')} className="px-3 py-2 bg-gray-100 rounded-xl text-xs font-bold"><X size={13}/></button>}
+              <button onClick={() => downloadCSV(data, 'belle-kreyashon-orders.csv')}
+                className="px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-900 whitespace-nowrap">
+                ↓ Export CSV
               </button>
-            ))}
+            </div>
           </div>
         )}
 
@@ -503,7 +773,7 @@ export default function Admin() {
             ))}
 
             {/* ORDERS */}
-            {tab === 'Orders' && pagedData.map(item => {
+            {tab === 'Orders' && pagedData.filter(item => !customerSearch || item.customer?.name?.toLowerCase().includes(customerSearch.toLowerCase()) || item.customer?.phone?.includes(customerSearch)).map(item => {
               const STATUS_OPTS = ['new','processing','delivery-ongoing','delivered','cancelled'];
               const STATUS_COLORS = { new:'bg-blue-100 text-blue-700', processing:'bg-yellow-100 text-yellow-700', 'delivery-ongoing':'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', cancelled:'bg-red-100 text-red-700' };
               const updateStatus = async (id, status) => {
@@ -613,19 +883,26 @@ export default function Admin() {
 
             {/* FEATURED */}
             {tab === 'Featured' && pagedData.map(item => {
-              const expired = new Date(item.subscriptionEnd) < new Date();
+              const expired = item.partnerSubEnd && new Date(item.partnerSubEnd) < new Date();
               return (
-                <div key={item._id} className={`bg-white rounded-2xl p-4 border flex gap-3 ${expired?'border-red-200 opacity-60':'border-gray-100'}`}>
-                  {item.image && <img src={item.image} alt="" className="w-14 h-14 rounded-xl object-cover bg-gray-100 shrink-0" onError={e=>{e.target.style.display='none';}} />}
+                <div key={item._id} className={`bg-white rounded-2xl p-3 border flex gap-3 ${expired?'border-red-200 opacity-60':'border-gray-100'}`}>
+                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+                    {item.images?.[0] && <img src={item.images[0]} alt="" className="w-full h-full object-cover" onError={e=>{e.target.style.display='none';}} />}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-extrabold text-sm">{item.productName}</p>
-                    <p className="text-xs text-gray-400">{item.brandName}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{item.plan} month plan</p>
-                    <p className="text-xs text-gray-400">Ends: {new Date(item.subscriptionEnd).toLocaleDateString()}</p>
-                    {expired && <span className="text-xs bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">Expired</span>}
+                    <p className="font-extrabold text-sm truncate">{item.name}</p>
+                    <p className="text-xs text-gray-400">{item.category}</p>
+                    <p className="text-xs font-bold">GHS {item.retailPrice?.toLocaleString()}</p>
+                    <p className="text-xs text-blue-600">Partner: {item.partnerBrand}</p>
+                    <p className="text-xs text-gray-400">Stock: {item.stock ?? '∞'}</p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {item.partnerPlanMonths && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{item.partnerPlanMonths}mo plan</span>}
+                      {item.partnerSubEnd && <span className="text-xs text-gray-400">Ends: {new Date(item.partnerSubEnd).toLocaleDateString()}</span>}
+                      {expired && <span className="text-xs bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">Expired</span>}
+                    </div>
                   </div>
                   <div className="flex flex-col gap-2 shrink-0">
-                    <button onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                    <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
                     <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
                     <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                   </div>
@@ -665,8 +942,11 @@ export default function Admin() {
               </div>
             ))}
 
+            {/* INVOICE CREATOR */}
+            {tab === 'Invoice' && <InvoiceCreator auth={auth} />}
+
             {/* Empty state */}
-            {data.length === 0 && <div className="col-span-3 text-center py-12 text-gray-400">No {tab.toLowerCase()} yet.</div>}
+            {tab !== 'Invoice' && data.length === 0 && <div className="col-span-3 text-center py-12 text-gray-400">No {tab.toLowerCase()} yet.</div>}
           </div>
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-5">

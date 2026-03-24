@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle, MessageCircle, Phone, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle, MessageCircle, Phone, Loader2, AlertCircle, Download } from 'lucide-react';
+import { generateInvoice } from '../utils/generateInvoice';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
@@ -156,7 +157,7 @@ export default function OrderConfirmation() {
           {waUrl && (
             <a href={waUrl} target="_blank" rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-500 text-white font-extrabold rounded-2xl hover:bg-green-600 transition-all">
-              <MessageCircle size={18} /> Notify Anna via WhatsApp
+              <MessageCircle size={18} /> Notify Belle Kreyashon via WhatsApp
             </a>
           )}
           {callUrl && (
@@ -165,6 +166,10 @@ export default function OrderConfirmation() {
               <Phone size={18} /> Call Us
             </a>
           )}
+          <button onClick={() => order && generateInvoice(order)}
+            className="flex items-center justify-center gap-2 w-full py-3.5 border-2 border-gray-200 text-black font-extrabold rounded-2xl hover:border-black transition-all text-sm">
+            <Download size={16} /> Download Invoice
+          </button>
           <Link to="/orders"
             className="flex items-center justify-center w-full py-3.5 border-2 border-gray-200 text-black font-extrabold rounded-2xl hover:border-black transition-all text-sm">
             View My Orders

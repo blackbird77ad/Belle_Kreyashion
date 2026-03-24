@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Phone, Package, Truck, CheckCircle, Clock, XCircle, ChevronDown, ChevronUp, Calendar, Users } from 'lucide-react';
+import { Phone, Package, Truck, CheckCircle, Clock, XCircle, ChevronDown, ChevronUp, Calendar, Download } from 'lucide-react';
+import { generateInvoice } from '../utils/generateInvoice';
 import { api } from '../hooks/useApi';
 import { useCustomer } from '../context/CustomerContext';
 
@@ -23,17 +24,23 @@ const OrderCard = ({ order }) => {
   const isPast = ['delivered','cancelled'].includes(order.status);
   return (
     <div className={`bg-white rounded-2xl border-2 overflow-hidden ${isPast ? 'border-gray-100 opacity-80' : 'border-gray-200'}`}>
-      <div className="p-4 flex justify-between items-start cursor-pointer" onClick={() => setOpen(o => !o)}>
-        <div>
-          <p className="font-extrabold text-[#FDC700] text-sm">{order.orderId}</p>
-          <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}</p>
-          <div className="mt-1.5"><StatusBadge status={order.status} /></div>
+      <div className="p-4">
+        <div className="flex justify-between items-start cursor-pointer" onClick={() => setOpen(o => !o)}>
+          <div>
+            <p className="font-extrabold text-[#FDC700] text-sm">{order.orderId}</p>
+            <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}</p>
+            <div className="mt-1.5"><StatusBadge status={order.status} /></div>
+          </div>
+          <div className="text-right flex flex-col items-end gap-1">
+            <p className="font-extrabold">GHS {order.total?.toLocaleString()}</p>
+            <span className="text-xs text-gray-400 capitalize">{order.fulfillment}</span>
+            {open ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
+          </div>
         </div>
-        <div className="text-right flex flex-col items-end gap-1">
-          <p className="font-extrabold">GHS {order.total?.toLocaleString()}</p>
-          <span className="text-xs text-gray-400 capitalize">{order.fulfillment}</span>
-          {open ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
-        </div>
+        <button onClick={() => generateInvoice(order)}
+          className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-bold rounded-xl hover:bg-black hover:text-white hover:border-black transition-all">
+          <Download size={12} /> Download Invoice
+        </button>
       </div>
       {open && (
         <div className="border-t border-gray-100 px-4 pb-4 pt-3">
@@ -53,6 +60,10 @@ const OrderCard = ({ order }) => {
           {order.deliveredAt && (
             <p className="text-xs text-green-600 font-bold mt-1">✅ Delivered {new Date(order.deliveredAt).toLocaleDateString('en-GB')}</p>
           )}
+          <button onClick={() => generateInvoice(order)}
+            className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-900 transition-all">
+            <Download size={12} /> Download Invoice
+          </button>
         </div>
       )}
     </div>
@@ -76,6 +87,10 @@ const BookingCard = ({ booking }) => (
       </div>
     </div>
     {booking.notes && <p className="text-xs text-gray-400 mt-2 border-t border-gray-100 pt-2">{booking.notes}</p>}
+    <button onClick={() => generateInvoice(booking)}
+      className="mt-3 flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-bold rounded-xl hover:bg-black hover:text-white hover:border-black transition-all">
+      <Download size={12} /> Download Invoice
+    </button>
   </div>
 );
 

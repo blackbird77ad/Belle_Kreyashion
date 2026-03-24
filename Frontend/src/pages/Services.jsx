@@ -6,7 +6,6 @@ import { WHATSAPP } from '../data/contact';
 import CustomerModal from '../components/CustomerModal';
 import { useCustomer } from '../context/CustomerContext';
 
-const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 const WHATSAPP_NUM = WHATSAPP;
 
 const SUBSCRIPTION_PLANS = [
@@ -18,19 +17,31 @@ const SUBSCRIPTION_PLANS = [
 ];
 
 // Paystack payment helper
+const waitForPaystack = () => new Promise((resolve, reject) => {
+  if (window.PaystackPop) return resolve(window.PaystackPop);
+  let tries = 0;
+  const interval = setInterval(() => {
+    if (window.PaystackPop) { clearInterval(interval); resolve(window.PaystackPop); }
+    else if (++tries > 30) { clearInterval(interval); reject(new Error('Paystack not loaded')); }
+  }, 100);
+});
+
 const payWithPaystack = ({ amount, name, phone, description, onSuccess, onClose }) => {
-  if (!window.PaystackPop) { alert('Payment system not ready. Please refresh.'); return; }
-  const handler = window.PaystackPop.setup({
-    key:      PAYSTACK_KEY,
-    email:    phone.replace(/[^0-9]/g, '') + '@bellekreyashon.com',
-    amount:   amount * 100,
-    currency: 'GHS',
-    ref:      'BK-' + Date.now(),
-    callback: onSuccess,
-    onClose,
-  });
-  handler.openIframe();
+  waitForPaystack().then(PaystackPop => {
+    const handler = PaystackPop.setup({
+      key:      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
+      email:    phone.replace(/[^0-9]/g,'') + '@bellekreyashon.com',
+      amount:   amount * 100,
+      currency: 'GHS',
+      ref:      'BK-' + Date.now(),
+      callback: onSuccess,
+      onClose,
+    });
+    handler.openIframe();
+  }).catch(() => alert('Payment system not ready. Please refresh the page.'));
 };
+
+
 
 // Booking confirmation modal
 function BookingConfirmed({ booking, whatsappUrl, onClose }) {
@@ -47,7 +58,7 @@ function BookingConfirmed({ booking, whatsappUrl, onClose }) {
         <a href={whatsappUrl} target="_blank" rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 w-full py-3 bg-green-500 text-white font-extrabold rounded-xl hover:bg-green-600 mb-3"
           onClick={onClose}>
-          <MessageCircle size={16} /> Notify Anna via WhatsApp
+          <MessageCircle size={16} /> Notify Belle Kreyashon via WhatsApp
         </a>
         <button onClick={onClose} className="w-full py-2.5 text-sm text-gray-500 hover:text-black">Close</button>
       </div>

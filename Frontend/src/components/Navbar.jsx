@@ -6,12 +6,12 @@ import { useCustomer } from '../context/CustomerContext';
 import { PHONE } from '../data/contact';
 
 const links = [
-  { to: '/',        label: 'Home' },
-  { to: '/shop',    label: 'Shop' },
-  { to: '/services',label: 'Services' },
-  { to: '/blog',    label: 'Blog' },
-  { to: '/about',   label: 'About' },
-  { to: '/contact', label: 'Contact' },
+  { to: '/',         label: 'Home' },
+  { to: '/shop',     label: 'Shop' },
+  { to: '/services', label: 'Services' },
+  { to: '/blog',     label: 'Blog' },
+  { to: '/about',    label: 'About' },
+  { to: '/contact',  label: 'Contact' },
 ];
 
 export default function Navbar({ onCartOpen }) {
@@ -47,22 +47,22 @@ export default function Navbar({ onCartOpen }) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowSearch(s => !s)} className="text-gray-300 hover:text-[#FDC700] transition-colors p-1">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowSearch(s => !s)} className="text-gray-300 hover:text-[#FDC700] transition-colors p-2">
               <Search size={20} />
             </button>
             {customer && (
-              <Link to="/orders" className="text-gray-300 hover:text-[#FDC700] transition-colors p-1">
+              <Link to="/orders" className="text-gray-300 hover:text-[#FDC700] transition-colors p-2">
                 <User size={20} />
               </Link>
             )}
-            <button onClick={onCartOpen} className="relative p-1">
+            <button onClick={onCartOpen} className="relative p-2">
               <ShoppingBag size={22} className="hover:text-[#FDC700] transition-colors" />
               {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#FDC700] text-black text-xs font-extrabold w-5 h-5 rounded-full flex items-center justify-center">{cartCount}</span>
+                <span className="absolute top-0 right-0 bg-[#FDC700] text-black text-xs font-extrabold w-5 h-5 rounded-full flex items-center justify-center pointer-events-none">{cartCount}</span>
               )}
             </button>
-            <button onClick={() => setOpen(!open)} className="md:hidden p-1">
+            <button onClick={() => setOpen(!open)} className="md:hidden p-2">
               {open ? <X size={22} /> : <Menu size={22} />}
             </button>
           </div>
@@ -90,6 +90,11 @@ export default function Navbar({ onCartOpen }) {
                 {l.label}
               </Link>
             ))}
+            {customer && (
+              <Link to="/orders" onClick={() => setOpen(false)} className="text-sm text-gray-400 py-2.5 border-b border-gray-800 flex items-center gap-2">
+                <User size={14} /> My Orders
+              </Link>
+            )}
             <a href={`tel:${PHONE}`} className="text-sm text-gray-400 flex items-center gap-2 pt-2">
               <Phone size={14} /> {PHONE}
             </a>

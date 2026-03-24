@@ -5,9 +5,20 @@ import { useCustomer } from './CustomerContext';
 const CartContext = createContext();
 
 export function CartProvider({ children }) {
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bk_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const { customer } = useCustomer();
   const timerRef = useRef(null);
+
+  // Persist cart to localStorage
+  useEffect(() => {
+    try { localStorage.setItem('bk_cart', JSON.stringify(cart)); }
+    catch {}
+  }, [cart]);
 
   // Save abandoned cart 30 seconds after cart changes (if customer is known)
   useEffect(() => {
@@ -66,7 +77,7 @@ export function CartProvider({ children }) {
   };
 
   const removeFromCart = (key) => setCart(prev => prev.filter(i => i.key !== key));
-  const clearCart = () => setCart([]);
+  const clearCart = () => { setCart([]); try { localStorage.removeItem('bk_cart'); } catch {} };
 
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
   const subtotal  = cart.reduce((sum, i) => sum + i.price * i.qty, 0);

@@ -10,13 +10,14 @@ const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
 export default function Checkout() {
   const { cart, subtotal, clearCart } = useCart();
-  const { customer } = useCustomer();
+  const { customer, saveAddress } = useCustomer();
   const navigate = useNavigate();
   const { data: zones } = useFetch('/api/delivery/public');
 
   const [fulfillment, setFulfillment] = useState('delivery');
   const [zone,        setZone]        = useState('');
-  const [address,     setAddress]     = useState('');
+  const [address,     setAddress]     = useState(customer?.savedAddress || '');
+  const [saveAddr,    setSaveAddr]    = useState(true);
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState('');
 
@@ -40,7 +41,7 @@ export default function Checkout() {
     return null;
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     const err = validate();
     if (err) return setError(err);
     setError(''); setLoading(true);
@@ -72,6 +73,7 @@ export default function Checkout() {
     const ref = 'BK-' + Date.now();
 
     function onPaymentSuccess(response) {
+      if (saveAddr && address.trim()) saveAddress(address.trim());
       sessionStorage.setItem('bk_pending_order', JSON.stringify({
         paymentRef: response.reference,
         orderData,
@@ -156,12 +158,25 @@ export default function Checkout() {
                     <option value="">Select delivery zone *</option>
                     {zones?.map(z => <option key={z._id} value={z._id}>{z.name} — GHS {z.fee}</option>)}
                   </select>
+                  {customer?.savedAddress && (
+                    <div className="flex gap-2 items-center p-3 bg-gray-50 rounded-xl border border-gray-200">
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-400 mb-0.5">Saved address</p>
+                        <p className="text-sm font-bold">{customer.savedAddress}</p>
+                      </div>
+                      <button onClick={() => setAddress(customer.savedAddress)} className="text-xs font-bold text-[#FDC700] bg-black px-3 py-1.5 rounded-xl">Use</button>
+                    </div>
+                  )}
                   <div className="relative">
                     <MapPin size={15} className="absolute left-3 top-3.5 text-gray-400" />
                     <textarea value={address} onChange={e => setAddress(e.target.value)} rows={2}
                       placeholder="House number, street, area, city *"
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black resize-none" />
                   </div>
+                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                    <input type="checkbox" checked={saveAddr} onChange={e => setSaveAddr(e.target.checked)} className="w-4 h-4 accent-black" />
+                    Save this address for next time
+                  </label>
                 </div>
               )}
 
@@ -177,6 +192,10 @@ export default function Checkout() {
                       placeholder="Full international address including country *"
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black resize-none" />
                   </div>
+                  <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                    <input type="checkbox" checked={saveAddr} onChange={e => setSaveAddr(e.target.checked)} className="w-4 h-4 accent-black" />
+                    Save this address for next time
+                  </label>
                 </div>
               )}
             </div>

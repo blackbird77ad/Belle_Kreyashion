@@ -32,6 +32,11 @@ const productSchema = new mongoose.Schema({
   depositPercent:  { type: Number, default: null },
   discount:        { type: discountSchema, default: null },
   available:       { type: Boolean, default: true },
+  isPartner:          { type: Boolean, default: false },
+  partnerBrand:       { type: String, default: '' },
+  partnerContact:     { type: String, default: '' },
+  partnerPlanMonths:  { type: Number, default: null },
+  partnerSubEnd:      { type: Date, default: null },
   featured:        { type: Boolean, default: false },
   fastSelling:     { type: Boolean, default: false },
 }, { timestamps: true });

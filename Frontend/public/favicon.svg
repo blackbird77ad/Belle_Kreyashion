@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Black rounded background -->
+  <rect width="64" height="64" rx="12" fill="#000000"/>
+  <!-- Gold B -->
+  <text x="10" y="45" font-family="Arial Black, Arial, sans-serif" font-size="36" font-weight="900" fill="#FDC700">B</text>
+  <!-- White K -->
+  <text x="33" y="45" font-family="Arial Black, Arial, sans-serif" font-size="36" font-weight="900" fill="#ffffff">K</text>
+</svg>
