@@ -181,7 +181,7 @@ export default function Shop() {
                   ))}
                 </div>
                 <button onClick={() => { setPage(p => Math.min(totalPages,p+1)); window.scrollTo({top:0,behavior:'smooth'}); }} disabled={page===totalPages}
-                  className="px-4 py-2 text-sm font-bold rounded-xl border-2 border-gray-200 hover:border-black disabled:opacity-40">Next →</button>
+                  className="px-4 py-2 text-sm font-bold rounded-xl border-2 border-gray-200 hover:border-black disabled:opacity-40">Next → </button>
               </div>
             )}
           </>
