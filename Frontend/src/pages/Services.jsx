@@ -41,8 +41,6 @@ const payWithPaystack = ({ amount, name, phone, description, onSuccess, onClose 
   }).catch(() => alert('Payment system not ready. Please refresh the page.'));
 };
 
-
-
 // Booking confirmation modal
 function BookingConfirmed({ booking, whatsappUrl, onClose }) {
   return (
@@ -271,7 +269,9 @@ Notes: ${preOrderForm.notes || 'None'}`
       <div className="bg-black text-white py-20 px-4 text-center">
         <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Grow With Us</p>
         <h1 className="text-4xl md:text-6xl font-extrabold mb-3">Services</h1>
-        <p className="text-gray-400 max-w-xl mx-auto text-sm">Training, consultations, importation and brand features</p>
+        <p className="text-gray-400 max-w-xl mx-auto text-sm">
+          Training, consultations, importation, pre-orders and brand features — hair, beauty, fashion, health &amp; more
+        </p>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-12">
@@ -279,8 +279,10 @@ Notes: ${preOrderForm.notes || 'None'}`
         {/* TRAINING */}
         <div className="mb-16">
           <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-1">Learn From The Best</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Hair Training Sessions</h2>
-          <p className="text-gray-500 text-sm mb-7 max-w-2xl">Join our hands-on professional hair training sessions. Whether you're a beginner or an experienced stylist, our sessions are designed to elevate your skills and open doors to earning from hair.</p>
+          <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Professional Training Sessions</h2>
+          <p className="text-gray-500 text-sm mb-7 max-w-2xl">
+            Join our hands-on professional training sessions in hair, beauty, skincare and fashion. Whether you're a beginner or experienced, our sessions are designed to elevate your skills and open doors to new income streams.
+          </p>
 
           {!events || events.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-2xl">
@@ -341,14 +343,18 @@ Notes: ${preOrderForm.notes || 'None'}`
         <div className="mb-16">
           <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-1">Expert Guidance</p>
           <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Consultations</h2>
-          <p className="text-gray-500 text-sm mb-7 max-w-2xl">Not sure what to buy, how to grow your hair business, or where to start? Our consultations give you direct access to expert advice tailored to your needs.</p>
+          <p className="text-gray-500 text-sm mb-7 max-w-2xl">
+            Not sure what to buy, how to grow your beauty or fashion business, or where to start? Our consultations give you direct access to expert advice across hair, skincare, fashion, health and lifestyle.
+          </p>
 
           <div className="grid sm:grid-cols-2 gap-5 mb-5">
             {/* Free */}
             <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
               <div className="w-11 h-11 rounded-2xl bg-black flex items-center justify-center mb-3"><MessageCircle size={20} className="text-[#FDC700]" /></div>
               <h3 className="font-extrabold text-lg mb-1">Free Consultation</h3>
-              <p className="text-gray-500 text-sm mb-4 leading-relaxed">Quick question about hair products, what to buy, or styling advice? Chat with us for free — no appointment needed.</p>
+              <p className="text-gray-500 text-sm mb-4 leading-relaxed">
+                Quick question about any of our products — hair, beauty, skincare, fashion, health or gadgets? Chat with us for free — no appointment needed.
+              </p>
               <div className="flex gap-2">
                 <a href={`https://wa.me/${WHATSAPP_NUM}?text=${freeMsg}`} target="_blank" rel="noopener noreferrer"
                   className="flex-1 py-2.5 bg-green-500 text-white font-extrabold text-xs rounded-xl text-center hover:bg-green-600">WhatsApp</a>
@@ -388,7 +394,9 @@ Notes: ${preOrderForm.notes || 'None'}`
           <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-8 text-white">
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Can't Find It?</p>
             <h2 className="text-2xl font-extrabold mb-2">Request a Pre-Order</h2>
-            <p className="text-gray-400 text-sm mb-6 max-w-xl">Don't see what you're looking for? Submit a pre-order request and we'll source it for you.</p>
+            <p className="text-gray-400 text-sm mb-6 max-w-xl">
+              Don't see what you're looking for across hair, beauty, fashion, health or gadgets? Submit a pre-order request and we'll source it for you.
+            </p>
             {!showPreOrderForm ? (
               <button onClick={() => setShowPreOrderForm(true)} className="px-6 py-3 bg-[#FDC700] text-black font-extrabold text-sm rounded-full hover:bg-yellow-300">Submit a Request</button>
             ) : (
@@ -412,7 +420,9 @@ Notes: ${preOrderForm.notes || 'None'}`
           <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100">
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Global Sourcing</p>
             <h2 className="text-2xl font-extrabold mb-2">Importation Assistance</h2>
-            <p className="text-gray-500 text-sm mb-5 max-w-xl leading-relaxed">Need help importing hair products, beauty supplies or equipment from abroad? We assist with sourcing, shipping and customs clearance.</p>
+            <p className="text-gray-500 text-sm mb-5 max-w-xl leading-relaxed">
+              Need help importing hair products, beauty supplies, skincare, fashion items, gadgets or equipment from abroad? We assist with sourcing, shipping and customs clearance.
+            </p>
             <a href={`https://wa.me/${WHATSAPP_NUM}?text=${importMsg}`} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-6 py-3 bg-black text-white font-extrabold text-sm rounded-full hover:bg-gray-900">
               <MessageCircle size={16} /> Enquire on WhatsApp
@@ -425,7 +435,9 @@ Notes: ${preOrderForm.notes || 'None'}`
           <div className="bg-black text-white rounded-2xl p-8">
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Visibility for Your Brand</p>
             <h2 className="text-2xl md:text-3xl font-extrabold mb-3">Get Featured on Belle Kreyashon</h2>
-            <p className="text-gray-400 text-sm mb-4 max-w-2xl leading-relaxed">Have a product you want more people to see? Get your product featured on our home page, seen by thousands of hair and beauty enthusiasts. Your brand identity stays private.</p>
+            <p className="text-gray-400 text-sm mb-4 max-w-2xl leading-relaxed">
+              Have a product you want more people to see? Get featured on our home page, seen by thousands of shoppers across hair, beauty, fashion, health and lifestyle. Your brand identity stays private.
+            </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
               {SUBSCRIPTION_PLANS.map(plan => (
                 <button key={plan.months} onClick={() => setFeaturePlan(plan.months)}
