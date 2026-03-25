@@ -1,25 +1,127 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../hooks/useApi';
-import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2 } from 'lucide-react';
 import { CATEGORIES, CATEGORY_VALUES } from '../data/categories';
 
 const TABS = ['Products','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured','Invoice'];
 
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
+
 const convertDrive = (url) => {
   if (!url) return url;
   const m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   return m ? `https://drive.google.com/uc?export=view&id=${m[1]}` : url;
 };
 
-const EMPTY_PROD = { name:'',desc:'',category:'',images:[''],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:false,partnerBrand:'',partnerContact:'' };
+const EMPTY_PROD = { name:'',desc:'',category:'',images:[],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:false,partnerBrand:'',partnerContact:'' };
 const EMPTY_TRAIN = { title:'',desc:'',date:'',venue:'',price:'',capacity:'',image:'' };
 const EMPTY_ZONE  = { name:'', fee:'' };
 const EMPTY_CONSULT = { title:'',desc:'',price:'',duration:'',validity:'',isFree:false };
 const EMPTY_BLOG = { title:'',excerpt:'',content:'',coverImage:'',videoUrl:'',mediaType:'image',tags:'',published:false };
-const EMPTY_FEATURED = { brandName:'',productName:'',desc:'',image:'',contactInfo:'',plan:1,category:'',price:'',stock:'',available:true,featured:true,fastSelling:false,isPreOrder:false,preOrderType:'',depositPercent:'',hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:true,partnerContact:'' };
+const EMPTY_FEATURED = { brandName:'',productName:'',desc:'',images:[],contactInfo:'',plan:1,category:'',price:'',stock:'',available:true,featured:true,fastSelling:false,isPreOrder:false,preOrderType:'',depositPercent:'',hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:true,partnerContact:'' };
 
 const PLANS = [1,3,6,9,12];
+
+// ─── IMAGE UPLOADER COMPONENT ─────────────────────────────────────────────────
+// Compresses images client-side before uploading to Cloudinary
+// Max 3 images, shows previews, allows removal
+function ImageUploader({ images = [], onChange, uploadEndpoint, token, maxImages = 3 }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError]         = useState('');
+  const fileRef                   = useRef();
+
+  const compressImage = (file) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 1200;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+          else                { width = Math.round(width * MAX / height);  height = MAX; }
+        }
+        canvas.width  = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.82);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const handleFiles = async (files) => {
+    setError('');
+    const remaining = maxImages - images.length;
+    if (remaining <= 0) { setError(`Max ${maxImages} images allowed`); return; }
+    const toUpload = Array.from(files).slice(0, remaining);
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      for (const file of toUpload) {
+        const compressed = await compressImage(file);
+        formData.append('images', compressed);
+      }
+      const { data } = await api.post(uploadEndpoint, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      onChange([...images, ...data.urls]);
+    } catch (e) {
+      setError(e.response?.data?.message || 'Upload failed. Try again.');
+    }
+    setUploading(false);
+  };
+
+  const remove = (idx) => onChange(images.filter((_, i) => i !== idx));
+
+  const onDrop = (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
+
+  return (
+    <div className="sm:col-span-2 space-y-2">
+      {/* Previews */}
+      {images.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {images.map((url, i) => (
+            <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden bg-gray-100 group">
+              <img src={url} alt="" className="w-full h-full object-cover" />
+              <button onClick={() => remove(i)}
+                className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                <X size={10} />
+              </button>
+              {i === 0 && <span className="absolute bottom-0 left-0 right-0 text-center text-white text-[9px] font-bold bg-black/50 py-0.5">Main</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Drop zone — only show if under limit */}
+      {images.length < maxImages && (
+        <div
+          onDrop={onDrop}
+          onDragOver={e => e.preventDefault()}
+          onClick={() => fileRef.current?.click()}
+          className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center cursor-pointer hover:border-black transition-all">
+          {uploading ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <Loader2 size={16} className="animate-spin" /> Uploading & compressing...
+            </div>
+          ) : (
+            <div className="text-gray-400">
+              <ImagePlus size={22} className="mx-auto mb-1" />
+              <p className="text-xs font-bold">Click or drag images here</p>
+              <p className="text-xs text-gray-300 mt-0.5">{images.length}/{maxImages} • JPG, PNG, WebP • Max 5MB each • Auto-compressed</p>
+            </div>
+          )}
+        </div>
+      )}
+      {error && <p className="text-red-500 text-xs">{error}</p>}
+      <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+        onChange={e => handleFiles(e.target.files)} />
+    </div>
+  );
+}
 
 
 // ─── INVOICE CREATOR ──────────────────────────────────────────────────────────
@@ -36,7 +138,7 @@ function InvoiceCreator({ auth }) {
     api.get('/api/products', auth).then(r => setProducts(r.data)).catch(() => {});
   }, [auth]);
 
-  const addItem = () => setItems(p => [...p, { desc: '', qty: 1, price: '' }]);
+  const addItem    = () => setItems(p => [...p, { desc: '', qty: 1, price: '' }]);
   const removeItem = (i) => setItems(p => p.filter((_, idx) => idx !== i));
   const updateItem = (i, key, val) => setItems(p => p.map((item, idx) => idx === i ? { ...item, [key]: val } : item));
   const pickProduct = (i, productId) => {
@@ -50,10 +152,8 @@ function InvoiceCreator({ auth }) {
   const printInvoice = () => {
     if (!customerName.trim()) return alert('Please enter customer name');
     if (items.some(i => !i.desc.trim() || !i.price)) return alert('Please fill all item details');
-
-    const date = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    const date  = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
     const refId = 'INV-' + Date.now().toString().slice(-6);
-
     const itemsHtml = items.map(item => `
       <tr>
         <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px">${item.desc}</td>
@@ -61,7 +161,6 @@ function InvoiceCreator({ auth }) {
         <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right">GHS ${Number(item.price).toLocaleString()}</td>
         <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px;text-align:right;font-weight:bold">GHS ${(Number(item.price)*Number(item.qty)).toLocaleString()}</td>
       </tr>`).join('');
-
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
 <title>Invoice ${refId}</title>
 <style>
@@ -109,7 +208,6 @@ ${note ? `<div class="note">${note}</div>` : ''}
 </div>
 <script>window.onload=()=>window.print()</script>
 </body></html>`;
-
     window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank');
   };
 
@@ -117,15 +215,11 @@ ${note ? `<div class="note">${note}</div>` : ''}
     <div className="col-span-3 bg-white rounded-2xl p-6 border border-gray-100 max-w-2xl">
       <h2 className="font-extrabold text-lg mb-1">Invoice Creator</h2>
       <p className="text-xs text-gray-400 mb-5">Create invoice/receipt for in-person or custom sales</p>
-
-      {/* Customer */}
       <div className="grid sm:grid-cols-2 gap-3 mb-4">
-        <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name *" className={inp2} />
-        <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone number" className={inp2} />
-        <input value={customerAddr} onChange={e => setCustomerAddr(e.target.value)} placeholder="Address (optional)" className={inp2 + ' sm:col-span-2'} />
+        <input value={customerName}  onChange={e => setCustomerName(e.target.value)}  placeholder="Customer name *"    className={inp2} />
+        <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone number"       className={inp2} />
+        <input value={customerAddr}  onChange={e => setCustomerAddr(e.target.value)}  placeholder="Address (optional)" className={inp2 + ' sm:col-span-2'} />
       </div>
-
-      {/* Items */}
       <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Items / Services</p>
       <div className="flex flex-col gap-2 mb-3">
         {items.map((item, i) => (
@@ -138,10 +232,10 @@ ${note ? `<div class="note">${note}</div>` : ''}
               <input value={item.desc} onChange={e => updateItem(i,'desc',e.target.value)} placeholder="Or type description *" className={inp2} />
             </div>
             <div className="col-span-2">
-              <input value={item.qty} onChange={e => updateItem(i,'qty',e.target.value)} type="number" min="1" placeholder="Qty" className={inp2} />
+              <input value={item.qty}   onChange={e => updateItem(i,'qty',e.target.value)}   type="number" min="1" placeholder="Qty"        className={inp2} />
             </div>
             <div className="col-span-3">
-              <input value={item.price} onChange={e => updateItem(i,'price',e.target.value)} type="number" placeholder="Price (GHS)" className={inp2} />
+              <input value={item.price} onChange={e => updateItem(i,'price',e.target.value)} type="number"        placeholder="Price (GHS)" className={inp2} />
             </div>
             <div className="col-span-1 text-right">
               <span className="text-xs font-bold text-gray-500">{item.price && item.qty ? 'GHS ' + (Number(item.price)*Number(item.qty)).toLocaleString() : ''}</span>
@@ -153,12 +247,8 @@ ${note ? `<div class="note">${note}</div>` : ''}
         ))}
       </div>
       <button onClick={addItem} className="text-xs font-bold text-gray-400 hover:text-black mb-4">+ Add Item</button>
-
-      {/* Note */}
       <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional — e.g. paid cash, balance due, etc.)" rows={2}
         className={inp2 + ' resize-none mb-4'} />
-
-      {/* Total + Print */}
       <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl mb-4">
         <span className="font-bold text-sm text-gray-600">Total</span>
         <span className="font-extrabold text-xl">GHS {subtotal.toLocaleString()}</span>
@@ -171,6 +261,8 @@ ${note ? `<div class="note">${note}</div>` : ''}
   );
 }
 
+
+// ─── MAIN ADMIN COMPONENT ─────────────────────────────────────────────────────
 export default function Admin() {
   const [token,   setToken]   = useState(() => localStorage.getItem('bk_admin') || '');
   const [setup,   setSetup]   = useState(null);
@@ -183,34 +275,32 @@ export default function Admin() {
   const [search,  setSearch]  = useState('');
   const [customCat, setCustomCat] = useState('');
 
-  // Per-tab data
   const [data,    setData]    = useState([]);
   const [loading, setLoading] = useState(false);
   const [page,    setPage]    = useState(1);
   const PAGE_SIZE = 20;
 
-  // Forms
   const [showForm, setShowForm] = useState(false);
   const [editId,   setEditId]   = useState(null);
   const [form,     setForm]     = useState({});
 
   const auth = { headers: { Authorization: `Bearer ${token}` } };
-  const [orderFilter, setOrderFilter] = useState('all');
+  const [orderFilter,    setOrderFilter]    = useState('all');
   const [customerSearch, setCustomerSearch] = useState('');
 
   const downloadCSV = (data, filename) => {
     if (!data.length) return;
-    const keys = ['orderId','createdAt','customer.name','customer.phone','customer.address','fulfillment','deliveryZone','subtotal','deliveryFee','total','status','paymentRef'];
+    const keys   = ['orderId','createdAt','customer.name','customer.phone','customer.address','fulfillment','deliveryZone','subtotal','deliveryFee','total','status','paymentRef'];
     const header = ['Order ID','Date','Customer Name','Phone','Address','Fulfillment','Zone','Subtotal','Delivery','Total','Status','Payment Ref'];
-    const rows = data.map(o => keys.map(k => {
+    const rows   = data.map(o => keys.map(k => {
       const val = k.includes('.') ? k.split('.').reduce((obj,key) => obj?.[key], o) : o[k];
       if (k === 'createdAt') return new Date(val).toLocaleDateString('en-GB');
       return val ?? '';
     }));
-    const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const csv  = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
   };
@@ -243,14 +333,16 @@ export default function Admin() {
     Products: '/api/products', Training: '/api/training',
     Delivery: '/api/delivery', Orders: '/api/orders',
     Abandoned: '/api/orders/abandoned', Consultations: '/api/consultation',
-    Blog: '/api/blog', Featured: '/api/products?isPartner=true', Bookings: '/api/training/bookings',
+    Blog: '/api/blog', Featured: '/api/products', Bookings: '/api/training/bookings',
   };
 
   const load = useCallback(async (t, s) => {
     if (!token) return;
     setLoading(true);
-    const ep = ENDPOINTS[t];
-    const q  = s ? `?search=${encodeURIComponent(s)}` : '';
+    let ep = ENDPOINTS[t];
+    // Featured tab loads only partner products
+    if (t === 'Featured') ep = '/api/products?isPartner=true';
+    const q = s ? `${ep.includes('?') ? '&' : '?'}search=${encodeURIComponent(s)}` : '';
     try {
       const r = await api.get(ep + q, auth);
       setData(r.data);
@@ -262,45 +354,74 @@ export default function Admin() {
 
   const getEmptyForm = (t) => {
     const map = { Products: EMPTY_PROD, Training: EMPTY_TRAIN, Delivery: EMPTY_ZONE, Consultations: EMPTY_CONSULT, Blog: EMPTY_BLOG, Featured: EMPTY_FEATURED };
-    return { ...map[t] } || {};
+    return { ...(map[t] || {}) };
   };
 
-  const openNew = () => { setForm(getEmptyForm(tab)); setEditId(null); setShowForm(true); window.scrollTo({top:0,behavior:'smooth'}); };
+  const openNew = () => {
+    setForm(getEmptyForm(tab));
+    setEditId(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const openEdit = (item) => {
     if (tab === 'Products') {
       setForm({
         ...item,
-        images: item.images?.length ? item.images : [''],
-        wholesalePrice: item.wholesalePrice || '',
+        images:          item.images?.length ? item.images : [],
+        wholesalePrice:  item.wholesalePrice  || '',
         wholesaleMinQty: item.wholesaleMinQty || '',
-        depositPercent: item.depositPercent || '',
-        stock: item.stock !== null && item.stock !== undefined ? item.stock : '',
-        preOrderType: item.preOrderType || '',
-        hasDiscount: !!item.discount,
-        discount: item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
-        variants: item.variants?.length ? JSON.stringify(item.variants) : '',
+        depositPercent:  item.depositPercent  || '',
+        stock:           item.stock !== null && item.stock !== undefined ? item.stock : '',
+        preOrderType:    item.preOrderType    || '',
+        hasDiscount:     !!item.discount,
+        discount:        item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
+        variants:        item.variants?.length ? JSON.stringify(item.variants) : '',
+      });
+    } else if (tab === 'Featured') {
+      // ── Featured edit: map stored product fields back to the featured form ──
+      setForm({
+        brandName:      item.partnerBrand    || '',
+        contactInfo:    item.partnerContact  || '',
+        productName:    item.name            || '',
+        desc:           item.desc            || '',
+        images:         item.images?.length  ? item.images : [],
+        category:       item.category        || '',
+        price:          item.retailPrice     || '',
+        stock:          item.stock !== null && item.stock !== undefined ? item.stock : '',
+        available:      item.available       !== false,
+        featured:       item.featured        !== false,
+        fastSelling:    !!item.fastSelling,
+        isPreOrder:     !!item.isPreOrder,
+        preOrderType:   item.preOrderType    || '',
+        depositPercent: item.depositPercent  || '',
+        hasDiscount:    !!item.discount,
+        discount:       item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
+        plan:           item.partnerPlanMonths || 1,
+        isPartner:      true,
+        partnerContact: item.partnerContact  || '',
       });
     } else if (tab === 'Blog') {
       setForm({ ...item, tags: item.tags?.join(', ') || '' });
     } else {
       setForm({ ...item });
     }
-    setEditId(item._id); setShowForm(true);
-    window.scrollTo({top:0,behavior:'smooth'});
+    setEditId(item._id);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const closeForm = () => { setShowForm(false); setEditId(null); };
 
   const buildProductBody = (f) => {
     const b = { ...f };
-    b.images = [convertDrive(f.images?.[0] || '')].filter(Boolean);
-    b.retailPrice = Number(f.retailPrice) || 0;
+    b.images         = (f.images || []).filter(Boolean);
+    b.retailPrice    = Number(f.retailPrice) || 0;
     b.wholesalePrice = f.wholesalePrice ? Number(f.wholesalePrice) : null;
-    b.wholesaleMinQty = f.wholesaleMinQty ? Number(f.wholesaleMinQty) : null;
-    b.stock = f.stock !== '' && f.stock !== undefined ? Number(f.stock) : null;
+    b.wholesaleMinQty= f.wholesaleMinQty ? Number(f.wholesaleMinQty) : null;
+    b.stock          = f.stock !== '' && f.stock !== undefined ? Number(f.stock) : null;
     b.depositPercent = f.depositPercent ? Number(f.depositPercent) : null;
-    b.preOrderType = f.isPreOrder ? (f.preOrderType || null) : null;
+    b.preOrderType   = f.isPreOrder ? (f.preOrderType || null) : null;
     if (!f.isPreOrder) { b.preOrderType = null; b.depositPercent = null; }
     try { b.variants = f.variants ? JSON.parse(f.variants) : []; } catch { b.variants = []; }
     if (f.hasDiscount) {
@@ -310,31 +431,38 @@ export default function Admin() {
     return b;
   };
 
-  const buildBlogBody = (f) => ({ ...f, tags: f.tags ? f.tags.split(',').map(t => t.trim()).filter(Boolean) : [], coverImage: convertDrive(f.coverImage) });
+  const buildBlogBody = (f) => ({
+    ...f,
+    tags:       f.tags ? f.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+    coverImage: convertDrive(f.coverImage),
+  });
 
-  const buildTrainingBody = (f) => ({ ...f, price: Number(f.price), capacity: f.capacity ? Number(f.capacity) : null, image: convertDrive(f.image) });
+  const buildTrainingBody = (f) => ({
+    ...f,
+    price:    Number(f.price),
+    capacity: f.capacity ? Number(f.capacity) : null,
+    image:    convertDrive(f.image),
+  });
 
   const buildFeaturedBody = (f) => {
-    // Save as a regular product with partner + featured flags
     const b = {
-      name:           f.productName || f.name || '',
-      desc:           f.desc || '',
-      category:       f.category || '',
-      images:         [convertDrive(f.image)].filter(Boolean),
-      retailPrice:    f.price ? Number(f.price) : 0,
-      stock:          f.stock !== '' && f.stock !== undefined ? Number(f.stock) : null,
-      available:      f.available !== false,
-      featured:       f.featured !== false,
-      fastSelling:    !!f.fastSelling,
-      isPreOrder:     !!f.isPreOrder,
-      preOrderType:   f.isPreOrder ? (f.preOrderType || null) : null,
-      depositPercent: f.isPreOrder && f.preOrderType === 'deposit' ? Number(f.depositPercent) : null,
-      isPartner:      true,
-      partnerBrand:   f.brandName || '',
-      partnerContact: f.contactInfo || '',
-      // Store plan/subscription info in a meta field
+      name:              f.productName || f.name || '',
+      desc:              f.desc        || '',
+      category:          f.category    || '',
+      images:            (f.images     || []).filter(Boolean),
+      retailPrice:       f.price ? Number(f.price) : 0,
+      stock:             f.stock !== '' && f.stock !== undefined ? Number(f.stock) : null,
+      available:         f.available  !== false,
+      featured:          f.featured   !== false,
+      fastSelling:       !!f.fastSelling,
+      isPreOrder:        !!f.isPreOrder,
+      preOrderType:      f.isPreOrder ? (f.preOrderType || null) : null,
+      depositPercent:    f.isPreOrder && f.preOrderType === 'deposit' ? Number(f.depositPercent) : null,
+      isPartner:         true,
+      partnerBrand:      f.brandName   || '',   // optional
+      partnerContact:    f.contactInfo || '',   // optional
       partnerPlanMonths: Number(f.plan) || 1,
-      partnerSubEnd:  (() => { const d = new Date(); d.setMonth(d.getMonth() + (Number(f.plan) || 1)); return d; })(),
+      partnerSubEnd:     (() => { const d = new Date(); d.setMonth(d.getMonth() + (Number(f.plan) || 1)); return d; })(),
     };
     if (f.hasDiscount) {
       b.discount = { ...f.discount, value: Number(f.discount.value) || 0, active: true, limitCustomers: null, startDate: null, endDate: f.discount.endDate || null };
@@ -343,39 +471,42 @@ export default function Admin() {
   };
 
   const save = async () => {
-    const ep = ENDPOINTS[tab];
+    // For Featured, save via products endpoint (they are products with isPartner flag)
+    const ep = tab === 'Featured' ? '/api/products' : ENDPOINTS[tab];
     let body = { ...form };
-    if (tab === 'Products')     body = buildProductBody(form);
-    if (tab === 'Blog')         body = buildBlogBody(form);
-    if (tab === 'Training')     body = buildTrainingBody(form);
-    if (tab === 'Featured')     body = buildFeaturedBody(form);
-    if (tab === 'Delivery')     body = { name: form.name, fee: Number(form.fee) };
+    if (tab === 'Products')      body = buildProductBody(form);
+    if (tab === 'Blog')          body = buildBlogBody(form);
+    if (tab === 'Training')      body = buildTrainingBody(form);
+    if (tab === 'Featured')      body = buildFeaturedBody(form);
+    if (tab === 'Delivery')      body = { name: form.name, fee: Number(form.fee) };
     if (tab === 'Consultations') body = { ...form, price: Number(form.price) || 0 };
     try {
       if (editId) await api.put(`${ep}/${editId}`, body, auth);
-      else await api.post(ep, body, auth);
-      load(tab, search); closeForm();
+      else        await api.post(ep, body, auth);
+      load(tab, search);
+      closeForm();
     } catch (e) { alert(e.response?.data?.message || 'Error saving. Check all required fields.'); }
   };
 
   const del = async (id) => {
     if (!confirm('Delete this item? This cannot be undone.')) return;
-    await api.delete(`${ENDPOINTS[tab]}/${id}`, auth);
+    const ep = tab === 'Featured' ? '/api/products' : ENDPOINTS[tab];
+    await api.delete(`${ep}/${id}`, auth);
     setData(d => d.filter(x => x._id !== id));
   };
 
   const toggle = async (id, ep) => {
-    const endpoint = ep || ENDPOINTS[tab];
+    const endpoint = ep || (tab === 'Featured' ? '/api/products' : ENDPOINTS[tab]);
     const { data: updated } = await api.patch(`${endpoint}/${id}/toggle`, {}, auth);
     setData(d => d.map(x => x._id === id ? updated : x));
   };
 
-  const sf = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const sf  = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const sfd = (key, val) => setForm(f => ({ ...f, discount: { ...f.discount, [key]: val } }));
 
   const allCats = [...new Set([...CATEGORY_VALUES.filter(v => v !== 'All'), customCat].filter(Boolean))];
 
-  // Login screen
+  // ── Login screen ─────────────────────────────────────────────────────────────
   if (!token) return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl p-8 w-full max-w-sm">
@@ -396,8 +527,8 @@ export default function Admin() {
         ) : (
           <>
             <p className="text-sm font-bold text-center mb-3">Reset PIN</p>
-            <input type="password" value={mPin} onChange={e => setMPin(e.target.value)} placeholder="Master reset PIN" className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center tracking-widest outline-none mb-2" />
-            <input type="password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="New PIN" className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center tracking-widest outline-none mb-3" />
+            <input type="password" value={mPin}   onChange={e => setMPin(e.target.value)}   placeholder="Master reset PIN" className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center tracking-widest outline-none mb-2" />
+            <input type="password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="New PIN"           className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center tracking-widest outline-none mb-3" />
             {authErr && <p className="text-red-500 text-xs text-center mb-2">{authErr}</p>}
             <button onClick={resetPin} className="w-full py-3 bg-black text-white font-extrabold rounded-xl mb-2">Reset</button>
             <button onClick={() => { setReset(false); setAuthErr(''); }} className="w-full text-xs text-gray-400 hover:text-black">Back</button>
@@ -407,16 +538,18 @@ export default function Admin() {
     </div>
   );
 
-  const pagedData   = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
-  const totalPages  = Math.ceil(data.length / PAGE_SIZE);
+  const pagedData  = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  const totalPages = Math.ceil(data.length / PAGE_SIZE);
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <div className="bg-black text-white px-4 py-3.5 flex justify-between items-center sticky top-0 z-20">
         <div className="font-extrabold">BELLE <span className="text-[#FDC700]">KREYASHON</span> <span className="text-gray-500 font-normal text-xs ml-1">Admin</span></div>
         <button onClick={logout} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white"><LogOut size={14} /> Logout</button>
       </div>
 
+      {/* Tabs */}
       <div className="bg-white border-b border-gray-100 px-4 overflow-x-auto sticky top-12 z-10">
         <div className="flex">
           {TABS.map(t => (
@@ -430,7 +563,7 @@ export default function Admin() {
 
       <div className="max-w-6xl mx-auto px-4 py-5">
 
-        {/* Search + Add */}
+        {/* Search + Add bar */}
         <div className="flex gap-2 mb-5">
           {!['Abandoned','Delivery'].includes(tab) && (
             <div className="relative flex-1">
@@ -448,26 +581,22 @@ export default function Admin() {
             </button>
           )}
           {['Orders','Abandoned'].includes(tab) && search && (
-            <button onClick={() => { setSearch(''); load(tab,''); }} className="px-3 py-2.5 bg-gray-100 text-sm font-bold rounded-xl hover:bg-gray-200">
-              <X size={14} />
-            </button>
+            <button onClick={() => { setSearch(''); load(tab,''); }} className="px-3 py-2.5 bg-gray-100 text-sm font-bold rounded-xl hover:bg-gray-200"><X size={14} /></button>
           )}
           {!['Abandoned','Delivery'].includes(tab) && (
-            <button onClick={() => load(tab, search)} className="px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">
-              Search
-            </button>
+            <button onClick={() => load(tab, search)} className="px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">Search</button>
           )}
         </div>
 
-        {/* FORM PANEL */}
+        {/* ── FORM PANEL ─────────────────────────────────────────────────────── */}
         {showForm && !['Orders','Abandoned'].includes(tab) && (
           <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-extrabold">{editId ? `Edit ${tab.slice(0,-1)}` : `New ${tab.slice(0,-1)}`}</h3>
+              <h3 className="font-extrabold">{editId ? `Edit ${tab === 'Featured' ? 'Featured Product' : tab.slice(0,-1)}` : `New ${tab === 'Featured' ? 'Featured Product' : tab.slice(0,-1)}`}</h3>
               <button onClick={closeForm}><X size={18} className="text-gray-400 hover:text-black" /></button>
             </div>
 
-            {/* PRODUCTS form */}
+            {/* ── PRODUCTS form ── */}
             {tab === 'Products' && (
               <div className="space-y-3">
                 <div className="grid sm:grid-cols-2 gap-3">
@@ -480,19 +609,22 @@ export default function Admin() {
                   </div>
                   <div className="sm:col-span-2 flex gap-2">
                     <input value={customCat} onChange={e => setCustomCat(e.target.value)} placeholder="Or type a new category..." className={inp+' flex-1'} />
-                    {customCat && <button onClick={() => { sf('category',customCat); }} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">Use</button>}
+                    {customCat && <button onClick={() => sf('category',customCat)} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">Use</button>}
                   </div>
-                  <input value={form.retailPrice||''} onChange={e => sf('retailPrice',e.target.value)} placeholder="Retail price (GHS) *" type="number" className={inp} />
-                  <input value={form.wholesalePrice||''} onChange={e => sf('wholesalePrice',e.target.value)} placeholder="Wholesale price (optional)" type="number" className={inp} />
-                  <input value={form.wholesaleMinQty||''} onChange={e => sf('wholesaleMinQty',e.target.value)} placeholder="Min wholesale qty" type="number" className={inp} />
-                  <input value={form.stock||''} onChange={e => sf('stock',e.target.value)} placeholder="Stock qty (blank = unlimited)" type="number" className={inp} />
-                  <input value={form.images?.[0]||''} onChange={e => sf('images',[e.target.value])} placeholder="Image URL or Google Drive link" className={inp} />
-                  {form.images?.[0] && (
-                    <div className="aspect-square w-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
-                      <img src={form.images[0]} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display='none'; }} />
-                    </div>
-                  )}
+                  <input value={form.retailPrice||''}    onChange={e => sf('retailPrice',e.target.value)}    placeholder="Retail price (GHS) *"          type="number" className={inp} />
+                  <input value={form.wholesalePrice||''}  onChange={e => sf('wholesalePrice',e.target.value)}  placeholder="Wholesale price (optional)"     type="number" className={inp} />
+                  <input value={form.wholesaleMinQty||''} onChange={e => sf('wholesaleMinQty',e.target.value)} placeholder="Min wholesale qty"              type="number" className={inp} />
+                  <input value={form.stock||''}           onChange={e => sf('stock',e.target.value)}           placeholder="Stock qty (blank = unlimited)"  type="number" className={inp} />
                   <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={2} className={inp+' resize-none sm:col-span-2'} />
+
+                  {/* Image uploader — max 3 */}
+                  <ImageUploader
+                    images={form.images || []}
+                    onChange={urls => sf('images', urls)}
+                    uploadEndpoint="/api/products/upload"
+                    token={token}
+                    maxImages={3}
+                  />
                 </div>
 
                 <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-xl">
@@ -518,9 +650,8 @@ export default function Admin() {
                 {form.isPartner && (
                   <div className="grid sm:grid-cols-2 gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
                     <p className="sm:col-span-2 text-xs font-bold text-blue-800">Partner Info (Private — not shown to customers)</p>
-                    <input value={form.partnerBrand||''} onChange={e => sf('partnerBrand',e.target.value)} placeholder="Brand / business name *" className={inp} />
-                    <input value={form.partnerContact||''} onChange={e => sf('partnerContact',e.target.value)} placeholder="Brand contact (WhatsApp / email) *" className={inp} />
-                    <p className="sm:col-span-2 text-xs text-blue-600">Update the stock quantity field above daily after confirming with the partner.</p>
+                    <input value={form.partnerBrand||''}   onChange={e => sf('partnerBrand',e.target.value)}   placeholder="Brand / business name"           className={inp} />
+                    <input value={form.partnerContact||''} onChange={e => sf('partnerContact',e.target.value)} placeholder="Brand contact (WhatsApp / email)" className={inp} />
                   </div>
                 )}
 
@@ -531,45 +662,45 @@ export default function Admin() {
                       <option value="percent">Percentage (%)</option>
                       <option value="fixed">Fixed amount (GHS)</option>
                     </select>
-                    <input value={form.discount?.value||''} onChange={e => sfd('value',e.target.value)} placeholder={form.discount?.type==='percent'?'e.g. 20':'e.g. 50'} type="number" className={inp} />
-                    <input value={form.discount?.label||''} onChange={e => sfd('label',e.target.value)} placeholder='Label e.g. "Flash Sale!"' className={inp} />
-                    <input value={form.discount?.limitCustomers||''} onChange={e => sfd('limitCustomers',e.target.value)} placeholder="First N customers only (optional)" type="number" className={inp} />
-                    <input value={form.discount?.startDate||''} onChange={e => sfd('startDate',e.target.value)} type="date" className={inp} />
-                    <input value={form.discount?.endDate||''} onChange={e => sfd('endDate',e.target.value)} type="date" className={inp} />
+                    <input value={form.discount?.value||''}          onChange={e => sfd('value',e.target.value)}          placeholder={form.discount?.type==='percent'?'e.g. 20':'e.g. 50'} type="number" className={inp} />
+                    <input value={form.discount?.label||''}          onChange={e => sfd('label',e.target.value)}          placeholder='Label e.g. "Flash Sale!"'                             className={inp} />
+                    <input value={form.discount?.limitCustomers||''} onChange={e => sfd('limitCustomers',e.target.value)} placeholder="First N customers only (optional)"  type="number"     className={inp} />
+                    <input value={form.discount?.startDate||''}      onChange={e => sfd('startDate',e.target.value)}      type="date" className={inp} />
+                    <input value={form.discount?.endDate||''}        onChange={e => sfd('endDate',e.target.value)}        type="date" className={inp} />
                     <p className="sm:col-span-2 text-xs text-green-700">Auto-deactivates after end date or when customer limit is reached.</p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* TRAINING form */}
+            {/* ── TRAINING form ── */}
             {tab === 'Training' && (
               <div className="grid sm:grid-cols-2 gap-3">
-                <input value={form.title||''} onChange={e => sf('title',e.target.value)} placeholder="Title *" className={inp} />
-                <input value={form.date||''} onChange={e => sf('date',e.target.value)} placeholder="Date (e.g. 15 April 2026)" className={inp} />
-                <input value={form.venue||''} onChange={e => sf('venue',e.target.value)} placeholder="Venue / Location" className={inp} />
-                <input value={form.price||''} onChange={e => sf('price',e.target.value)} placeholder="Price (GHS)" type="number" className={inp} />
+                <input value={form.title||''}    onChange={e => sf('title',e.target.value)}    placeholder="Title *"                       className={inp} />
+                <input value={form.date||''}     onChange={e => sf('date',e.target.value)}     placeholder="Date (e.g. 15 April 2026)"     className={inp} />
+                <input value={form.venue||''}    onChange={e => sf('venue',e.target.value)}    placeholder="Venue / Location"              className={inp} />
+                <input value={form.price||''}    onChange={e => sf('price',e.target.value)}    placeholder="Price (GHS)"    type="number"   className={inp} />
                 <input value={form.capacity||''} onChange={e => sf('capacity',e.target.value)} placeholder="Capacity (optional)" type="number" className={inp} />
-                <input value={form.image||''} onChange={e => sf('image',e.target.value)} placeholder="Image URL or Drive link" className={inp} />
+                <input value={form.image||''}    onChange={e => sf('image',e.target.value)}    placeholder="Image URL (optional)"          className={inp} />
                 <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={2} className={inp+' resize-none sm:col-span-2'} />
               </div>
             )}
 
-            {/* DELIVERY form */}
+            {/* ── DELIVERY form ── */}
             {tab === 'Delivery' && (
               <div className="grid sm:grid-cols-2 gap-3">
                 <input value={form.name||''} onChange={e => sf('name',e.target.value)} placeholder="Zone name (e.g. Osu / Airport Area) *" className={inp} />
-                <input value={form.fee||''} onChange={e => sf('fee',e.target.value)} placeholder="Delivery fee (GHS) *" type="number" className={inp} />
+                <input value={form.fee||''}  onChange={e => sf('fee',e.target.value)}  placeholder="Delivery fee (GHS) *" type="number"      className={inp} />
               </div>
             )}
 
-            {/* CONSULTATIONS form */}
+            {/* ── CONSULTATIONS form ── */}
             {tab === 'Consultations' && (
               <div className="grid sm:grid-cols-2 gap-3">
-                <input value={form.title||''} onChange={e => sf('title',e.target.value)} placeholder="Title (e.g. Hair Business Consultation) *" className={inp} />
-                <input value={form.price||''} onChange={e => sf('price',e.target.value)} placeholder="Price (GHS, 0 for free)" type="number" className={inp} />
-                <input value={form.duration||''} onChange={e => sf('duration',e.target.value)} placeholder="Duration (e.g. 1 hour)" className={inp} />
-                <input value={form.validity||''} onChange={e => sf('validity',e.target.value)} placeholder="Validity (e.g. Valid for 7 days)" className={inp} />
+                <input value={form.title||''}    onChange={e => sf('title',e.target.value)}    placeholder="Title *"                                 className={inp} />
+                <input value={form.price||''}    onChange={e => sf('price',e.target.value)}    placeholder="Price (GHS, 0 for free)" type="number"   className={inp} />
+                <input value={form.duration||''} onChange={e => sf('duration',e.target.value)} placeholder="Duration (e.g. 1 hour)"                  className={inp} />
+                <input value={form.validity||''} onChange={e => sf('validity',e.target.value)} placeholder="Validity (e.g. Valid for 7 days)"        className={inp} />
                 <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={3} className={inp+' resize-none sm:col-span-2'} />
                 <label className="flex items-center gap-2 text-sm font-bold cursor-pointer">
                   <input type="checkbox" checked={!!form.isFree} onChange={e => sf('isFree',e.target.checked)} className="w-4 h-4 accent-black" /> Mark as Free
@@ -577,7 +708,7 @@ export default function Admin() {
               </div>
             )}
 
-            {/* BLOG form */}
+            {/* ── BLOG form ── */}
             {tab === 'Blog' && (
               <div className="grid sm:grid-cols-2 gap-3">
                 <input value={form.title||''} onChange={e => sf('title',e.target.value)} placeholder="Post title *" className={inp+' sm:col-span-2'} />
@@ -597,37 +728,43 @@ export default function Admin() {
                 <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
                   <input type="checkbox" checked={!!form.published} onChange={e => sf('published',e.target.checked)} className="w-4 h-4 accent-black" /> Publish now
                 </label>
-                <textarea value={form.excerpt||''} onChange={e => sf('excerpt',e.target.value)} placeholder="Short excerpt (shown on blog listing)" rows={2} className={inp+' resize-none sm:col-span-2'} />
-                <textarea value={form.content||''} onChange={e => sf('content',e.target.value)} placeholder="Full post content..." rows={8} className={inp+' resize-none sm:col-span-2'} />
+                <textarea value={form.excerpt||''} onChange={e => sf('excerpt',e.target.value)} placeholder="Short excerpt (shown on blog listing)" rows={2}  className={inp+' resize-none sm:col-span-2'} />
+                <textarea value={form.content||''} onChange={e => sf('content',e.target.value)} placeholder="Full post content..."                   rows={8}  className={inp+' resize-none sm:col-span-2'} />
               </div>
             )}
 
-            {/* FEATURED form */}
+            {/* ── FEATURED form ── */}
             {tab === 'Featured' && (
               <div className="space-y-3">
-                {/* Partner info — private */}
+                {/* Partner info — optional */}
                 <div className="grid sm:grid-cols-2 gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                  <p className="sm:col-span-2 text-xs font-bold text-blue-800">Partner Info (Private — not shown to customers)</p>
-                  <input value={form.brandName||''} onChange={e => sf('brandName',e.target.value)} placeholder="Brand / business name *" className={inp} />
-                  <input value={form.contactInfo||''} onChange={e => sf('contactInfo',e.target.value)} placeholder="Brand contact (WhatsApp / email) *" className={inp} />
+                  <p className="sm:col-span-2 text-xs font-bold text-blue-800">Partner Info <span className="font-normal text-blue-500">(optional — not shown to customers)</span></p>
+                  <input value={form.brandName||''}   onChange={e => sf('brandName',e.target.value)}   placeholder="Brand / business name (optional)"           className={inp} />
+                  <input value={form.contactInfo||''} onChange={e => sf('contactInfo',e.target.value)} placeholder="Brand contact / WhatsApp (optional)"        className={inp} />
                 </div>
 
                 {/* Product details */}
                 <div className="grid sm:grid-cols-2 gap-3">
                   <input value={form.productName||''} onChange={e => sf('productName',e.target.value)} placeholder="Product name (shown to customers) *" className={inp} />
-                  <div className="flex gap-2">
-                    <select value={form.category||''} onChange={e => sf('category',e.target.value)} className={inp+' flex-1'}>
-                      <option value="">Category</option>
-                      {allCats.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <input value={form.price||''} onChange={e => sf('price',e.target.value)} placeholder="Price (GHS)" type="number" className={inp} />
-                  <input value={form.stock||''} onChange={e => sf('stock',e.target.value)} placeholder="Stock quantity (update daily)" type="number" className={inp} />
-                  <input value={form.image||''} onChange={e => sf('image',e.target.value)} placeholder="Image URL or Drive link" className={inp} />
+                  <select value={form.category||''} onChange={e => sf('category',e.target.value)} className={inp}>
+                    <option value="">Category</option>
+                    {allCats.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input value={form.price||''}  onChange={e => sf('price',e.target.value)}  placeholder="Price (GHS)"                      type="number" className={inp} />
+                  <input value={form.stock||''}  onChange={e => sf('stock',e.target.value)}  placeholder="Stock quantity (update daily)"    type="number" className={inp} />
                   <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Product description" rows={2} className={inp+' resize-none sm:col-span-2'} />
+
+                  {/* Image uploader — max 3 */}
+                  <ImageUploader
+                    images={form.images || []}
+                    onChange={urls => sf('images', urls)}
+                    uploadEndpoint="/api/featured/upload"
+                    token={token}
+                    maxImages={3}
+                  />
                 </div>
 
-                {/* Flags — same as product */}
+                {/* Flags */}
                 <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-xl">
                   {[['available','Available'],['featured','Featured'],['fastSelling','Fast Selling'],['isPreOrder','Pre-Order'],['hasDiscount','Discount']].map(([k,l]) => (
                     <label key={k} className="flex items-center gap-1.5 text-xs font-bold cursor-pointer">
@@ -655,16 +792,16 @@ export default function Admin() {
                       <option value="percent">Percentage (%)</option>
                       <option value="fixed">Fixed amount (GHS)</option>
                     </select>
-                    <input value={form.discount?.value||''} onChange={e => sfd('value',e.target.value)} placeholder="Value" type="number" className={inp} />
-                    <input value={form.discount?.label||''} onChange={e => sfd('label',e.target.value)} placeholder='Label e.g. "Flash Sale!"' className={inp} />
-                    <input value={form.discount?.endDate||''} onChange={e => sfd('endDate',e.target.value)} type="date" className={inp} />
+                    <input value={form.discount?.value||''}   onChange={e => sfd('value',e.target.value)}   placeholder="Value"               type="number" className={inp} />
+                    <input value={form.discount?.label||''}   onChange={e => sfd('label',e.target.value)}   placeholder='Label e.g. "Flash Sale!"'          className={inp} />
+                    <input value={form.discount?.endDate||''} onChange={e => sfd('endDate',e.target.value)} type="date"                                       className={inp} />
                   </div>
                 )}
 
                 {/* Subscription plan */}
                 <div className="p-3 bg-gray-50 rounded-xl">
                   <p className="text-xs font-bold mb-1">Subscription Plan</p>
-                  <p className="text-xs text-gray-400 mb-2">Auto-expires after this duration. Update stock daily by editing.</p>
+                  <p className="text-xs text-gray-400 mb-2">Auto-expires after this duration.</p>
                   <div className="flex flex-wrap gap-2">
                     {PLANS.map(p => (
                       <button key={p} onClick={() => sf('plan',p)}
@@ -678,13 +815,13 @@ export default function Admin() {
             )}
 
             <div className="flex gap-2 mt-4">
-              <button onClick={save} className="px-5 py-2.5 bg-black text-white font-bold text-sm rounded-xl hover:bg-gray-900">Save</button>
+              <button onClick={save}      className="px-5 py-2.5 bg-black text-white font-bold text-sm rounded-xl hover:bg-gray-900">Save</button>
               <button onClick={closeForm} className="px-5 py-2.5 bg-gray-100 font-bold text-sm rounded-xl hover:bg-gray-200">Cancel</button>
             </div>
           </div>
         )}
 
-        {/* Orders status filter + customer search + CSV */}
+        {/* Orders filters */}
         {tab === 'Orders' && !loading && (
           <div className="mb-4 space-y-3">
             <div className="flex gap-2 flex-wrap">
@@ -707,19 +844,17 @@ export default function Admin() {
               </div>
               {customerSearch && <button onClick={() => setCustomerSearch('')} className="px-3 py-2 bg-gray-100 rounded-xl text-xs font-bold"><X size={13}/></button>}
               <button onClick={() => downloadCSV(data, 'belle-kreyashon-orders.csv')}
-                className="px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-900 whitespace-nowrap">
-                ↓ Export CSV
-              </button>
+                className="px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-900 whitespace-nowrap">↓ Export CSV</button>
             </div>
           </div>
         )}
 
         {loading && <div className="text-center py-10 text-gray-400 text-sm">Loading...</div>}
 
-        {/* DATA GRID */}
+        {/* ── DATA GRID ───────────────────────────────────────────────────────── */}
         {!loading && (
           <>
-          <div className={tab === 'Products' ? 'grid sm:grid-cols-2 lg:grid-cols-3 gap-3' : tab === 'Blog' ? 'grid sm:grid-cols-2 gap-3' : 'flex flex-col gap-3'}>
+          <div className={tab === 'Products' || tab === 'Featured' ? 'grid sm:grid-cols-2 lg:grid-cols-3 gap-3' : tab === 'Blog' ? 'grid sm:grid-cols-2 gap-3' : 'flex flex-col gap-3'}>
 
             {/* PRODUCTS */}
             {tab === 'Products' && pagedData.map(item => (
@@ -733,9 +868,9 @@ export default function Admin() {
                   <p className="text-sm font-bold">GHS {item.retailPrice?.toLocaleString()}</p>
                   <p className="text-xs text-gray-400">Stock: {item.stock ?? '∞'}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
-                    {item.featured    && <span className="text-xs bg-yellow-50 text-yellow-600 font-bold px-1.5 py-0.5 rounded-full">Featured</span>}
-                    {item.fastSelling && <span className="text-xs bg-red-50 text-red-500 font-bold px-1.5 py-0.5 rounded-full">Fast</span>}
-                    {item.isPreOrder  && <span className="text-xs bg-blue-50 text-blue-500 font-bold px-1.5 py-0.5 rounded-full">Pre-Order</span>}
+                    {item.featured     && <span className="text-xs bg-yellow-50 text-yellow-600 font-bold px-1.5 py-0.5 rounded-full">Featured</span>}
+                    {item.fastSelling  && <span className="text-xs bg-red-50 text-red-500 font-bold px-1.5 py-0.5 rounded-full">Fast</span>}
+                    {item.isPreOrder   && <span className="text-xs bg-blue-50 text-blue-500 font-bold px-1.5 py-0.5 rounded-full">Pre-Order</span>}
                     {item.discount?.active && <span className="text-xs bg-green-50 text-green-600 font-bold px-1.5 py-0.5 rounded-full">Discount</span>}
                   </div>
                 </div>
@@ -774,9 +909,9 @@ export default function Admin() {
 
             {/* ORDERS */}
             {tab === 'Orders' && pagedData.filter(item => !customerSearch || item.customer?.name?.toLowerCase().includes(customerSearch.toLowerCase()) || item.customer?.phone?.includes(customerSearch)).map(item => {
-              const STATUS_OPTS = ['new','processing','delivery-ongoing','delivered','cancelled'];
+              const STATUS_OPTS   = ['new','processing','delivery-ongoing','delivered','cancelled'];
               const STATUS_COLORS = { new:'bg-blue-100 text-blue-700', processing:'bg-yellow-100 text-yellow-700', 'delivery-ongoing':'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', cancelled:'bg-red-100 text-red-700' };
-              const updateStatus = async (id, status) => {
+              const updateStatus  = async (id, status) => {
                 try {
                   const { data: updated } = await api.patch(`/api/orders/${id}/status`, { status }, auth);
                   setData(d => d.map(x => x._id === id ? updated : x));
@@ -811,9 +946,7 @@ export default function Admin() {
                     ))}
                     <a href={`https://wa.me/${item.customer?.phone?.replace(/[^0-9]/g,'')}?text=${encodeURIComponent('Hi ' + item.customer?.name + '! Your Belle Kreyashon order ' + item.orderId + ' status has been updated. Please contact us for details.')}`}
                       target="_blank" rel="noopener noreferrer"
-                      className="ml-auto text-xs bg-green-500 text-white font-bold px-3 py-1 rounded-full hover:bg-green-600">
-                      Notify
-                    </a>
+                      className="ml-auto text-xs bg-green-500 text-white font-bold px-3 py-1 rounded-full hover:bg-green-600">Notify</a>
                   </div>
                 </div>
               );
@@ -893,12 +1026,12 @@ export default function Admin() {
                     <p className="font-extrabold text-sm truncate">{item.name}</p>
                     <p className="text-xs text-gray-400">{item.category}</p>
                     <p className="text-xs font-bold">GHS {item.retailPrice?.toLocaleString()}</p>
-                    <p className="text-xs text-blue-600">Partner: {item.partnerBrand}</p>
+                    {item.partnerBrand && <p className="text-xs text-blue-600">Partner: {item.partnerBrand}</p>}
                     <p className="text-xs text-gray-400">Stock: {item.stock ?? '∞'}</p>
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       {item.partnerPlanMonths && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{item.partnerPlanMonths}mo plan</span>}
-                      {item.partnerSubEnd && <span className="text-xs text-gray-400">Ends: {new Date(item.partnerSubEnd).toLocaleDateString()}</span>}
-                      {expired && <span className="text-xs bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">Expired</span>}
+                      {item.partnerSubEnd    && <span className="text-xs text-gray-400">Ends: {new Date(item.partnerSubEnd).toLocaleDateString()}</span>}
+                      {expired              && <span className="text-xs bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">Expired</span>}
                     </div>
                   </div>
                   <div className="flex flex-col gap-2 shrink-0">
@@ -929,9 +1062,9 @@ export default function Admin() {
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 border-t border-gray-100 pt-2">
-                  {item.trainingTitle && <p>Session: <span className="font-bold">{item.trainingTitle}</span></p>}
+                  {item.trainingTitle     && <p>Session: <span className="font-bold">{item.trainingTitle}</span></p>}
                   {item.consultationTitle && <p>Consultation: <span className="font-bold">{item.consultationTitle}</span></p>}
-                  {item.notes && <p className="mt-1 text-gray-400">Notes: {item.notes}</p>}
+                  {item.notes             && <p className="mt-1 text-gray-400">Notes: {item.notes}</p>}
                   <p className="mt-1 text-gray-400">Ref: {item.paymentRef}</p>
                 </div>
                 <a href={`https://wa.me/${item.customer?.phone?.replace(/[^0-9]/g,'')}?text=${encodeURIComponent('Hi ' + item.customer?.name + '! Your Belle Kreyashon booking ' + item.bookingId + ' has been confirmed. We will contact you with further details soon.')}`}
@@ -942,12 +1075,15 @@ export default function Admin() {
               </div>
             ))}
 
-            {/* INVOICE CREATOR */}
+            {/* INVOICE */}
             {tab === 'Invoice' && <InvoiceCreator auth={auth} />}
 
             {/* Empty state */}
-            {tab !== 'Invoice' && data.length === 0 && <div className="col-span-3 text-center py-12 text-gray-400">No {tab.toLowerCase()} yet.</div>}
+            {tab !== 'Invoice' && data.length === 0 && (
+              <div className="col-span-3 text-center py-12 text-gray-400">No {tab.toLowerCase()} yet.</div>
+            )}
           </div>
+
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-5">
               <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}

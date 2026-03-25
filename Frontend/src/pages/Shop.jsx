@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Tag, Zap, Star, Clock, Package } from 'lucide-react';
 import { api } from '../hooks/useApi';
 import { CATEGORIES } from '../data/categories';
+import SEO from '../components/SEO';
 
 const calcDiscountedPrice = (p) => {
   if (!p.discount?.active) return p.retailPrice;
@@ -64,6 +65,13 @@ export default function Shop() {
 
   return (
     <div className="pt-16 min-h-screen">
+
+      <SEO
+  title="Shop Hair, Beauty, Fashion & More"
+  description="Browse hundreds of products — hair extensions, wigs, braiding hair, skincare, fashion, health and gadgets. Fast delivery across Ghana."
+  url="/shop"
+/>
+
       <div className="bg-black text-white py-12 px-4 text-center">
         <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Belle Kreyashon</p>
         <h1 className="text-3xl md:text-5xl font-extrabold">Shop</h1>

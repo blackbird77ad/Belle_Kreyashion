@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Award, Heart, Globe, Users, Sparkles, Truck } from 'lucide-react';
-
+import SEO from '../components/SEO';
 const values = [
   { icon: <Award size={24} />, title: 'Premium Quality', desc: 'Every product is carefully selected. We only stock what we believe in — from hair to health, beauty to fashion.' },
   { icon: <Heart size={24} />, title: 'Customer First', desc: 'Your satisfaction is our priority. From browsing to delivery, we make sure every experience is excellent.' },
@@ -13,7 +13,11 @@ const values = [
 export default function About() {
   return (
     <div className="pt-16 min-h-screen">
-
+ <SEO
+  title="About Belle Kreyashon"
+  description="Belle Kreyashon is Ghana's one-stop lifestyle store for hair, beauty, skincare, fashion, health and gadgets. Based in Osu, Accra — delivering nationwide and internationally."
+  url="/about"
+/>
       {/* Hero */}
       <div className="relative bg-black text-white py-24 px-4 overflow-hidden">
         <div className="absolute inset-0 opacity-20">

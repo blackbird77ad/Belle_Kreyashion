@@ -5,6 +5,7 @@ import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import CustomerModal from '../components/CustomerModal';
+import SEO from '../components/SEO';
 
 export default function Product() {
   const { id } = useParams();
@@ -59,6 +60,14 @@ export default function Product() {
 
   return (
     <div className="pt-16 min-h-screen">
+      <SEO
+      title={product.name}
+      description={product.desc || `Buy ${product.name} at Belle Kreyashon Ghana. GHS ${product.retailPrice}. Fast delivery nationwide.`}
+      image={product.images?.[0]}
+      url={`/shop/${product._id}`}
+      type="product"
+    />
+
       <div className="max-w-6xl mx-auto px-4 py-8">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-black mb-6 transition-colors">
           <ChevronLeft size={18} /> Back

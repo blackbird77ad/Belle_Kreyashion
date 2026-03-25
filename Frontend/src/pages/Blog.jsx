@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Play, Calendar } from 'lucide-react';
 import { useFetch, api } from '../hooks/useApi';
+import SEO from '../components/SEO';
 
 export default function Blog() {
   const [search, setSearch] = useState('');
@@ -14,6 +15,11 @@ export default function Blog() {
 
   return (
     <div className="pt-16 min-h-screen">
+      <SEO
+      title="Hair & Beauty Tips, Tutorials & News"
+      description="Read the latest hair care tips, beauty tutorials, styling guides and lifestyle content from Belle Kreyashon."
+      url="/blog"
+    />
       <div className="bg-black text-white py-16 px-4 text-center">
         <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Tips, Tutorials & Trends</p>
         <h1 className="text-4xl md:text-5xl font-extrabold">Blog</h1>

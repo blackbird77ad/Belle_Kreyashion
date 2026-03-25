@@ -5,6 +5,7 @@ import { useFetch, api } from '../hooks/useApi';
 import { WHATSAPP } from '../data/contact';
 import CustomerModal from '../components/CustomerModal';
 import { useCustomer } from '../context/CustomerContext';
+import SEO from '../components/SEO';
 
 const WHATSAPP_NUM = WHATSAPP;
 
@@ -106,6 +107,11 @@ function TrainingModal({ event, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+        <SEO
+      title="Hair & Beauty Training, Consultations & Importation"
+      description="Book professional hair and beauty training sessions, consultations, pre-orders and importation assistance."
+      url="/services"
+    />
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-4">
           <div>

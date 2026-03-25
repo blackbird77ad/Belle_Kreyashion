@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useFetch } from '../hooks/useApi';
 import { CATEGORIES } from '../data/categories';
 import { useCart } from '../context/CartContext';
+import SEO from '../components/SEO';
 
 const calcDiscountedPrice = (p) => {
   if (!p.discount?.active) return p.retailPrice;
@@ -89,7 +90,11 @@ export default function Home() {
 
   return (
     <div className="pt-16">
-
+<SEO
+  title="Hair Extensions, Wigs & Beauty Supply Ghana"
+  description="Shop hair extensions, wigs, braiding hair, beauty, skincare, fashion, health and gadgets. Nationwide delivery across Ghana and international shipping. One store for everything."
+  url="/"
+/>
       {/* Hero */}
       <section className="relative h-[65vh] min-h-[420px] bg-black flex items-center overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent z-10" />

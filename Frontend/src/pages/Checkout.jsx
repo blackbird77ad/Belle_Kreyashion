@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-
 import { useNavigate } from 'react-router-dom';
 import { Loader2, MapPin, Globe, Package } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -8,11 +7,37 @@ import { useFetch, api } from '../hooks/useApi';
 
 const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
+// ─── Phone validation (same rules as CustomerModal) ───────────────────────────
+function validatePhone(raw) {
+  const cleaned = raw.replace(/[\s\-().]/g, '');
+  if (!cleaned) return 'Phone number is missing';
+  if (!/^\+?\d+$/.test(cleaned)) return 'Phone number contains invalid characters';
+  if (cleaned.startsWith('0')) {
+    if (cleaned.length !== 10) return 'Ghana number must be 10 digits (e.g. 0241234567)';
+    const prefix = cleaned.slice(0, 3);
+    const validPrefixes = ['020','023','024','025','026','027','028','029','050','053','054','055','056','057','059'];
+    if (!validPrefixes.includes(prefix)) return `"${prefix}" is not a recognised Ghana network. Please check the number.`;
+    return null;
+  }
+  if (cleaned.startsWith('+233') || cleaned.startsWith('233')) {
+    const digits = cleaned.replace(/^\+/, '');
+    if (digits.length !== 12) return 'Ghana number with country code must be 12 digits';
+    return null;
+  }
+  if (cleaned.startsWith('+')) {
+    const digits = cleaned.slice(1);
+    if (digits.length < 7 || digits.length > 15) return 'International number looks incorrect. Please check it.';
+    return null;
+  }
+  if (cleaned.length >= 7 && cleaned.length <= 15) return 'For international numbers please include the + country code';
+  return 'Please enter a valid phone number';
+}
+
 export default function Checkout() {
   const { cart, subtotal, clearCart } = useCart();
-  const { customer, saveAddress } = useCustomer();
-  const navigate = useNavigate();
-  const { data: zones } = useFetch('/api/delivery/public');
+  const { customer, saveAddress }     = useCustomer();
+  const navigate                      = useNavigate();
+  const { data: zones }               = useFetch('/api/delivery/public');
 
   const [fulfillment, setFulfillment] = useState('delivery');
   const [zone,        setZone]        = useState('');
@@ -36,6 +61,9 @@ export default function Checkout() {
   if (!isPaying && cart.length === 0) return null;
 
   const validate = () => {
+    // Phone check — safety net in case they got through CustomerModal somehow
+    const phoneErr = validatePhone(customer.phone || '');
+    if (phoneErr) return `Your saved phone number looks incorrect (${phoneErr}). Please update it.`;
     if (fulfillment === 'delivery' && !zone)         return 'Please select a delivery zone';
     if (fulfillment !== 'pickup' && !address.trim()) return 'Please enter your address';
     return null;
@@ -82,17 +110,17 @@ export default function Checkout() {
       navigate('/order-confirmed');
     }
 
-    function onPaymentClose() {
-      setLoading(false);
-    }
+    function onPaymentClose() { setLoading(false); }
 
     try {
+      // Normalise phone for Paystack email field
+      const phoneDigits = customer.phone.replace(/[^0-9]/g, '');
       const handler = window.PaystackPop.setup({
         key:      PAYSTACK_KEY,
-        email:    customer.phone.replace(/[^0-9]/g,'') + '@bellekreyashon.com',
+        email:    phoneDigits + '@bellekreyashon.com',
         amount:   total * 100,
         currency: 'GHS',
-        ref:      ref,
+        ref,
         callback: onPaymentSuccess,
         onClose:  onPaymentClose,
       });
@@ -106,9 +134,9 @@ export default function Checkout() {
   };
 
   const FULFILLMENT_OPTIONS = [
-    { value: 'pickup',        label: 'Pickup',        desc: 'Collect from Osu, Accra', icon: <Package size={18} />,  fee: 'Free' },
-    { value: 'delivery',      label: 'Delivery',      desc: 'Delivered to you',        icon: <MapPin size={18} />,   fee: 'By zone' },
-    { value: 'international', label: 'International', desc: 'Ship anywhere',           icon: <Globe size={18} />,    fee: 'Quoted after' },
+    { value: 'pickup',        label: 'Pickup',        desc: 'Collect from Osu, Accra', icon: <Package size={18} />, fee: 'Free' },
+    { value: 'delivery',      label: 'Delivery',      desc: 'Delivered to you',        icon: <MapPin size={18} />,  fee: 'By zone' },
+    { value: 'international', label: 'International', desc: 'Ship anywhere',           icon: <Globe size={18} />,   fee: 'Quoted after' },
   ];
 
   return (
@@ -120,13 +148,19 @@ export default function Checkout() {
           {/* Left */}
           <div className="md:col-span-3 flex flex-col gap-5">
 
-            {/* Customer */}
+            {/* Customer details */}
             <div className="bg-white rounded-2xl p-5 border border-gray-100">
               <h2 className="font-extrabold mb-3">Your Details</h2>
               <div className="flex gap-3 flex-wrap">
                 <div className="px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold">{customer.name}</div>
                 <div className="px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold">{customer.phone}</div>
               </div>
+              {/* Warn if saved phone looks wrong */}
+              {validatePhone(customer.phone || '') && (
+                <p className="text-xs text-red-500 font-bold mt-2">
+                  ⚠️ Your saved phone number may be incorrect. Orders and delivery updates are sent to this number.
+                </p>
+              )}
             </div>
 
             {/* Fulfillment */}
@@ -200,7 +234,7 @@ export default function Checkout() {
               )}
             </div>
 
-            {error && <div className="bg-red-50 text-red-600 text-sm p-4 rounded-xl border border-red-100">{error}</div>}
+            {error && <div className="bg-red-50 text-red-600 text-sm font-bold p-4 rounded-xl border border-red-100">{error}</div>}
           </div>
 
           {/* Right — summary */}
