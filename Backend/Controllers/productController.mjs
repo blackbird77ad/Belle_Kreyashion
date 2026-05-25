@@ -45,18 +45,46 @@ const cleanBody = (body) => {
 
 export const getPublicProducts = async (req, res) => {
   try {
-    const { category, search, featured, fastSelling, isPreOrder, limit } = req.query;
+    const {
+      category,
+      search,
+      featured,
+      fastSelling,
+      isPreOrder,
+      discounted,
+      outOfStock,
+      minPrice,
+      maxPrice,
+      sort,
+      limit,
+    } = req.query;
     const query = { available: true };
     if (category && category !== 'All') query.category = category;
     if (featured === 'true') query.featured = true;
     if (fastSelling === 'true') query.fastSelling = true;
     if (isPreOrder === 'true') query.isPreOrder = true;
+    if (discounted === 'true') query['discount.active'] = true;
+    if (outOfStock === 'true') query.stock = 0;
+    if (minPrice || maxPrice) {
+      query.retailPrice = {};
+      if (minPrice && !Number.isNaN(Number(minPrice))) query.retailPrice.$gte = Number(minPrice);
+      if (maxPrice && !Number.isNaN(Number(maxPrice))) query.retailPrice.$lte = Number(maxPrice);
+      if (Object.keys(query.retailPrice).length === 0) delete query.retailPrice;
+    }
     if (search) query.$or = [
       { name: { $regex: search, $options: 'i' } },
       { desc: { $regex: search, $options: 'i' } },
       { category: { $regex: search, $options: 'i' } },
     ];
-    let q = Product.find(query).sort({ createdAt: -1 });
+    const sortMap = {
+      newest:   { createdAt: -1 },
+      oldest:   { createdAt: 1 },
+      priceAsc: { retailPrice: 1, createdAt: -1 },
+      priceDesc:{ retailPrice: -1, createdAt: -1 },
+      nameAsc:  { name: 1, createdAt: -1 },
+      nameDesc: { name: -1, createdAt: -1 },
+    };
+    let q = Product.find(query).sort(sortMap[sort] || sortMap.newest);
     if (limit) q = q.limit(Number(limit));
     res.json(await q);
   } catch { res.status(500).json({ message: 'Server error' }); }

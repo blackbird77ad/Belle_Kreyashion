@@ -8,6 +8,8 @@ const trainingSchema = new mongoose.Schema({
   price:    { type: Number, required: true },
   capacity: { type: Number, default: null },
   image:    { type: String, default: '' },
+  partners: [{ type: String }],
+  sponsors: [{ type: String }],
   active:   { type: Boolean, default: true },
 }, { timestamps: true });
 

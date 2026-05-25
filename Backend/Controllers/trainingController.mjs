@@ -10,6 +10,35 @@ const convertDrive = (url) => {
   return match ? `https://drive.google.com/uc?export=view&id=${match[1]}` : url;
 };
 
+const parseBoolean = (value, fallback = true) => {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
+};
+
+const parseList = (value) => {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  return [];
+};
+
+const normalizeTrainingBody = (body, existing = {}) => ({
+  ...body,
+  title: body.title?.trim(),
+  desc: body.desc?.trim() || '',
+  date: body.date?.trim(),
+  venue: body.venue?.trim(),
+  image: convertDrive(body.image?.trim?.() || body.image || existing.image || ''),
+  price: Number(body.price),
+  capacity: body.capacity === '' || body.capacity === undefined || body.capacity === null
+    ? null
+    : Number(body.capacity),
+  partners: parseList(body.partners),
+  sponsors: parseList(body.sponsors),
+  active: parseBoolean(body.active, existing.active ?? true),
+});
+
 export const getPublicTraining = async (req, res) => {
   try { res.json(await Training.find({ active: true }).sort({ date: 1 })); }
   catch { res.status(500).json({ message: 'Server error' }); }
@@ -21,6 +50,8 @@ export const getAllTraining = async (req, res) => {
     const query = search ? { $or: [
       { title: { $regex: search, $options: 'i' } },
       { venue: { $regex: search, $options: 'i' } },
+      { partners: { $elemMatch: { $regex: search, $options: 'i' } } },
+      { sponsors: { $elemMatch: { $regex: search, $options: 'i' } } },
     ]} : {};
     res.json(await Training.find(query).sort({ date: 1 }));
   } catch { res.status(500).json({ message: 'Server error' }); }
@@ -28,16 +59,27 @@ export const getAllTraining = async (req, res) => {
 
 export const createTraining = async (req, res) => {
   try {
-    const body = { ...req.body, image: convertDrive(req.body.image), price: Number(req.body.price), capacity: req.body.capacity ? Number(req.body.capacity) : null };
+    const body = normalizeTrainingBody(req.body);
     res.status(201).json(await Training.create(body));
   } catch (err) { res.status(400).json({ message: err.message }); }
 };
 
 export const updateTraining = async (req, res) => {
   try {
-    const body = { ...req.body, image: convertDrive(req.body.image) };
-    res.json(await Training.findByIdAndUpdate(req.params.id, body, { new: true }));
+    const existing = await Training.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Not found' });
+    const body = normalizeTrainingBody(req.body, existing);
+    res.json(await Training.findByIdAndUpdate(req.params.id, body, { new: true, runValidators: true }));
   } catch (err) { res.status(400).json({ message: err.message }); }
+};
+
+export const uploadTrainingAsset = async (req, res) => {
+  try {
+    if (!req.file?.path) return res.status(400).json({ message: 'No image uploaded' });
+    res.json({ url: req.file.path });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
 };
 
 export const deleteTraining = async (req, res) => {

@@ -1,6 +1,16 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Truck, ShieldCheck, Star, Headphones, Flame, AlertCircle } from 'lucide-react';
-import { useState } from 'react';
+import {
+  ArrowRight,
+  Truck,
+  ShieldCheck,
+  Star,
+  Headphones,
+  Flame,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useFetch } from '../hooks/useApi';
 import { CATEGORIES } from '../data/categories';
 import { useCart } from '../context/CartContext';
@@ -15,10 +25,16 @@ const calcDiscountedPrice = (p) => {
 const ProductCard = ({ product, onPartnerClick }) => {
   const discounted = product.discount?.active;
   const finalPrice = calcDiscountedPrice(product);
-  const isPartner  = product.isPartner;
+  const isPartner = product.isPartner;
 
   const lastUpdated = isPartner && product.updatedAt
-    ? new Date(product.updatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    ? new Date(product.updatedAt).toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
     : null;
 
   const card = (
@@ -38,11 +54,30 @@ const ProductCard = ({ product, onPartnerClick }) => {
       )}
 
       <div className="relative aspect-square bg-gray-100 overflow-hidden">
-        {product.images?.[0] && <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />}
+        {product.images?.[0] && (
+          <img
+            src={product.images[0]}
+            alt={product.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        )}
         {isPartner && <span className="absolute top-2 left-2 bg-black text-[#FDC700] text-xs font-extrabold px-2 py-0.5 rounded-full">Partner</span>}
-        {!isPartner && discounted && <span className="absolute top-2 left-2 bg-[#FDC700] text-black text-xs font-extrabold px-2 py-0.5 rounded-full">-{product.discount.value}{product.discount.type === 'percent' ? '%' : ' GHS'}</span>}
-        {product.stock !== null && product.stock <= 5 && product.stock > 0 && <span className="absolute bottom-2 left-2 bg-red-500 text-white text-xs font-extrabold px-2 py-0.5 rounded-full">Only {product.stock} left</span>}
-        {product.stock === 0 && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><span className="text-white font-extrabold text-sm">Out of Stock</span></div>}
+        {!isPartner && discounted && (
+          <span className="absolute top-2 left-2 bg-[#FDC700] text-black text-xs font-extrabold px-2 py-0.5 rounded-full">
+            -{product.discount.value}{product.discount.type === 'percent' ? '%' : ' GHS'}
+          </span>
+        )}
+        {product.stock !== null && product.stock <= 5 && product.stock > 0 && (
+          <span className="absolute bottom-2 left-2 bg-red-500 text-white text-xs font-extrabold px-2 py-0.5 rounded-full">
+            Only {product.stock} left
+          </span>
+        )}
+        {product.stock === 0 && (
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+            <span className="text-white font-extrabold text-sm">Out of Stock</span>
+          </div>
+        )}
       </div>
 
       <div className="p-3">
@@ -73,49 +108,220 @@ const SectionHeader = ({ label, title, cta, to }) => (
       {label && <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-1">{label}</p>}
       <h2 className="text-2xl md:text-3xl font-extrabold">{title}</h2>
     </div>
-    {cta && <Link to={to || '/shop'} className="text-sm font-bold flex items-center gap-1 hover:text-[#FDC700] transition-colors whitespace-nowrap">{cta} <ArrowRight size={14} /></Link>}
+    {cta && (
+      <Link to={to || '/shop'} className="text-sm font-bold flex items-center gap-1 hover:text-[#FDC700] transition-colors whitespace-nowrap">
+        {cta} <ArrowRight size={14} />
+      </Link>
+    )}
   </div>
 );
 
 export default function Home() {
   const [partnerNotice, setPartnerNotice] = useState(null);
   const [toast, setToast] = useState('');
+  const [heroIndex, setHeroIndex] = useState(0);
   const { addToCart } = useCart();
 
+  const { data: latestProducts } = useFetch('/api/products/public?limit=5');
   const { data: fastSelling } = useFetch('/api/products/public?fastSelling=true&limit=8');
-  const { data: featured }    = useFetch('/api/products/public?featured=true&limit=12');
-  const { data: discounted }  = useFetch('/api/products/discounted');
-  const { data: tools }       = useFetch('/api/products/public?category=Braiding%20%26%20Tools&limit=6');
-  const { data: mannequins }  = useFetch('/api/products/public?category=Mannequins%20%26%20Stands&limit=6');
+  const { data: featured } = useFetch('/api/products/public?featured=true&limit=12');
+  const { data: discounted } = useFetch('/api/products/discounted');
+  const { data: tools } = useFetch('/api/products/public?category=Braiding%20%26%20Tools&limit=6');
+  const { data: mannequins } = useFetch('/api/products/public?category=Mannequins%20%26%20Stands&limit=6');
+
+  const heroProducts = latestProducts || [];
+  const activeHero = heroProducts[heroIndex] || null;
+  const activeHeroPrice = activeHero ? calcDiscountedPrice(activeHero) : null;
+
+  useEffect(() => {
+    if (heroProducts.length <= 1) return undefined;
+    const interval = setInterval(() => {
+      setHeroIndex((current) => (current + 1) % heroProducts.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [heroProducts.length]);
+
+  useEffect(() => {
+    if (heroProducts.length && heroIndex > heroProducts.length - 1) {
+      setHeroIndex(0);
+    }
+  }, [heroIndex, heroProducts.length]);
 
   return (
     <div className="pt-16">
-<SEO
-  title="Hair Extensions, Wigs & Beauty Supply Ghana"
-  description="Shop hair extensions, wigs, braiding hair, beauty, skincare, fashion, health and gadgets. Nationwide delivery across Ghana and international shipping. One store for everything."
-  url="/"
-/>
+      <SEO
+        title="Hair Extensions, Wigs & Beauty Supply Ghana"
+        description="Shop hair extensions, wigs, braiding hair, beauty, skincare, fashion, health and gadgets. Nationwide delivery across Ghana and international shipping. One store for everything."
+        url="/"
+      />
+
       {/* Hero */}
-      <section className="relative h-[65vh] min-h-[420px] bg-black flex items-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent z-10" />
-        <div className="absolute inset-0 opacity-30">
-          <img src="/shop-category/hairextension.avif" alt="" className="w-full h-full object-cover" />
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#fff7cf] via-white to-gray-50">
+        <div className="absolute inset-0 opacity-50">
+          <div className="absolute -top-24 -left-10 w-64 h-64 bg-[#FDC700]/20 rounded-full blur-3xl" />
+          <div className="absolute top-1/3 right-0 w-72 h-72 bg-black/5 rounded-full blur-3xl" />
         </div>
-        <div className="relative z-20 max-w-7xl mx-auto px-4">
-          <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[4px] mb-3">Hair · Beauty · Fashion · Lifestyle</p>
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-4">
-            Everything You<br /><span className="text-[#FDC700]">Need. All In One.</span>
-          </h1>
-          <p className="text-gray-300 max-w-md mb-8 leading-relaxed text-sm md:text-base">
-            Hair extensions, wigs, beauty, skincare, fashion, health, gadgets and more. One store for everything — nationwide and international delivery.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link to="/shop" className="flex items-center gap-2 px-6 py-3 bg-[#FDC700] text-black font-extrabold rounded-full hover:bg-yellow-300 transition-all text-sm">
-              Shop Now <ArrowRight size={16} />
-            </Link>
-            <Link to="/services" className="flex items-center gap-2 px-6 py-3 border-2 border-white text-white font-extrabold rounded-full hover:border-[#FDC700] hover:text-[#FDC700] transition-all text-sm">
-              View Services
-            </Link>
+
+        <div className="relative max-w-7xl mx-auto px-4 py-1.5 sm:py-2 lg:py-2.5">
+          <div className="rounded-[30px] border border-black/10 bg-white/95 shadow-[0_22px_60px_rgba(0,0,0,0.08)] overflow-hidden backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 border-b border-gray-100">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-[#B88900] mb-1">New Arrival Slider</p>
+                <h2 className="font-extrabold text-sm sm:text-base text-black">Shop what just landed</h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Link
+                  to="/shop"
+                  className="inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-black text-white text-[11px] font-extrabold hover:bg-gray-900 transition-colors"
+                >
+                  Enter Shop
+                </Link>
+                {heroProducts.length > 1 && (
+                  <>
+                  <button
+                    onClick={() => setHeroIndex((current) => (current - 1 + heroProducts.length) % heroProducts.length)}
+                    className="w-8 h-8 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-black hover:text-black flex items-center justify-center transition-colors"
+                    aria-label="Previous product"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <button
+                    onClick={() => setHeroIndex((current) => (current + 1) % heroProducts.length)}
+                    className="w-8 h-8 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-black hover:text-black flex items-center justify-center transition-colors"
+                    aria-label="Next product"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {activeHero ? (
+              <Link to={`/shop/${activeHero._id}`} className="block group">
+                <div className="grid md:grid-cols-[1fr_1fr] md:min-h-[250px] lg:min-h-[23vh] lg:max-h-[240px]">
+                  <div className="relative bg-gradient-to-br from-[#f6f0dc] via-[#fbf8ef] to-white min-h-[170px] sm:min-h-[195px] md:min-h-0">
+                    <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-extrabold text-black shadow-sm">
+                        {activeHero.category}
+                      </span>
+                      {activeHero.discount?.active && (
+                        <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2.5 py-0.5 text-[10px] font-extrabold text-black shadow-sm">
+                          Offer live
+                        </span>
+                      )}
+                      {activeHero.isPreOrder && (
+                        <span className="inline-flex items-center rounded-full bg-black px-2.5 py-0.5 text-[10px] font-extrabold text-white shadow-sm">
+                          Pre-order
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="absolute inset-0 p-3.5 sm:p-4">
+                      <div className="h-full w-full rounded-[24px] bg-white/80 ring-1 ring-black/5 shadow-[0_16px_40px_rgba(0,0,0,0.06)] flex items-center justify-center overflow-hidden">
+                     {activeHero.images?.[0] ? (
+                       <img
+                         src={activeHero.images[0]}
+                         alt={activeHero.name}
+                        className="max-w-full max-h-full w-auto h-auto object-contain object-center p-2 sm:p-3 transition-transform duration-300"
+                         onError={(e) => { e.target.style.display = 'none'; }}
+                       />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-gray-400 text-sm font-bold">
+                        Product image coming soon
+                      </div>
+                    )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 sm:p-4 lg:p-4 xl:p-5 flex flex-col justify-between bg-white">
+                    <div className="space-y-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">
+                          Slide {heroIndex + 1} / {heroProducts.length || 1}
+                          </p>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#B88900]">
+                            Latest in store
+                          </p>
+                        </div>
+                        {activeHero.stock !== null && activeHero.stock > 0 && activeHero.stock <= 5 && (
+                          <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-extrabold text-red-600">
+                            Only {activeHero.stock} left
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-base sm:text-[1.2rem] lg:text-[1.3rem] font-extrabold text-black leading-tight line-clamp-2">
+                        {activeHero.name}
+                      </h3>
+                      <p className="text-gray-600 text-xs sm:text-sm leading-relaxed line-clamp-2">
+                        {activeHero.desc || 'Open this product to see full details, pricing and ordering options.'}
+                      </p>
+                    </div>
+
+                    <div className="pt-2.5 border-t border-gray-100">
+                      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2.5">
+                        <div className="space-y-1">
+                          <div className="flex items-end gap-2">
+                            <span className="text-lg sm:text-[1.35rem] font-extrabold text-black">
+                              GHS {activeHeroPrice?.toLocaleString()}
+                            </span>
+                            {activeHero.discount?.active && (
+                              <span className="text-xs text-gray-400 line-through mb-0.5">
+                                GHS {activeHero.retailPrice?.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          <span className="hidden sm:block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
+                            Tap card to open product
+                          </span>
+                        </div>
+
+                        <span className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-black text-white font-extrabold text-xs group-hover:bg-[#1f1f1f] transition-colors">
+                          Shop Now
+                          <ArrowRight size={14} />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ) : (
+              <div className="p-4 sm:p-5">
+                <div className="rounded-3xl bg-gray-50 border border-gray-100 min-h-[170px] flex flex-col justify-center items-start px-5 sm:px-6">
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#B88900] mb-3">Fresh Stock</p>
+                  <h3 className="text-2xl sm:text-3xl font-extrabold text-black mb-3">Latest shop items will appear here.</h3>
+                  <p className="text-gray-500 text-sm sm:text-base max-w-md mb-6">
+                    As new products are added, this hero will rotate them here first so customers can jump straight into shopping.
+                  </p>
+                  <Link to="/shop" className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-black text-white font-extrabold text-sm hover:bg-gray-900">
+                    Browse Shop <ArrowRight size={16} />
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {heroProducts.length > 1 && (
+              <div className="border-t border-gray-100 px-4 sm:px-5 py-2.5 bg-[#fcfbf7]">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {heroProducts.map((product, index) => (
+                    <button
+                      key={product._id}
+                      onClick={() => setHeroIndex(index)}
+                      className={`shrink-0 rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all ${
+                        heroIndex === index
+                          ? 'bg-black text-white'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-black'
+                      }`}
+                    >
+                      {product.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -129,7 +335,9 @@ export default function Home() {
             { icon: <Star size={16} />, text: 'All Categories' },
             { icon: <Headphones size={16} />, text: '24/7 Support' },
           ].map((b, i) => (
-            <div key={i} className="flex items-center gap-2 justify-center text-black font-bold text-xs md:text-sm">{b.icon} {b.text}</div>
+            <div key={i} className="flex items-center gap-2 justify-center text-black font-bold text-xs md:text-sm">
+              {b.icon} {b.text}
+            </div>
           ))}
         </div>
       </section>
@@ -140,7 +348,7 @@ export default function Home() {
           <div className="max-w-7xl mx-auto">
             <SectionHeader label="Moving Fast" title={<span className="flex items-center gap-2"><Flame size={26} className="text-red-500" /> Fast Selling</span>} cta="Shop All" to="/shop?filter=fastSelling" />
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {fastSelling.map(p => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
+              {fastSelling.map((p) => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
             </div>
           </div>
         </section>
@@ -160,7 +368,7 @@ export default function Home() {
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {featured.map(p => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
+            {featured.map((p) => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
           </div>
         </section>
       )}
@@ -177,13 +385,23 @@ export default function Home() {
               <Link to="/shop" className="text-sm font-bold text-[#FDC700] flex items-center gap-1">View All <ArrowRight size={14} /></Link>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {discounted.map(p => {
+              {discounted.map((p) => {
                 const finalPrice = calcDiscountedPrice(p);
                 return (
-                  <Link key={p._id} to={`/shop/${p._id}`}
-                    className="block bg-white rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-2 border-[#FDC700]">
+                  <Link
+                    key={p._id}
+                    to={`/shop/${p._id}`}
+                    className="block bg-white rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-2 border-[#FDC700]"
+                  >
                     <div className="relative aspect-square bg-gray-100 overflow-hidden">
-                      {p.images?.[0] && <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />}
+                      {p.images?.[0] && (
+                        <img
+                          src={p.images[0]}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      )}
                       <span className="absolute top-2 left-2 bg-[#FDC700] text-black text-xs font-extrabold px-2 py-0.5 rounded-full">
                         -{p.discount.value}{p.discount.type === 'percent' ? '%' : ' GHS'}
                       </span>
@@ -208,9 +426,12 @@ export default function Home() {
       <section className="py-14 px-4 max-w-7xl mx-auto">
         <SectionHeader label="Browse" title="Shop by Category" cta="All Products" to="/shop" />
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {CATEGORIES.filter(c => c.value !== 'All').map(cat => (
-            <Link key={cat.value} to={`/shop?category=${encodeURIComponent(cat.value)}`}
-              className="relative rounded-2xl overflow-hidden group cursor-pointer aspect-[3/4]">
+          {CATEGORIES.filter((c) => c.value !== 'All').map((cat) => (
+            <Link
+              key={cat.value}
+              to={`/shop?category=${encodeURIComponent(cat.value)}`}
+              className="relative rounded-2xl overflow-hidden group cursor-pointer aspect-[3/4]"
+            >
               <div className="absolute inset-0 bg-black/40 group-hover:bg-black/55 transition-all z-10" />
               {cat.image && <img src={cat.image} alt={cat.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />}
               <div className="absolute inset-0 z-20 flex items-end p-4">
@@ -227,7 +448,7 @@ export default function Home() {
           <div className="max-w-7xl mx-auto">
             <SectionHeader label="Professional Grade" title="Braiding & Hair Tools" cta="Shop Tools" to="/shop?category=Braiding+%26+Tools" />
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {tools.map(p => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
+              {tools.map((p) => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
             </div>
           </div>
         </section>
@@ -238,7 +459,7 @@ export default function Home() {
         <section className="py-14 px-4 max-w-7xl mx-auto">
           <SectionHeader label="For Professionals & Students" title="Mannequins & Stands" cta="Shop All" to="/shop?category=Mannequins+%26+Stands" />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {mannequins.map(p => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
+            {mannequins.map((p) => <ProductCard key={p._id} product={p} onPartnerClick={setPartnerNotice} />)}
           </div>
         </section>
       )}
@@ -249,12 +470,14 @@ export default function Home() {
           <div>
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Learn & Grow</p>
             <h2 className="text-3xl md:text-4xl font-extrabold mb-4">Training & Consultation</h2>
-            <p className="text-gray-400 mb-3 leading-relaxed">Whether you want to build a business, develop new skills, or simply get expert advice on any of our products and services — we are here for you.</p>
+            <p className="text-gray-400 mb-3 leading-relaxed">
+              Whether you want to build a business, develop new skills, or simply get expert advice on any of our products and services - we are here for you.
+            </p>
             <ul className="text-gray-400 text-sm space-y-2 mb-6">
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">→</span> Professional hands-on training sessions for beginners and advanced learners</li>
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">→</span> One-on-one paid consultations for business, beauty and lifestyle goals</li>
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">→</span> Free consultation available — just reach out and ask</li>
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">→</span> Importation assistance — we help you source and bring in products from abroad</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Professional hands-on training sessions for beginners and advanced learners</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> One-on-one paid consultations for business, beauty and lifestyle goals</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Free consultation available - just reach out and ask</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Importation assistance - we help you source and bring in products from abroad</li>
             </ul>
             <Link to="/services" className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#FDC700] text-black font-extrabold rounded-full hover:bg-yellow-300 transition-all text-sm">
               Explore Services <ArrowRight size={16} />
@@ -276,7 +499,9 @@ export default function Home() {
         <div className="max-w-3xl mx-auto text-center">
           <p className="text-black/60 text-xs font-bold uppercase tracking-widest mb-2">For Brands & Sellers</p>
           <h2 className="text-2xl md:text-3xl font-extrabold text-black mb-3">Want Your Product Featured Here?</h2>
-          <p className="text-black/70 text-sm mb-6 leading-relaxed">Get your product in front of thousands of customers across Ghana. Affordable subscription plans from 1 month. Your brand identity stays private.</p>
+          <p className="text-black/70 text-sm mb-6 leading-relaxed">
+            Get your product in front of thousands of customers across Ghana. Affordable subscription plans from 1 month. Your brand identity stays private.
+          </p>
           <Link to="/services" className="inline-flex items-center gap-2 px-7 py-3.5 bg-black text-white font-extrabold rounded-full hover:bg-gray-900 transition-all text-sm">
             Apply to Get Featured <ArrowRight size={16} />
           </Link>
@@ -286,7 +511,7 @@ export default function Home() {
       {/* Partner stock notice modal */}
       {partnerNotice && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPartnerNotice(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center mx-auto mb-3">
               <AlertCircle size={24} className="text-yellow-600" />
             </div>
@@ -295,18 +520,32 @@ export default function Home() {
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-xs text-yellow-800 leading-relaxed space-y-1.5">
               <p>This product is fulfilled by a verified partner. You can order and pay normally.</p>
               {partnerNotice.updatedAt && (
-                <p>Stock last updated: <span className="font-bold">{new Date(partnerNotice.updatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></p>
+                <p>
+                  Stock last updated:{' '}
+                  <span className="font-bold">
+                    {new Date(partnerNotice.updatedAt).toLocaleString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </p>
               )}
               <p>If the item becomes unavailable after your payment, a full refund will be issued by Belle Kreyashon.</p>
             </div>
             <div className="flex flex-col gap-2">
-              <button onClick={() => {
-                addToCart(partnerNotice, 1, false, null);
-                setPartnerNotice(null);
-                setToast(partnerNotice.name + ' added to cart!');
-                setTimeout(() => setToast(''), 3000);
-              }} className="w-full py-3 bg-[#FDC700] text-black font-extrabold text-sm rounded-xl hover:bg-yellow-300">
-                Got It — Add to Cart
+              <button
+                onClick={() => {
+                  addToCart(partnerNotice, 1, false, null);
+                  setPartnerNotice(null);
+                  setToast(`${partnerNotice.name} added to cart!`);
+                  setTimeout(() => setToast(''), 3000);
+                }}
+                className="w-full py-3 bg-[#FDC700] text-black font-extrabold text-sm rounded-xl hover:bg-yellow-300"
+              >
+                Got It - Add to Cart
               </button>
               <button onClick={() => setPartnerNotice(null)} className="text-sm text-gray-400 hover:text-black text-center">Cancel</button>
             </div>
@@ -314,11 +553,10 @@ export default function Home() {
         </div>
       )}
 
-
       {/* Toast notification */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] bg-black text-white text-sm font-bold px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-pulse">
-          ✅ {toast}
+          {toast}
         </div>
       )}
     </div>

@@ -14,43 +14,54 @@ const convertDrive = (url) => {
 };
 
 const EMPTY_PROD = { name:'',desc:'',category:'',images:[],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:false,partnerBrand:'',partnerContact:'' };
-const EMPTY_TRAIN = { title:'',desc:'',date:'',venue:'',price:'',capacity:'',image:'' };
+const EMPTY_TRAIN = { title:'',desc:'',date:'',venue:'',price:'',capacity:'',image:'',partners:'',sponsors:'',active:true };
 const EMPTY_ZONE  = { name:'', fee:'' };
 const EMPTY_CONSULT = { title:'',desc:'',price:'',duration:'',validity:'',isFree:false };
 const EMPTY_BLOG = { title:'',excerpt:'',content:'',coverImage:'',videoUrl:'',mediaType:'image',tags:'',published:false };
 const EMPTY_FEATURED = { brandName:'',productName:'',desc:'',images:[],contactInfo:'',plan:1,category:'',price:'',stock:'',available:true,featured:true,fastSelling:false,isPreOrder:false,preOrderType:'',depositPercent:'',hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:true,partnerContact:'' };
 
 const PLANS = [1,3,6,9,12];
+const TAB_FORM_LABELS = {
+  Products: 'Product',
+  Training: 'Training',
+  Delivery: 'Delivery',
+  Orders: 'Order',
+  Bookings: 'Booking',
+  Abandoned: 'Abandoned',
+  Consultations: 'Consultation',
+  Blog: 'Blog Post',
+  Featured: 'Featured Product',
+  Invoice: 'Invoice',
+};
 
 // ─── IMAGE UPLOADER COMPONENT ─────────────────────────────────────────────────
 // Compresses images client-side before uploading to Cloudinary
 // Max 3 images, shows previews, allows removal
+const compressImageFile = (file, max = 1200) => new Promise((resolve) => {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > max || height > max) {
+        if (width > height) { height = Math.round(height * max / width); width = max; }
+        else                { width = Math.round(width * max / height); height = max; }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.82);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
 function ImageUploader({ images = [], onChange, uploadEndpoint, token, maxImages = 3 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError]         = useState('');
   const fileRef                   = useRef();
-
-  const compressImage = (file) => new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX = 1200;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-          else                { width = Math.round(width * MAX / height);  height = MAX; }
-        }
-        canvas.width  = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.82);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
 
   const handleFiles = async (files) => {
     setError('');
@@ -61,7 +72,7 @@ function ImageUploader({ images = [], onChange, uploadEndpoint, token, maxImages
     try {
       const formData = new FormData();
       for (const file of toUpload) {
-        const compressed = await compressImage(file);
+        const compressed = await compressImageFile(file);
         formData.append('images', compressed);
       }
       const { data } = await api.post(uploadEndpoint, formData, {
@@ -119,6 +130,84 @@ function ImageUploader({ images = [], onChange, uploadEndpoint, token, maxImages
       {error && <p className="text-red-500 text-xs">{error}</p>}
       <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
         onChange={e => handleFiles(e.target.files)} />
+    </div>
+  );
+}
+
+function TrainingImageUploader({ image = '', onChange, uploadEndpoint, token }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef();
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setError('');
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      const compressed = await compressImageFile(file);
+      formData.append('image', compressed);
+      const { data } = await api.post(uploadEndpoint, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      onChange(data.url);
+    } catch (e) {
+      setError(e.response?.data?.message || 'Upload failed. Try again.');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div className="sm:col-span-2 space-y-2">
+      <div
+        onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}
+        onDragOver={e => e.preventDefault()}
+        onClick={() => fileRef.current?.click()}
+        className="border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-black transition-all"
+      >
+        {uploading ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+            <Loader2 size={16} className="animate-spin" /> Uploading & compressing...
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-gray-400">
+              <p className="text-xs font-bold">Upload local training image</p>
+              <p className="text-xs text-gray-300 mt-0.5">JPG, PNG, WebP • Max 5MB • Auto-compressed before upload</p>
+            </div>
+            <div className="shrink-0 text-gray-400">
+              <Upload size={18} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {image && (
+        <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2">
+          <img src={image} alt="" className="w-14 h-14 rounded-lg object-cover bg-gray-100" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-gray-600">Current image</p>
+            <p className="text-xs text-gray-400 truncate">{image}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-red-500 text-xs">{error}</p>}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={e => handleFile(e.target.files?.[0])}
+      />
     </div>
   );
 }
@@ -403,6 +492,12 @@ export default function Admin() {
       });
     } else if (tab === 'Blog') {
       setForm({ ...item, tags: item.tags?.join(', ') || '' });
+    } else if (tab === 'Training') {
+      setForm({
+        ...item,
+        partners: item.partners?.join(', ') || '',
+        sponsors: item.sponsors?.join(', ') || '',
+      });
     } else {
       setForm({ ...item });
     }
@@ -437,12 +532,15 @@ export default function Admin() {
     coverImage: convertDrive(f.coverImage),
   });
 
-  const buildTrainingBody = (f) => ({
-    ...f,
-    price:    Number(f.price),
-    capacity: f.capacity ? Number(f.capacity) : null,
-    image:    convertDrive(f.image),
-  });
+const buildTrainingBody = (f) => ({
+  ...f,
+  price:    Number(f.price),
+  capacity: f.capacity ? Number(f.capacity) : null,
+  image:    convertDrive(f.image),
+  partners: f.partners ? f.partners.split(',').map(t => t.trim()).filter(Boolean) : [],
+  sponsors: f.sponsors ? f.sponsors.split(',').map(t => t.trim()).filter(Boolean) : [],
+  active:   f.active !== false,
+});
 
   const buildFeaturedBody = (f) => {
     const b = {
@@ -592,7 +690,7 @@ export default function Admin() {
         {showForm && !['Orders','Abandoned'].includes(tab) && (
           <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-extrabold">{editId ? `Edit ${tab === 'Featured' ? 'Featured Product' : tab.slice(0,-1)}` : `New ${tab === 'Featured' ? 'Featured Product' : tab.slice(0,-1)}`}</h3>
+              <h3 className="font-extrabold">{editId ? `Edit ${TAB_FORM_LABELS[tab] || tab}` : `New ${TAB_FORM_LABELS[tab] || tab}`}</h3>
               <button onClick={closeForm}><X size={18} className="text-gray-400 hover:text-black" /></button>
             </div>
 
@@ -682,6 +780,28 @@ export default function Admin() {
                 <input value={form.price||''}    onChange={e => sf('price',e.target.value)}    placeholder="Price (GHS)"    type="number"   className={inp} />
                 <input value={form.capacity||''} onChange={e => sf('capacity',e.target.value)} placeholder="Capacity (optional)" type="number" className={inp} />
                 <input value={form.image||''}    onChange={e => sf('image',e.target.value)}    placeholder="Image URL (optional)"          className={inp} />
+                <input value={form.partners||''} onChange={e => sf('partners',e.target.value)} placeholder="Partners (comma separated)"     className={inp} />
+                <input value={form.sponsors||''} onChange={e => sf('sponsors',e.target.value)} placeholder="Sponsors (comma separated)"     className={inp} />
+                <TrainingImageUploader
+                  image={form.image || ''}
+                  onChange={url => sf('image', url)}
+                  uploadEndpoint="/api/training/upload"
+                  token={token}
+                />
+                <label className="sm:col-span-2 flex items-start gap-2 text-sm font-bold cursor-pointer p-3 bg-gray-50 rounded-xl">
+                  <input
+                    type="checkbox"
+                    checked={form.active !== false}
+                    onChange={e => sf('active', e.target.checked)}
+                    className="w-4 h-4 mt-0.5 accent-black"
+                  />
+                  <span>
+                    Show this training to the public website
+                    <span className="block text-xs font-normal text-gray-400 mt-0.5">
+                      Turn this off to hide the training from customers without deleting it.
+                    </span>
+                  </span>
+                </label>
                 <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={2} className={inp+' resize-none sm:col-span-2'} />
               </div>
             )}
@@ -886,8 +1006,15 @@ export default function Admin() {
             {tab === 'Training' && pagedData.map(item => (
               <div key={item._id} className="bg-white rounded-2xl p-4 border border-gray-100 flex items-center gap-3">
                 <div className="flex-1">
-                  <p className="font-extrabold text-sm">{item.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-extrabold text-sm">{item.title}</p>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {item.active ? 'PUBLIC' : 'HIDDEN'}
+                    </span>
+                  </div>
                   <p className="text-xs text-gray-400">{item.date} — {item.venue}</p>
+                  {!!item.partners?.length && <p className="text-xs text-gray-500">Partners: {item.partners.join(', ')}</p>}
+                  {!!item.sponsors?.length && <p className="text-xs text-gray-500">Sponsors: {item.sponsors.join(', ')}</p>}
                   <p className="font-bold text-sm">GHS {item.price?.toLocaleString()}</p>
                 </div>
                 <button onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>

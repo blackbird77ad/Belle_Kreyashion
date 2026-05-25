@@ -65,6 +65,104 @@ function BookingConfirmed({ booking, whatsappUrl, onClose }) {
   );
 }
 
+function TrainingDetailsModal({ event, onClose, onRegister }) {
+  const { customer } = useCustomer();
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+
+  const startRegistration = () => {
+    if (!customer) {
+      setShowCustomerModal(true);
+      return;
+    }
+    onRegister(event);
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto" onClick={onClose}>
+        <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden max-h-[100dvh] sm:max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="flex justify-between items-start gap-4 p-4 sm:p-6 pb-4 border-b border-gray-100 shrink-0">
+            <div>
+              <p className="text-[#FDC700] text-[11px] font-bold uppercase tracking-[0.2em] mb-2">Training Details</p>
+              <h3 className="font-extrabold text-lg sm:text-xl leading-tight">{event.title}</h3>
+            </div>
+            <button onClick={onClose}><X size={18} className="text-gray-400 hover:text-black" /></button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 sm:py-5 space-y-5">
+            {event.image && (
+              <div className="bg-gray-50 rounded-2xl border border-gray-100 p-2 sm:p-3">
+                <img
+                  src={event.image}
+                  alt={event.title}
+                  className="w-full max-h-[30vh] sm:max-h-[42vh] object-contain rounded-xl"
+                />
+              </div>
+            )}
+
+            <div className="grid sm:grid-cols-2 gap-3 text-sm text-gray-600">
+              <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-2 min-w-0"><Calendar size={15} className="text-gray-400 shrink-0" /> <span className="break-words">{event.date}</span></div>
+              <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-2 min-w-0"><Clock size={15} className="text-gray-400 shrink-0" /> <span className="break-words">{event.venue}</span></div>
+              {event.capacity && <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-2 min-w-0"><Users size={15} className="text-gray-400 shrink-0" /> <span className="break-words">{event.capacity} spots available</span></div>}
+              <div className="bg-gray-50 rounded-xl p-3 font-extrabold text-black">GHS {event.price?.toLocaleString()}</div>
+            </div>
+
+            {(event.partners?.length > 0 || event.sponsors?.length > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {event.partners?.length > 0 && (
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 break-words">
+                    Partners: {event.partners.join(', ')}
+                  </span>
+                )}
+                {event.sponsors?.length > 0 && (
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 break-words">
+                    Sponsors: {event.sponsors.join(', ')}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div>
+              <h4 className="font-extrabold text-sm mb-2">About this training</h4>
+              <div className="text-sm sm:text-[15px] text-gray-600 leading-7 whitespace-pre-line break-words">
+                {event.desc || 'Full training details will be shared here before registration.'}
+              </div>
+            </div>
+          </div>
+
+          <div className="shrink-0 border-t border-gray-100 p-4 sm:p-6 bg-white space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              {event.price > 0 ? (
+                <button onClick={startRegistration}
+                  className="flex-1 py-3 bg-[#FDC700] text-black font-extrabold rounded-xl hover:bg-yellow-300">
+                  Proceed to Register
+                </button>
+              ) : (
+                <a href={`https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent(`Hi! I'd like to register for: ${event.title}`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 py-3 bg-black text-white font-extrabold rounded-xl hover:bg-gray-900 text-center">
+                  Enquire on WhatsApp
+                </a>
+              )}
+              <button onClick={onClose} className="sm:w-auto py-3 px-5 border border-gray-200 text-sm font-bold rounded-xl hover:border-black">
+                Close
+              </button>
+            </div>
+
+            {!customer && event.price > 0 && (
+              <p className="text-xs text-gray-400">
+                We&apos;ll ask for your saved name and phone number before payment so registration stays quick and accurate.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showCustomerModal && <CustomerModal onClose={() => setShowCustomerModal(false)} />}
+    </>
+  );
+}
+
 // Training registration modal
 function TrainingModal({ event, onClose }) {
   const { customer } = useCustomer();
@@ -106,13 +204,13 @@ function TrainingModal({ event, onClose }) {
   if (confirmed) return <BookingConfirmed booking={confirmed.booking} whatsappUrl={confirmed.whatsappUrl} onClose={onClose} />;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
         <SEO
-      title="Hair & Beauty Training, Consultations & Importation"
-      description="Book professional hair and beauty training sessions, consultations, pre-orders and importation assistance."
+      title="Professional Training, Consultations & Importation"
+      description="Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support."
       url="/services"
     />
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-4 sm:p-6 shadow-2xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-4">
           <div>
             <h3 className="font-extrabold text-base">Register for Training</h3>
@@ -123,6 +221,8 @@ function TrainingModal({ event, onClose }) {
         <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-600 space-y-1">
           <div className="flex items-center gap-2"><Calendar size={13} /> {event.date}</div>
           <div className="flex items-center gap-2"><Clock size={13} /> {event.venue}</div>
+          {event.partners?.length > 0 && <div><span className="font-bold text-gray-500">Partners:</span> {event.partners.join(', ')}</div>}
+          {event.sponsors?.length > 0 && <div><span className="font-bold text-gray-500">Sponsors:</span> {event.sponsors.join(', ')}</div>}
           <div className="flex items-center gap-2 font-extrabold text-black text-sm"><span>GHS {event.price?.toLocaleString()}</span></div>
         </div>
         <div className="flex flex-col gap-3 mb-4">
@@ -226,6 +326,7 @@ export default function Services() {
   const { customer }       = useCustomer();
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedTraining,   setSelectedTraining]   = useState(null);
+  const [trainingToRegister, setTrainingToRegister] = useState(null);
   const [selectedConsult,    setSelectedConsult]    = useState(null);
   const [featurePlan,        setFeaturePlan]        = useState(null);
   const [featureForm,        setFeatureForm]        = useState({ brand:'', product:'', desc:'', contact:'', plan:'' });
@@ -235,10 +336,7 @@ export default function Services() {
   const freeMsg   = encodeURIComponent("Hi Belle Kreyashon! I'd like to book a free consultation. Please advise on availability.");
   const importMsg = encodeURIComponent("Hi Belle Kreyashon! I'd like to inquire about importation assistance.");
 
-  const handleTrainingClick = (evt) => {
-    if (!customer) { setShowCustomerModal(true); return; }
-    setSelectedTraining(evt);
-  };
+  const handleTrainingClick = (evt) => setSelectedTraining(evt);
 
   const handleConsultClick = (c) => {
     if (!customer) { setShowCustomerModal(true); return; }
@@ -287,7 +385,7 @@ Notes: ${preOrderForm.notes || 'None'}`
           <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-1">Learn From The Best</p>
           <h2 className="text-2xl md:text-3xl font-extrabold mb-2">Professional Training Sessions</h2>
           <p className="text-gray-500 text-sm mb-7 max-w-2xl">
-            Join our hands-on professional training sessions in hair, beauty, skincare and fashion. Whether you're a beginner or experienced, our sessions are designed to elevate your skills and open doors to new income streams.
+            Our training is practical and business-focused, and it is not limited to one niche. Depending on the session, it can cover beauty, fashion, business, product knowledge or any other specialist area designed to build real skill, confidence and income opportunities.
           </p>
 
           {!events || events.length === 0 ? (
@@ -304,7 +402,16 @@ Notes: ${preOrderForm.notes || 'None'}`
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {(events || []).slice((trainPage-1)*TRAIN_PAGE_SIZE, trainPage*TRAIN_PAGE_SIZE).map(evt => (
                 <motion.div key={evt._id} initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
-                  className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg transition-all">
+                  className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg transition-all cursor-pointer"
+                  onClick={() => handleTrainingClick(evt)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleTrainingClick(evt);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}>
                   {evt.image && <div className="aspect-video bg-gray-100 overflow-hidden"><img src={evt.image} alt={evt.title} className="w-full h-full object-cover" /></div>}
                   <div className="p-5">
                     <h3 className="font-extrabold text-base mb-1">{evt.title}</h3>
@@ -314,20 +421,29 @@ Notes: ${preOrderForm.notes || 'None'}`
                       <span className="flex items-center gap-1.5"><Clock size={13} /> {evt.venue}</span>
                       {evt.capacity && <span className="flex items-center gap-1.5"><Users size={13} /> {evt.capacity} spots</span>}
                     </div>
+                    {(evt.partners?.length > 0 || evt.sponsors?.length > 0) && (
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {evt.partners?.length > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-blue-50 text-blue-700">
+                            Partners: {evt.partners.join(', ')}
+                          </span>
+                        )}
+                        {evt.sponsors?.length > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-purple-50 text-purple-700">
+                            Sponsors: {evt.sponsors.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="font-extrabold text-lg">GHS {evt.price?.toLocaleString()}</span>
-                      {evt.price > 0 ? (
-                        <button onClick={() => handleTrainingClick(evt)}
-                          className="px-4 py-2 bg-[#FDC700] text-black font-extrabold text-xs rounded-xl hover:bg-yellow-300 flex items-center gap-1">
-                          Register Now
-                        </button>
-                      ) : (
-                        <a href={`https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent(`Hi! I'd like to register for: ${evt.title}`)}`}
-                          target="_blank" rel="noopener noreferrer"
-                          className="px-4 py-2 bg-black text-white font-extrabold text-xs rounded-xl hover:bg-gray-900 flex items-center gap-1">
-                          <MessageCircle size={13} /> Enquire
-                        </a>
-                      )}
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        handleTrainingClick(evt);
+                      }}
+                        className="px-4 py-2 bg-[#FDC700] text-black font-extrabold text-xs rounded-xl hover:bg-yellow-300 flex items-center gap-1">
+                        View Details
+                      </button>
                     </div>
                   </div>
                 </motion.div>
@@ -472,7 +588,17 @@ Notes: ${preOrderForm.notes || 'None'}`
 
       {/* Modals */}
       {showCustomerModal && <CustomerModal onClose={() => setShowCustomerModal(false)} />}
-      {selectedTraining  && <TrainingModal event={selectedTraining} onClose={() => setSelectedTraining(null)} />}
+      {selectedTraining && (
+        <TrainingDetailsModal
+          event={selectedTraining}
+          onClose={() => setSelectedTraining(null)}
+          onRegister={(event) => {
+            setSelectedTraining(null);
+            setTrainingToRegister(event);
+          }}
+        />
+      )}
+      {trainingToRegister && <TrainingModal event={trainingToRegister} onClose={() => setTrainingToRegister(null)} />}
       {selectedConsult   && <ConsultationModal consultation={selectedConsult} onClose={() => setSelectedConsult(null)} />}
     </div>
   );
