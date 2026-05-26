@@ -360,6 +360,7 @@ export default function Admin() {
   const [mPin,    setMPin]    = useState('');
   const [reset,   setReset]   = useState(false);
   const [authErr, setAuthErr] = useState('');
+  const [sessionMsg, setSessionMsg] = useState('');
   const [tab,     setTab]     = useState('Products');
   const [search,  setSearch]  = useState('');
   const [customCat, setCustomCat] = useState('');
@@ -398,8 +399,18 @@ export default function Admin() {
     api.get('/api/auth/status').then(r => setSetup(r.data.setup)).catch(() => {});
   }, []);
 
+  const expireSession = useCallback((message = 'Your admin session expired. Please log in again.') => {
+    localStorage.removeItem('bk_admin');
+    setToken('');
+    setData([]);
+    setShowForm(false);
+    setEditId(null);
+    setSessionMsg(message);
+  }, []);
+
   const login = async () => {
     setAuthErr('');
+    setSessionMsg('');
     try {
       const { data } = await api.post(setup ? '/api/auth/login' : '/api/auth/setup', { pin });
       localStorage.setItem('bk_admin', data.token);
@@ -409,6 +420,7 @@ export default function Admin() {
 
   const resetPin = async () => {
     setAuthErr('');
+    setSessionMsg('');
     try {
       const { data } = await api.post('/api/auth/reset', { masterPin: mPin, newPin });
       localStorage.setItem('bk_admin', data.token);
@@ -416,7 +428,11 @@ export default function Admin() {
     } catch (e) { setAuthErr(e.response?.data?.message || 'Failed'); }
   };
 
-  const logout = () => { localStorage.removeItem('bk_admin'); setToken(''); };
+  const logout = () => {
+    localStorage.removeItem('bk_admin');
+    setToken('');
+    setSessionMsg('');
+  };
 
   const ENDPOINTS = {
     Products: '/api/products', Training: '/api/training',
@@ -435,9 +451,19 @@ export default function Admin() {
     try {
       const r = await api.get(ep + q, auth);
       setData(r.data);
-    } catch { setData([]); }
+    } catch (e) {
+      if (e.response?.status === 401) {
+        expireSession(
+          e.response?.data?.message === 'Invalid token'
+            ? 'Your admin login expired on this device. Please log in again.'
+            : 'Please log in again to continue.'
+        );
+        return;
+      }
+      setData([]);
+    }
     setLoading(false);
-  }, [token]);
+  }, [expireSession, token]);
 
   useEffect(() => { load(tab, ''); setSearch(''); setShowForm(false); setEditId(null); setPage(1); }, [tab]);
 
@@ -618,6 +644,7 @@ const buildTrainingBody = (f) => ({
             <input type="password" value={pin} onChange={e => setPin(e.target.value)} onKeyDown={e => e.key === 'Enter' && login()}
               placeholder={setup === false ? 'Create PIN (min 4 digits)' : 'Enter PIN'}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center text-xl tracking-widest outline-none focus:border-black mb-3" />
+            {sessionMsg && <p className="text-amber-600 text-xs text-center mb-2">{sessionMsg}</p>}
             {authErr && <p className="text-red-500 text-xs text-center mb-2">{authErr}</p>}
             <button onClick={login} className="w-full py-3 bg-black text-white font-extrabold rounded-xl hover:bg-gray-900 mb-2">{setup === false ? 'Create PIN' : 'Login'}</button>
             <button onClick={() => { setReset(true); setAuthErr(''); }} className="w-full text-xs text-gray-400 hover:text-black">Forgot PIN?</button>
@@ -627,6 +654,7 @@ const buildTrainingBody = (f) => ({
             <p className="text-sm font-bold text-center mb-3">Reset PIN</p>
             <input type="password" value={mPin}   onChange={e => setMPin(e.target.value)}   placeholder="Master reset PIN" className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center tracking-widest outline-none mb-2" />
             <input type="password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="New PIN"           className="w-full px-4 py-3 rounded-xl border border-gray-200 text-center tracking-widest outline-none mb-3" />
+            {sessionMsg && <p className="text-amber-600 text-xs text-center mb-2">{sessionMsg}</p>}
             {authErr && <p className="text-red-500 text-xs text-center mb-2">{authErr}</p>}
             <button onClick={resetPin} className="w-full py-3 bg-black text-white font-extrabold rounded-xl mb-2">Reset</button>
             <button onClick={() => { setReset(false); setAuthErr(''); }} className="w-full text-xs text-gray-400 hover:text-black">Back</button>
