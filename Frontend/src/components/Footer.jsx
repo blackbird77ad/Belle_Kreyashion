@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Facebook, Phone, MessageCircle } from 'lucide-react';
-import { PHONE, FACEBOOK, WHATSAPP } from '../data/contact';
+import { PHONE, PHONE_LOCAL, SECONDARY_PHONE, SECONDARY_PHONE_LOCAL, FACEBOOK, WHATSAPP } from '../data/contact';
 
 export default function Footer() {
   return (
@@ -37,8 +37,9 @@ export default function Footer() {
         <div>
           <div className="font-bold text-sm mb-3 text-[#FDC700] uppercase tracking-wider">Contact Us</div>
           <div className="flex flex-col gap-2 text-sm text-gray-400">
-            <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer" className="hover:text-green-400 flex items-center gap-2"><MessageCircle size={14} /> WhatsApp</a>
-            <a href={`tel:${PHONE}`} className="hover:text-white flex items-center gap-2"><Phone size={14} /> {PHONE}</a>
+            <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer" className="hover:text-green-400 flex items-center gap-2"><MessageCircle size={14} /> {PHONE_LOCAL}</a>
+            <a href={`tel:${PHONE}`} className="hover:text-white flex items-center gap-2"><Phone size={14} /> {PHONE_LOCAL}</a>
+            <a href={`tel:${SECONDARY_PHONE}`} className="hover:text-white flex items-center gap-2 pl-5">{SECONDARY_PHONE_LOCAL}</a>
             <a href={FACEBOOK} target="_blank" rel="noopener noreferrer" className="hover:text-blue-400 flex items-center gap-2"><Facebook size={14} /> Belle Kreyashon Hair</a>
           </div>
         </div>

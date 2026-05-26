@@ -1,12 +1,12 @@
 import { MessageCircle, Phone, Facebook, MapPin, ChevronRight, Clock } from 'lucide-react';
 import SEO from '../components/SEO';
-import { PHONE, WHATSAPP, FACEBOOK } from '../data/contact';
+import { PHONE, PHONE_LOCAL, SECONDARY_PHONE, SECONDARY_PHONE_LOCAL, WHATSAPP, FACEBOOK } from '../data/contact';
 
 const CONTACTS = [
   {
     icon: <MessageCircle size={20} />,
     label: 'WhatsApp',
-    value: PHONE,
+    value: PHONE_LOCAL,
     href: `https://wa.me/${WHATSAPP}`,
     iconBg: '#e8f8f0',
     iconColor: '#16a34a',
@@ -14,10 +14,18 @@ const CONTACTS = [
   {
     icon: <Phone size={20} />,
     label: 'Call Us',
-    value: PHONE,
+    value: PHONE_LOCAL,
     href: `tel:${PHONE}`,
     iconBg: '#e8f0fb',
     iconColor: '#2563eb',
+  },
+  {
+    icon: <Phone size={20} />,
+    label: 'Alternate Line',
+    value: SECONDARY_PHONE_LOCAL,
+    href: `tel:${SECONDARY_PHONE}`,
+    iconBg: '#eef2ff',
+    iconColor: '#4338ca',
   },
   {
     icon: <Facebook size={20} />,
@@ -104,7 +112,7 @@ export default function Contact() {
                   <div className="flex-1 min-w-0">
                     <p className={`contact-label-${i} text-xs font-bold uppercase tracking-wider mb-0.5 transition-colors duration-200`}
                       style={{ color: '#999' }}>{c.label}</p>
-                    <p className={`contact-value-${i} text-sm font-bold truncate transition-colors duration-200`}
+                    <p className={`contact-value-${i} text-sm font-bold transition-colors duration-200 break-words`}
                       style={{ color: '#111' }}>{c.value}</p>
                   </div>
                   <ChevronRight size={16} className={`chevron-${i} shrink-0 transition-colors duration-200`} style={{ color: '#ccc' }} />
@@ -122,7 +130,7 @@ export default function Contact() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: '#999' }}>{c.label}</p>
-                  <p className="text-sm font-bold truncate" style={{ color: '#111' }}>{c.value}</p>
+                  <p className="text-sm font-bold break-words" style={{ color: '#111' }}>{c.value}</p>
                 </div>
               </div>
             );

@@ -5,6 +5,7 @@ import { generateInvoice } from '../utils/generateInvoice';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
+import { WHATSAPP } from '../data/contact';
 
 export default function OrderConfirmation() {
   const [state,   setState]   = useState('verifying'); // verifying | success | error
@@ -70,7 +71,7 @@ export default function OrderConfirmation() {
         <AlertCircle size={40} className="mx-auto mb-4 text-yellow-500" />
         <h2 className="font-extrabold text-lg mb-2">Payment Received</h2>
         <p className="text-gray-500 text-sm mb-6">{errMsg || 'Your payment was received. Please contact us to confirm your order.'}</p>
-        <a href={`https://wa.me/233548894600`} target="_blank" rel="noopener noreferrer"
+        <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 w-full py-3 bg-green-500 text-white font-extrabold rounded-2xl hover:bg-green-600 mb-3">
           <MessageCircle size={18} /> Contact Us on WhatsApp
         </a>
