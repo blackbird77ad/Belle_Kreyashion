@@ -20,6 +20,7 @@ const normalizeList = (value) => {
   return [];
 };
 const normalizeStatus = (value, fallback = 'pending') => ['pending', 'generated', 'declined'].includes(value) ? value : fallback;
+const normalizeGenerationMode = (value, fallback = 'manual') => ['manual', 'template'].includes(value) ? value : fallback;
 const parseDate = (value, fallback = null) => {
   if (!value) return fallback;
   const date = new Date(value);
@@ -165,17 +166,29 @@ const resetGrantCertificate = async (digitalAccessId) => {
 const cleanCertificateBody = (body = {}, admin = {}) => {
   const status = normalizeStatus(body.status, 'pending');
   const type = body.type === 'digital_request' ? 'digital_request' : 'manual';
+  const generationMode = normalizeGenerationMode(body.generationMode, 'manual');
+  const explicitGenerationChoice = body.generationChoiceMade;
   const issueDate = parseDate(body.issueDate, status === 'generated' ? new Date() : null);
   const requestedAt = parseDate(body.requestedAt, new Date());
   const signatories = buildSignatories(body.signatories || []);
   const digitalAccess = type === 'digital_request' && body.digitalAccess ? body.digitalAccess : undefined;
   const productId = body.productId || undefined;
+  const templateId = generationMode === 'template' && body.templateId ? body.templateId : undefined;
+  const generationChoiceMade = type === 'manual'
+    ? true
+    : explicitGenerationChoice === undefined
+      ? (status !== 'pending' || generationMode === 'template')
+      : !!explicitGenerationChoice;
 
   return {
     type,
     status,
     digitalAccess,
     productId,
+    generationMode,
+    generationChoiceMade,
+    templateId,
+    templateName: generationMode === 'template' ? normalizeText(body.templateName || '') : '',
     productName: normalizeText(body.productName || ''),
     customerId: normalizeText(body.customerId || ''),
     learnerName: normalizeText(body.learnerName || ''),
@@ -208,6 +221,31 @@ const cleanCertificateBody = (body = {}, admin = {}) => {
   };
 };
 
+const syncCertificateTemplateMeta = async (payload = {}) => {
+  if (payload.generationMode !== 'template' || !payload.templateId) {
+    return {
+      ...payload,
+      generationMode: 'manual',
+      templateId: undefined,
+      templateName: '',
+    };
+  }
+
+  const template = await CertificateTemplate.findById(payload.templateId).select('_id name');
+  if (!template) {
+    const err = new Error('Selected certificate template was not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  return {
+    ...payload,
+    generationMode: 'template',
+    templateId: template._id,
+    templateName: template.name || payload.templateName || '',
+  };
+};
+
 export const getCertificates = async (req, res) => {
   try {
     const { search, status, type } = req.query;
@@ -222,6 +260,7 @@ export const getCertificates = async (req, res) => {
         { learnerPhone: { $regex: search, $options: 'i' } },
         { productName: { $regex: search, $options: 'i' } },
         { certificateTitle: { $regex: search, $options: 'i' } },
+        { templateName: { $regex: search, $options: 'i' } },
         { certificateNumber: { $regex: search, $options: 'i' } },
       ];
     }
@@ -305,6 +344,10 @@ export const bulkGenerateCertificates = async (req, res) => {
     const payloads = learners.map((learner) => ({
       type: 'manual',
       status: 'generated',
+      generationMode: 'template',
+      generationChoiceMade: true,
+      templateId: template._id,
+      templateName: template.name || '',
       productName: req.body.productName ? normalizeText(req.body.productName) : template.productName || '',
       learnerName: learner.learnerName,
       learnerEmail: normalizeEmail(learner.learnerEmail || ''),
@@ -342,12 +385,12 @@ export const bulkGenerateCertificates = async (req, res) => {
 
 export const createCertificate = async (req, res) => {
   try {
-    const payload = cleanCertificateBody(req.body, req.admin || {});
+    const payload = await syncCertificateTemplateMeta(cleanCertificateBody(req.body, req.admin || {}));
     const record = await CertificateRecord.create(payload);
     await syncGrantFromCertificate(record);
     res.status(201).json(record);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(err.statusCode || 400).json({ message: err.message });
   }
 };
 
@@ -357,7 +400,7 @@ export const updateCertificate = async (req, res) => {
     if (!existing) return res.status(404).json({ message: 'Certificate request not found' });
 
     const previousDigitalAccess = existing.digitalAccess ? String(existing.digitalAccess) : '';
-    const payload = cleanCertificateBody(req.body, req.admin || {});
+    const payload = await syncCertificateTemplateMeta(cleanCertificateBody(req.body, req.admin || {}));
     if (req.body.emailStatus === undefined) payload.emailStatus = existing.emailStatus || 'unsent';
     if (req.body.emailSentAt === undefined) payload.emailSentAt = existing.emailSentAt || null;
     if (req.body.emailError === undefined) payload.emailError = existing.emailError || '';
@@ -381,7 +424,7 @@ export const updateCertificate = async (req, res) => {
 
     res.json(next);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(err.statusCode || 400).json({ message: err.message });
   }
 };
 

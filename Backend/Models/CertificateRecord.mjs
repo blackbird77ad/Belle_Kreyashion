@@ -24,6 +24,10 @@ const certificateRecordSchema = new mongoose.Schema({
   requestedAt: { type: Date, default: Date.now },
   requestNotes: { type: String, default: '' },
   completionSnapshot: { type: completionSnapshotSchema, default: () => ({}) },
+  generationMode: { type: String, enum: ['manual', 'template'], default: 'manual' },
+  generationChoiceMade: { type: Boolean, default: false },
+  templateId: { type: mongoose.Schema.Types.ObjectId, ref: 'CertificateTemplate', default: undefined },
+  templateName: { type: String, default: '' },
   certificateNumber: { type: String, unique: true, sparse: true },
   certificateTitle: { type: String, default: '' },
   certificateSubtitle: { type: String, default: '' },
@@ -67,6 +71,7 @@ certificateRecordSchema.pre('validate', function (next) {
   // Manual or bulk certificates should not write null into the unique digitalAccess index.
   if (!this.digitalAccess) this.digitalAccess = undefined;
   if (!this.productId) this.productId = undefined;
+  if (!this.templateId) this.templateId = undefined;
   next();
 });
 

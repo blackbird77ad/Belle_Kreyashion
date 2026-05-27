@@ -49,6 +49,242 @@ const buildMonthBuckets = (months = 6) => {
   return buckets;
 };
 
+const BEST_SELLER_GROUPS = [
+  {
+    key: 'products',
+    label: 'Products',
+    description: 'Physical shop items',
+    unitLabel: 'unit',
+  },
+  {
+    key: 'digital-products',
+    label: 'Digital Products',
+    description: 'Guides, templates, downloads and bundles',
+    unitLabel: 'unit',
+  },
+  {
+    key: 'training',
+    label: 'Training',
+    description: 'Paid training bookings',
+    unitLabel: 'booking',
+  },
+  {
+    key: 'consultations',
+    label: 'Consultations',
+    description: 'Paid consultation bookings',
+    unitLabel: 'booking',
+  },
+  {
+    key: 'delivery-fees',
+    label: 'Delivery Fees',
+    description: 'Delivery zones that generated fee revenue',
+    unitLabel: 'charge',
+  },
+];
+
+const DATE_RANGE_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+const startOfDay = (value) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const endOfDay = (value) => {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date;
+};
+
+const toMonthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const formatDateRangeLabel = (startDate, endDate) => (
+  `${DATE_RANGE_FORMATTER.format(startDate)} - ${DATE_RANGE_FORMATTER.format(endDate)}`
+);
+
+const buildBestSellerMonthlyWindows = (months = 3) => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
+  const windows = [];
+
+  for (let offset = 0; offset < months; offset += 1) {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const startDate = startOfDay(monthDate);
+    const endDate = offset === 0
+      ? endOfDay(now)
+      : endOfDay(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
+
+    windows.push({
+      key: toMonthKey(startDate),
+      label: offset === 0 ? `${formatter.format(startDate)} to date` : formatter.format(startDate),
+      periodLabel: formatDateRangeLabel(startDate, endDate),
+      startDate,
+      endDate,
+    });
+  }
+
+  return windows;
+};
+
+const buildPreviousWeekWindow = () => {
+  const now = new Date();
+  const endDate = endOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  const startDate = startOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7));
+
+  return {
+    key: 'previous-week',
+    label: 'Previous Week',
+    periodLabel: formatDateRangeLabel(startDate, endDate),
+    startDate,
+    endDate,
+  };
+};
+
+const createBestSellerGroups = () => new Map(
+  BEST_SELLER_GROUPS.map((group) => [
+    group.key,
+    {
+      ...group,
+      amount: 0,
+      count: 0,
+      units: 0,
+      topItemsMap: new Map(),
+    },
+  ])
+);
+
+const pushBestSellerEntry = (groupsMap, groupKey, sellerMeta, amount, units = 1) => {
+  const group = groupsMap.get(groupKey);
+  if (!group) return;
+
+  const cleanAmount = Number(amount) || 0;
+  if (cleanAmount <= 0) return;
+  const cleanUnits = Math.max(Number(units) || 0, 1);
+  const itemKey = sellerMeta?.key || sellerMeta?.label || `unknown-${groupKey}`;
+  const itemLabel = sellerMeta?.label || 'Untitled';
+
+  group.amount += cleanAmount;
+  group.count += 1;
+  group.units += cleanUnits;
+
+  const existingItem = group.topItemsMap.get(itemKey) || {
+    key: itemKey,
+    label: itemLabel,
+    amount: 0,
+    count: 0,
+    units: 0,
+  };
+
+  existingItem.amount += cleanAmount;
+  existingItem.count += 1;
+  existingItem.units += cleanUnits;
+  group.topItemsMap.set(itemKey, existingItem);
+};
+
+const finalizeBestSellerGroups = (groupsMap) => BEST_SELLER_GROUPS.map((groupMeta) => {
+  const group = groupsMap.get(groupMeta.key) || {
+    ...groupMeta,
+    amount: 0,
+    count: 0,
+    units: 0,
+    topItemsMap: new Map(),
+  };
+
+  return {
+    key: group.key,
+    label: group.label,
+    description: group.description,
+    unitLabel: group.unitLabel,
+    amount: group.amount,
+    count: group.count,
+    units: group.units,
+    topItems: [...group.topItemsMap.values()]
+      .sort((a, b) => b.amount - a.amount || b.units - a.units || a.label.localeCompare(b.label))
+      .slice(0, 3),
+  };
+});
+
+const isWithinDateRange = (value, startDate, endDate) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date >= startDate && date <= endDate;
+};
+
+const buildBestSellerWindow = (orders, bookings, windowMeta) => {
+  const groupsMap = createBestSellerGroups();
+
+  orders
+    .filter((order) => isWithinDateRange(order.createdAt, windowMeta.startDate, windowMeta.endDate))
+    .forEach((order) => {
+      if (Number(order.deliveryFee) > 0) {
+        const deliveryLabel = order.deliveryZone || (order.fulfillment === 'international' ? 'International Delivery' : 'Delivery Fee');
+        pushBestSellerEntry(
+          groupsMap,
+          'delivery-fees',
+          {
+            key: `delivery:${String(deliveryLabel).toLowerCase()}`,
+            label: deliveryLabel,
+          },
+          order.deliveryFee,
+          1
+        );
+      }
+
+      (order.items || []).forEach((item) => {
+        const qty = Math.max(Number(item.qty) || 0, 1);
+        const lineAmount = (Number(item.price) || 0) * qty;
+        const groupKey = item.isDigital ? 'digital-products' : 'products';
+        const productLabel = [item.name, item.variant].filter(Boolean).join(' - ') || (item.isDigital ? 'Digital product' : 'Product');
+        const productKey = item.productId
+          ? `${groupKey}:${String(item.productId)}:${item.variant || ''}`
+          : `${groupKey}:${productLabel.toLowerCase()}`;
+
+        pushBestSellerEntry(
+          groupsMap,
+          groupKey,
+          { key: productKey, label: productLabel },
+          lineAmount,
+          qty
+        );
+      });
+    });
+
+  bookings
+    .filter((booking) => isWithinDateRange(booking.createdAt, windowMeta.startDate, windowMeta.endDate))
+    .forEach((booking) => {
+      const isTraining = booking.type === 'training';
+      const groupKey = isTraining ? 'training' : 'consultations';
+      const bookingLabel = isTraining
+        ? booking.trainingTitle || 'Training booking'
+        : booking.consultationTitle || 'Consultation booking';
+      const entityId = isTraining ? booking.trainingId : booking.consultationId;
+
+      pushBestSellerEntry(
+        groupsMap,
+        groupKey,
+        {
+          key: entityId ? `${groupKey}:${String(entityId)}` : `${groupKey}:${bookingLabel.toLowerCase()}`,
+          label: bookingLabel,
+        },
+        booking.amount,
+        1
+      );
+    });
+
+  return {
+    key: windowMeta.key,
+    label: windowMeta.label,
+    periodLabel: windowMeta.periodLabel,
+    startDate: windowMeta.startDate,
+    endDate: windowMeta.endDate,
+    groups: finalizeBestSellerGroups(groupsMap),
+  };
+};
+
 const getEntryAttribution = (entry = {}) => entry?.sourceAttribution || null;
 
 const getOrderPrimarySourcePath = (order = {}) => {
@@ -515,6 +751,15 @@ export const getSalesAnalytics = async (req, res) => {
       }))
       .sort((a, b) => b.amount - a.amount);
 
+    const monthlyBestSellerWindows = buildBestSellerMonthlyWindows(3).map((windowMeta) => (
+      buildBestSellerWindow(activeOrders, bookings, windowMeta)
+    ));
+    const previousWeekBestSellers = buildBestSellerWindow(
+      activeOrders,
+      bookings,
+      buildPreviousWeekWindow()
+    );
+
     const recentSales = [
       ...activeOrders.map((order) => ({
         id: order._id,
@@ -571,6 +816,10 @@ export const getSalesAnalytics = async (req, res) => {
       breakdown,
       pageBreakdown,
       campaignBreakdown,
+      bestSellers: {
+        monthly: monthlyBestSellerWindows,
+        previousWeek: previousWeekBestSellers,
+      },
       monthlyRevenue,
       recentSales,
     });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Award,
   BookOpen,
@@ -12,6 +12,7 @@ import {
   Mail,
   Phone,
   PlayCircle,
+  Search,
   ShieldCheck,
   User,
   X,
@@ -19,6 +20,7 @@ import {
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
 import { api } from '../hooks/useApi';
+import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import { generateCertificate } from '../utils/generateCertificate';
 
@@ -74,14 +76,56 @@ const normalizePhone = (raw = '') => {
   return cleaned;
 };
 
+const LIBRARY_FILTERS = [
+  { key: 'all', label: 'All Access' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'trial', label: 'Trial' },
+  { key: 'free', label: 'Free' },
+  { key: 'certified', label: 'Certified' },
+];
+
+const buildSecureViewerUrl = (file, url) => {
+  if (!url) return '';
+  const isPdf = String(file?.mimeType || '').includes('pdf')
+    || String(file?.originalFilename || '').toLowerCase().endsWith('.pdf');
+  return isPdf ? `${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH` : url;
+};
+
+const normalizeSupportWhatsApp = (value = '') => {
+  const cleaned = String(value || '').trim().replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('+')) return cleaned.slice(1);
+  if (cleaned.startsWith('0') && cleaned.length === 10) return `233${cleaned.slice(1)}`;
+  return cleaned;
+};
+
+const buildSupportEmailLink = (email = '', productName = '') => {
+  if (!email) return '';
+  const subject = encodeURIComponent(`Support needed for ${productName || 'digital training'}`);
+  const body = encodeURIComponent(`Hello trainer,\n\nI need help with ${productName || 'my digital training'} inside the Belle Kreyashon web library.\n\nThank you.`);
+  return `mailto:${email}?subject=${subject}&body=${body}`;
+};
+
+const buildSupportWhatsAppLink = (phone = '', productName = '') => {
+  const normalized = normalizeSupportWhatsApp(phone);
+  if (!normalized) return '';
+  const text = encodeURIComponent(`Hello trainer, I need help with ${productName || 'my digital training'} inside the Belle Kreyashon web library.`);
+  return `https://wa.me/${normalized}?text=${text}`;
+};
+
 export default function DigitalLibrary() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { customer } = useCustomer();
+  const { removeOwnedDigitalItems } = useCart();
   const [library, setLibrary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState('');
   const [actioning, setActioning] = useState('');
   const [error, setError] = useState('');
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [search, setSearch] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState('all');
+  const [viewer, setViewer] = useState(null);
   const [certificateTarget, setCertificateTarget] = useState(null);
   const [certificateForm, setCertificateForm] = useState({
     learnerName: '',
@@ -117,6 +161,40 @@ export default function DigitalLibrary() {
     loadLibrary(true);
   }, [loadLibrary]);
 
+  useEffect(() => {
+    const ownedProductIds = library.map((item) => item.productId).filter(Boolean);
+    if (!ownedProductIds.length) return;
+    removeOwnedDigitalItems(ownedProductIds);
+  }, [library]);
+
+  const filteredLibrary = library.filter((item) => {
+    const normalizedSearch = search.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch || [
+      item.productName,
+      item.productDesc,
+      item.seriesTitle,
+      ...(item.files || []).map((file) => `${file.label || ''} ${file.stepTitle || ''} ${file.stepSummary || ''}`),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedSearch);
+
+    const matchesFilter = libraryFilter === 'all'
+      || (libraryFilter === 'paid' && item.digitalAccessKind === 'paid')
+      || (libraryFilter === 'trial' && item.digitalAccessKind === 'trial')
+      || (libraryFilter === 'free' && item.digitalAccessKind === 'free')
+      || (libraryFilter === 'certified' && item.isCertified);
+
+    return matchesSearch && matchesFilter;
+  });
+  const focusedProductId = searchParams.get('product') || '';
+  const visibleLibrary = [...filteredLibrary].sort((a, b) => {
+    const aFocused = focusedProductId && String(a.productId) === focusedProductId ? 1 : 0;
+    const bFocused = focusedProductId && String(b.productId) === focusedProductId ? 1 : 0;
+    return bFocused - aFocused;
+  });
+
   const openAsset = async (grantId, assetId, mode = 'inline') => {
     if (!customer?.accessToken) {
       setShowCustomerModal(true);
@@ -134,7 +212,27 @@ export default function DigitalLibrary() {
         { headers: { 'x-customer-token': customer.accessToken } }
       );
 
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      if (mode === 'inline') {
+        const libraryItem = library.find((item) => item._id === grantId);
+        const file = libraryItem?.files?.find((entry) => entry.assetId === assetId);
+        if (file) {
+          setViewer({
+            grantId,
+            assetId,
+            productName: libraryItem?.productName || 'Digital Product',
+            customerName: libraryItem?.customerName || customer?.name || 'Belle Kreyashon customer',
+            customerEmail: libraryItem?.customerEmail || customer?.email || '',
+            supportEmail: libraryItem?.supportEmail || '',
+            supportWhatsApp: libraryItem?.supportWhatsApp || '',
+            file,
+            url: buildSecureViewerUrl(file, data.url),
+          });
+        } else {
+          window.open(data.url, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
+      }
       window.setTimeout(() => loadLibrary(false), 1200);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not open this file right now.');
@@ -345,13 +443,90 @@ export default function DigitalLibrary() {
 
         {!loading && library.length > 0 && (
           <div className="grid gap-5">
-            {library.map((item) => {
+            {focusedProductId && (
+              <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Focused Library Access</p>
+                    <p className="text-sm font-bold text-emerald-900 mt-1">Your selected product is pinned to the top of the library list below.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams);
+                      next.delete('product');
+                      setSearchParams(next, { replace: true });
+                    }}
+                    className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:border-emerald-400"
+                  >
+                    Clear Focus
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-3xl border border-gray-100 bg-white p-4 sm:p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search products, modules or lessons in your library..."
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] pl-10 pr-4 py-3 text-sm outline-none focus:border-black"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {LIBRARY_FILTERS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setLibraryFilter(option.key)}
+                      className={`rounded-full border px-3 py-2 text-xs font-bold transition-all ${
+                        libraryFilter === option.key
+                          ? 'border-black bg-black text-white'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-black'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                {filteredLibrary.length} of {library.length} product{library.length === 1 ? '' : 's'} shown. Open modules on-site, and only files marked downloadable by admin will show a download action.
+              </p>
+            </div>
+
+            {filteredLibrary.length === 0 && (
+              <div className="bg-white rounded-3xl border border-gray-100 p-10 text-center">
+                <BookOpen size={34} className="mx-auto mb-4 text-gray-300" />
+                <h2 className="text-xl font-extrabold mb-2">No library items match this search</h2>
+                <p className="text-sm text-gray-500 mb-6">
+                  Try a different keyword or switch the library filter to see more of your active digital access.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setLibraryFilter('all'); }}
+                  className="inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-gray-900"
+                >
+                  Clear Search
+                </button>
+              </div>
+            )}
+
+            {visibleLibrary.map((item) => {
               const certificateIssued = item.certificateStatus === 'generated' && (
                 item.certificateIssued || item.certificate?.issued || item.certificate?.emailStatus === 'sent'
               );
+              const isFocusedProduct = focusedProductId && String(item.productId) === focusedProductId;
+              const supportEmailLink = buildSupportEmailLink(item.supportEmail || '', item.productName || '');
+              const supportWhatsAppLink = buildSupportWhatsAppLink(item.supportWhatsApp || '', item.productName || '');
 
               return (
-              <div key={item._id} className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
+              <div key={item._id} className={`bg-white rounded-3xl border overflow-hidden ${
+                isFocusedProduct ? 'border-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.08)]' : 'border-gray-100'
+              }`}>
                 <div className="grid md:grid-cols-[220px_1fr] gap-0">
                   <div className="bg-[#fcfbf7] min-h-[220px]">
                     {item.productImage ? (
@@ -500,6 +675,42 @@ export default function DigitalLibrary() {
                       </div>
                     </div>
 
+                    {(supportEmailLink || supportWhatsAppLink) && (
+                      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 mb-4">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700 mb-1">Learner Support</p>
+                            <p className="text-sm font-extrabold text-blue-950">Need help with this product while learning on the web?</p>
+                            <p className="text-xs text-blue-900/80 leading-relaxed mt-2">
+                              Stay inside your digital library for the lessons, then reach out to the trainer or tutor if you need support with a module, task or question.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {supportEmailLink && (
+                              <a
+                                href={supportEmailLink}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-sm font-extrabold text-white hover:bg-gray-900"
+                              >
+                                <Mail size={15} />
+                                Email Trainer
+                              </a>
+                            )}
+                            {supportWhatsAppLink && (
+                              <a
+                                href={supportWhatsAppLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-900 hover:border-blue-400"
+                              >
+                                <Phone size={15} />
+                                WhatsApp Trainer
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid gap-3">
                       {item.files.map((file) => {
                         const previewKey = `${item._id}-${file.assetId}-inline`;
@@ -534,6 +745,13 @@ export default function DigitalLibrary() {
                                       {formatBytes(file.bytes)}
                                     </span>
                                   )}
+                                  <span className={`rounded-full px-2.5 py-1 border ${
+                                    file.allowDownload
+                                      ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                                      : 'bg-amber-50 border-amber-100 text-amber-700'
+                                  }`}>
+                                    {file.allowDownload ? 'Download allowed' : 'View only'}
+                                  </span>
                                   {file.openedAt && (
                                     <span className="rounded-full bg-blue-50 px-2.5 py-1 border border-blue-100 text-blue-700">
                                       Opened
@@ -558,14 +776,16 @@ export default function DigitalLibrary() {
                                     Open Securely
                                   </button>
                                 )}
-                                <button
-                                  onClick={() => openAsset(item._id, file.assetId, 'download')}
-                                  disabled={opening === downloadKey}
-                                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-60"
-                                >
-                                  {opening === downloadKey ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                                  Download
-                                </button>
+                                {file.allowDownload && (
+                                  <button
+                                    onClick={() => openAsset(item._id, file.assetId, 'download')}
+                                    disabled={opening === downloadKey}
+                                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-60"
+                                  >
+                                    {opening === downloadKey ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                                    Download
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => markModuleComplete(item._id, file.assetId)}
                                   disabled={!file.openedAt || file.isCompleted || actioning === completeKey}
@@ -588,6 +808,126 @@ export default function DigitalLibrary() {
           </div>
         )}
       </div>
+
+      {viewer && (
+        <div
+          className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm p-3 sm:p-5"
+          onClick={() => setViewer(null)}
+        >
+          {(() => {
+            const viewerSupportEmailLink = buildSupportEmailLink(viewer.supportEmail || '', viewer.productName || '');
+            const viewerSupportWhatsAppLink = buildSupportWhatsAppLink(viewer.supportWhatsApp || '', viewer.productName || '');
+            return (
+          <div
+            className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#111111] text-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FDC700]">Secure Viewer</p>
+                <h3 className="mt-1 text-lg font-extrabold">{viewer.productName}</h3>
+                <p className="mt-1 text-xs text-gray-300">
+                  {viewer.file.label || viewer.file.originalFilename} {viewer.file.allowDownload ? 'can be downloaded if needed.' : 'is view-only in this library.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewer(null)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 text-gray-300 hover:border-white hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="relative flex-1 overflow-hidden bg-black">
+              <div className="pointer-events-none absolute inset-0 z-10 opacity-15">
+                <div className="grid h-full grid-cols-2 gap-10 p-8 sm:grid-cols-3">
+                  {Array.from({ length: 12 }).map((_, index) => (
+                    <div key={index} className="rotate-[-24deg] text-[10px] font-bold uppercase tracking-[0.24em] text-white/80 sm:text-xs">
+                      {viewer.customerName} {viewer.customerEmail ? `• ${viewer.customerEmail}` : ''} • Belle Kreyashon
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative z-[1] flex h-full items-center justify-center p-3 sm:p-6">
+                {viewer.file.fileKind === 'image' ? (
+                  <img
+                    src={viewer.url}
+                    alt={viewer.file.label || viewer.file.originalFilename}
+                    className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+                    draggable="false"
+                  />
+                ) : viewer.file.fileKind === 'video' ? (
+                  <video
+                    src={viewer.url}
+                    className="max-h-full w-full rounded-2xl bg-black shadow-2xl"
+                    controls
+                    controlsList="nodownload noremoteplayback"
+                    disablePictureInPicture
+                  />
+                ) : viewer.file.fileKind === 'audio' ? (
+                  <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-white/5 p-6 text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#FDC700] text-black">
+                      <PlayCircle size={26} />
+                    </div>
+                    <p className="text-lg font-extrabold">{viewer.file.label || viewer.file.originalFilename}</p>
+                    <p className="mt-2 text-sm text-gray-300">Audio stays inside your secure library unless download has been enabled.</p>
+                    <audio
+                      src={viewer.url}
+                      className="mt-6 w-full"
+                      controls
+                      controlsList="nodownload noremoteplayback"
+                    />
+                  </div>
+                ) : (
+                  <iframe
+                    src={viewer.url}
+                    title={viewer.file.label || viewer.file.originalFilename}
+                    className="h-full w-full rounded-2xl bg-white"
+                    sandbox="allow-same-origin allow-scripts"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-white/10 bg-black/70 px-4 py-3 sm:px-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-gray-300 leading-relaxed">
+                  Keep learning right here in the web library, and if you need help with this lesson or module, contact your trainer or tutor for support.
+                </p>
+                {(viewerSupportEmailLink || viewerSupportWhatsAppLink) && (
+                  <div className="flex flex-wrap gap-2">
+                    {viewerSupportEmailLink && (
+                      <a
+                        href={viewerSupportEmailLink}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs font-extrabold text-black hover:bg-gray-100"
+                      >
+                        <Mail size={14} />
+                        Email Trainer
+                      </a>
+                    )}
+                    {viewerSupportWhatsAppLink && (
+                      <a
+                        href={viewerSupportWhatsAppLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-transparent px-3 py-2 text-xs font-bold text-white hover:border-white"
+                      >
+                        <Phone size={14} />
+                        WhatsApp Trainer
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+            );
+          })()}
+        </div>
+      )}
 
       {certificateTarget && (
         <div

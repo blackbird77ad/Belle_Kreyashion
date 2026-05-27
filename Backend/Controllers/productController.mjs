@@ -1,3 +1,5 @@
+import jwt from 'jsonwebtoken';
+import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Product from '../Models/Product.mjs';
 import {
   DIGITAL_DURATIONS,
@@ -8,6 +10,7 @@ import {
 } from '../Constants/digitalProductOptions.mjs';
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
+const CUSTOMER_JWT_SECRET = process.env.JWT_SECRET;
 
 const convertDrive = (url) => {
   if (!url) return url;
@@ -73,9 +76,16 @@ const normalizeOptionList = (value, allowed) => (
 const parseQueryList = (value, allowed) => (
   parseStringList(value).filter((item) => allowed.includes(item))
 );
+const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+const normalizePhone = (value = '') => {
+  const cleaned = String(value || '').trim().replace(/[\s\-().]/g, '');
+  if (cleaned.startsWith('233') && !cleaned.startsWith('+')) return `+${cleaned}`;
+  return cleaned;
+};
 
 const roundMoney = (value) => Math.round(Number(value) || 0);
 const stepRank = (file = {}) => (file.stepNumber ?? Number.MAX_SAFE_INTEGER);
+const isPreviewableDigitalFile = (file = {}) => ['document', 'video', 'audio', 'image'].includes(file.fileKind);
 
 const isDiscountLive = (product) => {
   const discount = product?.discount;
@@ -91,6 +101,52 @@ const applyDiscountToAmount = (amount, discount) => {
   if (!discount?.active) return amount;
   if (discount.type === 'percent') return Math.max(0, roundMoney(amount * (1 - discount.value / 100)));
   return Math.max(0, roundMoney(amount - discount.value));
+};
+
+const readOptionalCustomerId = (req) => {
+  const token = req.headers['x-customer-token'];
+  if (!token || !CUSTOMER_JWT_SECRET) return null;
+
+  try {
+    return jwt.verify(token, CUSTOMER_JWT_SECRET)?.customerId || null;
+  } catch {
+    return null;
+  }
+};
+
+const decorateProductsWithAccess = async (req, docs = []) => {
+  const customerId = readOptionalCustomerId(req);
+  const publicProducts = docs.map((doc) => toPublicProduct(doc));
+
+  if (!customerId) {
+    return publicProducts.map((product) => ({
+      ...product,
+      customerHasAccess: false,
+    }));
+  }
+
+  const digitalProductIds = publicProducts
+    .filter((product) => product.isDigital)
+    .map((product) => String(product._id));
+
+  if (!digitalProductIds.length) {
+    return publicProducts.map((product) => ({
+      ...product,
+      customerHasAccess: false,
+    }));
+  }
+
+  const grants = await DigitalAccess.find({
+    customerId,
+    productId: { $in: digitalProductIds },
+    status: 'active',
+  }).select('productId');
+
+  const ownedIds = new Set(grants.map((grant) => String(grant.productId)));
+  return publicProducts.map((product) => ({
+    ...product,
+    customerHasAccess: product.isDigital ? ownedIds.has(String(product._id)) : false,
+  }));
 };
 
 const buildDigitalPricing = (product) => {
@@ -136,6 +192,7 @@ const toPublicProduct = (doc) => {
           stepNumber: file.stepNumber ?? null,
           stepTitle: file.stepTitle || '',
           stepSummary: file.stepSummary || '',
+          allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
         }))
         .sort((a, b) => {
           const aStep = a.stepNumber ?? Number.MAX_SAFE_INTEGER;
@@ -162,7 +219,12 @@ const toPublicProduct = (doc) => {
     product.isCertified = !!product.isCertified;
     product.certificateTitle = product.certificateTitle || product.name || '';
     product.certificateDescription = product.certificateDescription || '';
+    product.supportEmail = normalizeEmail(product.supportEmail || '');
+    product.supportWhatsApp = normalizePhone(product.supportWhatsApp || '');
     product.digitalFileCount = Array.isArray(product.digitalFiles) ? product.digitalFiles.length : 0;
+    product.downloadableDigitalFileCount = Array.isArray(product.digitalFiles)
+      ? product.digitalFiles.filter((file) => !!file.allowDownload || !isPreviewableDigitalFile(file)).length
+      : 0;
     product.hasPreviewableDigitalFiles = Array.isArray(product.digitalFiles)
       ? product.digitalFiles.some((file) => ['document', 'video', 'audio', 'image'].includes(file.fileKind))
       : false;
@@ -196,6 +258,8 @@ const cleanBody = (body) => {
 
   if (b.depositPercent !== undefined) b.depositPercent = b.depositPercent ? Number(b.depositPercent) : null;
   if (b.limitedAccessMonths !== undefined) b.limitedAccessMonths = Number(b.limitedAccessMonths) > 0 ? Number(b.limitedAccessMonths) : 6;
+  if (b.supportEmail !== undefined) b.supportEmail = normalizeEmail(b.supportEmail);
+  if (b.supportWhatsApp !== undefined) b.supportWhatsApp = normalizePhone(b.supportWhatsApp);
   if (b.digitalSkillLevel !== undefined) b.digitalSkillLevel = normalizeSingleOption(b.digitalSkillLevel, DIGITAL_SKILL_LEVELS, 'all-levels');
   if (b.digitalFormat !== undefined) b.digitalFormat = normalizeSingleOption(b.digitalFormat, DIGITAL_FORMATS);
   if (b.digitalDuration !== undefined) b.digitalDuration = normalizeSingleOption(b.digitalDuration, DIGITAL_DURATIONS);
@@ -244,12 +308,15 @@ const cleanBody = (body) => {
     b.isCertified = !!b.isCertified;
     b.certificateTitle = b.isCertified ? (b.certificateTitle || b.name || '') : '';
     b.certificateDescription = b.isCertified ? (b.certificateDescription || '') : '';
+    b.supportEmail = normalizeEmail(b.supportEmail || '');
+    b.supportWhatsApp = normalizePhone(b.supportWhatsApp || '');
     b.digitalFiles = (b.digitalFiles || []).map((file, index) => ({
       ...file,
       label: file.label || file.originalFilename || `Digital File ${index + 1}`,
       stepNumber: file.stepNumber !== '' && file.stepNumber !== undefined && file.stepNumber !== null ? Number(file.stepNumber) : null,
       stepTitle: file.stepTitle || '',
       stepSummary: file.stepSummary || '',
+      allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
     })).sort((a, bFile) => {
       const diff = stepRank(a) - stepRank(bFile);
       if (diff !== 0) return diff;
@@ -276,6 +343,8 @@ const cleanBody = (body) => {
     b.accessMode = 'customer_choice';
     b.limitedAccessMonths = 6;
     b.accessNote = '';
+    b.supportEmail = '';
+    b.supportWhatsApp = '';
     b.digitalFiles = [];
   }
 
@@ -363,7 +432,7 @@ export const getPublicProducts = async (req, res) => {
     if (limit) queryBuilder = queryBuilder.limit(Number(limit));
     const products = await queryBuilder;
 
-    res.json(products.map(toPublicProduct));
+    res.json(await decorateProductsWithAccess(req, products));
   } catch {
     res.status(500).json({ message: 'Server error' });
   }
@@ -396,7 +465,8 @@ export const getPublicProduct = async (req, res) => {
   try {
     const product = await Product.findOne({ _id: req.params.id, available: true });
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    res.json(toPublicProduct(product));
+    const [publicProduct] = await decorateProductsWithAccess(req, [product]);
+    res.json(publicProduct);
   } catch {
     res.status(500).json({ message: 'Server error' });
   }

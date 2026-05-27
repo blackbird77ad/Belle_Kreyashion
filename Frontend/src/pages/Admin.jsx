@@ -49,6 +49,11 @@ const formatAdminDate = (value) => {
 };
 
 const formatMoney = (value = 0) => `GHS ${Number(value || 0).toLocaleString()}`;
+const pluralize = (value, singular, plural = `${singular}s`) => `${value || 0} ${value === 1 ? singular : plural}`;
+const formatCertificateGenerationMode = (value = 'manual', generationChoiceMade = true) => {
+  if (generationChoiceMade === false) return 'Choice needed';
+  return value === 'template' ? 'Saved template' : 'Manual generator';
+};
 
 const isCertificateIssued = (item = {}) => item.emailStatus === 'sent';
 
@@ -67,18 +72,54 @@ const EMPTY_DIGITAL = {
   name:'', desc:'', category:'Digital Products', images:[], retailPrice:'', available:true, featured:false, fastSelling:false,
   hasDiscount:false, discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},
   isDigital:true, digitalType:'mixed', accessNote:'', digitalFiles:[],
+  supportEmail:'', supportWhatsApp:'',
   digitalSkillLevel:'all-levels', digitalFormat:'', digitalDuration:'', digitalTopics:[], digitalInclusions:[],
   digitalAccessKind:'paid', freeTrialDays:'7', isSeries:false, seriesTitle:'', seriesDescription:'',
   isCertified:false, certificateTitle:'', certificateDescription:'',
 };
 const EMPTY_CERT = {
   type:'manual', status:'generated', digitalAccess:'', productId:'', productName:'', customerId:'',
+  generationMode:'manual', generationChoiceMade:true, templateId:'', templateName:'', templatePickerOpen:false, templateCandidateId:'',
   learnerName:'', learnerEmail:'', learnerPhone:'', requestedAt:toDateInput(new Date()), requestNotes:'',
   completionSnapshot:{ totalModules:0, completedModules:0, percent:0 },
   certificateTitle:'', certificateSubtitle:'', certificateBody:'', issueDate:toDateInput(new Date()),
   primaryColor:'#111827', accentColor:'#FDC700', backgroundColor:'#FFFDF7', fontColor:'#374151', fontFamily:'classic_serif', frameStyle:'classic',
   organizerName:'Belle Kreyashon', sponsors:'', signatoryOneName:'', signatoryOneRole:'', signatoryTwoName:'', signatoryTwoRole:'',
   notes:'', emailStatus:'unsent', emailSentAt:'', emailError:'',
+};
+
+const inferCertificateGenerationChoice = (item = {}) => {
+  if (typeof item.generationChoiceMade === 'boolean') return item.generationChoiceMade;
+  if (item.type !== 'digital_request') return true;
+  if (item.status !== 'pending') return true;
+  return !!item.templateId;
+};
+
+const applyCertificateTemplateToForm = (current, template) => {
+  if (!template) return current;
+  const signatories = template.signatories || [];
+
+  return {
+    ...current,
+    generationMode: 'template',
+    templateId: template._id || '',
+    templateName: template.name || '',
+    certificateTitle: template.certificateTitle || current.certificateTitle || current.productName || '',
+    certificateSubtitle: template.certificateSubtitle || current.certificateSubtitle || '',
+    certificateBody: template.certificateBody || current.certificateBody || '',
+    primaryColor: template.primaryColor || current.primaryColor || '#111827',
+    accentColor: template.accentColor || current.accentColor || '#FDC700',
+    backgroundColor: template.backgroundColor || current.backgroundColor || '#FFFDF7',
+    fontColor: template.fontColor || current.fontColor || '#374151',
+    fontFamily: template.fontFamily || current.fontFamily || 'classic_serif',
+    frameStyle: template.frameStyle || current.frameStyle || 'classic',
+    organizerName: template.organizerName || current.organizerName || '',
+    sponsors: Array.isArray(template.sponsors) ? template.sponsors.join(', ') : (current.sponsors || ''),
+    signatoryOneName: signatories[0]?.name || '',
+    signatoryOneRole: signatories[0]?.role || '',
+    signatoryTwoName: signatories[1]?.name || '',
+    signatoryTwoRole: signatories[1]?.role || '',
+  };
 };
 const EMPTY_TRAIN = { title:'',desc:'',date:'',venue:'',price:'',capacity:'',image:'',partners:'',sponsors:'',active:true };
 const EMPTY_ZONE  = { name:'', fee:'' };
@@ -307,6 +348,8 @@ const formatBytes = (bytes = 0) => {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 };
 
+const isPreviewableDigitalFile = (fileKind = 'other') => ['document', 'video', 'audio', 'image'].includes(fileKind);
+
 function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxFiles = 8 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -345,49 +388,65 @@ function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxF
     <div className="sm:col-span-2 space-y-3">
       {files.length > 0 && (
         <div className="space-y-2">
-          {files.map((file, idx) => (
-            <div key={`${file.publicId || file.originalFilename}-${idx}`} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 shrink-0">
-                  {file.fileKind === 'video' ? <Play size={16} /> : <FileText size={16} />}
-                </div>
-                <div className="flex-1 min-w-0 space-y-2">
-                  <input value={file.label || ''} onChange={e => updateLabel(idx, e.target.value)} placeholder="File label" className={inp} />
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    <input
-                      value={file.stepNumber ?? ''}
-                      onChange={e => updateField(idx, 'stepNumber', e.target.value)}
-                      placeholder="Module / day number"
-                      type="number"
-                      className={inp}
-                    />
-                    <input
-                      value={file.stepTitle || ''}
-                      onChange={e => updateField(idx, 'stepTitle', e.target.value)}
-                      placeholder="Module / step title"
-                      className={inp}
-                    />
+          {files.map((file, idx) => {
+            const previewable = isPreviewableDigitalFile(file.fileKind);
+            const allowDownload = !!file.allowDownload || !previewable;
+
+            return (
+              <div key={`${file.publicId || file.originalFilename}-${idx}`} className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 shrink-0">
+                    {file.fileKind === 'video' ? <Play size={16} /> : <FileText size={16} />}
                   </div>
-                  <textarea
-                    value={file.stepSummary || ''}
-                    onChange={e => updateField(idx, 'stepSummary', e.target.value)}
-                    placeholder="What this module covers"
-                    rows={2}
-                    className={inp + ' resize-none'}
-                  />
-                  <div className="flex flex-wrap gap-2 text-xs text-gray-400">
-                    <span>{file.originalFilename || 'Digital file'}</span>
-                    {file.fileKind && <span className="capitalize">{file.fileKind}</span>}
-                    {file.bytes > 0 && <span>{formatBytes(file.bytes)}</span>}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <input value={file.label || ''} onChange={e => updateLabel(idx, e.target.value)} placeholder="File label" className={inp} />
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <input
+                        value={file.stepNumber ?? ''}
+                        onChange={e => updateField(idx, 'stepNumber', e.target.value)}
+                        placeholder="Module / day number"
+                        type="number"
+                        className={inp}
+                      />
+                      <input
+                        value={file.stepTitle || ''}
+                        onChange={e => updateField(idx, 'stepTitle', e.target.value)}
+                        placeholder="Module / step title"
+                        className={inp}
+                      />
+                    </div>
+                    <textarea
+                      value={file.stepSummary || ''}
+                      onChange={e => updateField(idx, 'stepSummary', e.target.value)}
+                      placeholder="What this module covers"
+                      rows={2}
+                      className={inp + ' resize-none'}
+                    />
+                    <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={allowDownload}
+                        onChange={e => updateField(idx, 'allowDownload', e.target.checked)}
+                        disabled={!previewable}
+                        className="w-4 h-4 accent-black"
+                      />
+                      {previewable ? 'Allow learner download' : 'Download required for this file type'}
+                    </label>
+                    <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                      <span>{file.originalFilename || 'Digital file'}</span>
+                      {file.fileKind && <span className="capitalize">{file.fileKind}</span>}
+                      {file.bytes > 0 && <span>{formatBytes(file.bytes)}</span>}
+                      <span>{allowDownload ? 'Download enabled' : 'View only in library'}</span>
+                    </div>
                   </div>
+                  <button type="button" onClick={() => remove(idx)}
+                    className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 shrink-0">
+                    <X size={12} />
+                  </button>
                 </div>
-                <button type="button" onClick={() => remove(idx)}
-                  className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 shrink-0">
-                  <X size={12} />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -769,12 +828,22 @@ export default function Admin() {
         certificateTitle: item.certificateTitle || item.name || '',
         certificateDescription: item.certificateDescription || '',
         accessNote:      item.accessNote || '',
-        digitalFiles:    item.digitalFiles?.length ? item.digitalFiles : [],
+        supportEmail:    item.supportEmail || '',
+        supportWhatsApp: item.supportWhatsApp || '',
+        digitalFiles:    item.digitalFiles?.length ? item.digitalFiles.map(file => ({ ...file, allowDownload: !!file.allowDownload })) : [],
       });
     } else if (tab === 'Certificates') {
       const signatories = item.signatories || [];
+      const generationChoiceMade = inferCertificateGenerationChoice(item);
+      const generationMode = item.generationMode || (item.templateId ? 'template' : 'manual');
       setForm({
         ...item,
+        generationMode,
+        generationChoiceMade,
+        templateId: item.templateId || '',
+        templateName: item.templateName || '',
+        templatePickerOpen: generationMode === 'template',
+        templateCandidateId: item.templateId || '',
         sponsors: item.sponsors?.join(', ') || '',
         requestedAt: toDateInput(item.requestedAt),
         issueDate: toDateInput(item.issueDate || item.generatedAt),
@@ -884,12 +953,15 @@ export default function Admin() {
       certificateTitle: f.isCertified ? (f.certificateTitle || f.name || '') : '',
       certificateDescription: f.isCertified ? (f.certificateDescription || '') : '',
       accessNote:   f.accessNote || '',
+      supportEmail: f.supportEmail || '',
+      supportWhatsApp: f.supportWhatsApp || '',
       digitalFiles: (f.digitalFiles || []).map(file => ({
         ...file,
         label: file.label || file.originalFilename || 'Digital File',
         stepNumber: file.stepNumber !== '' && file.stepNumber !== undefined && file.stepNumber !== null ? Number(file.stepNumber) : null,
         stepTitle: file.stepTitle || '',
         stepSummary: file.stepSummary || '',
+        allowDownload: !!file.allowDownload,
       })),
     };
     if (digitalAccessKind !== 'free' && f.hasDiscount) {
@@ -903,6 +975,10 @@ export default function Admin() {
     status: f.status || 'pending',
     digitalAccess: f.digitalAccess || null,
     productId: f.productId || null,
+    generationMode: f.generationMode === 'template' ? 'template' : 'manual',
+    generationChoiceMade: f.type === 'digital_request' ? !!f.generationChoiceMade : true,
+    templateId: f.generationMode === 'template' ? (f.templateId || null) : null,
+    templateName: f.generationMode === 'template' ? (f.templateName || '') : '',
     productName: f.productName || '',
     customerId: f.customerId || '',
     learnerName: f.learnerName || '',
@@ -980,6 +1056,10 @@ const buildTrainingBody = (f) => ({
     // For Featured, save via products endpoint (they are products with isPartner flag)
     const ep = tab === 'Featured' || tab === 'Digital Products' ? '/api/products' : ENDPOINTS[tab];
     let body = { ...form };
+    if (tab === 'Certificates' && form.generationMode === 'template' && !form.templateId) {
+      alert('Select a saved certificate template first, or switch back to manual generator.');
+      return;
+    }
     if (tab === 'Products')      body = buildProductBody(form);
     if (tab === 'Digital Products') body = buildDigitalBody(form);
     if (tab === 'Certificates')  body = buildCertificateBody(form);
@@ -1011,9 +1091,75 @@ const buildTrainingBody = (f) => ({
 
   const sf  = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const sfd = (key, val) => setForm(f => ({ ...f, discount: { ...f.discount, [key]: val } }));
+  const applySelectedCertificateTemplate = useCallback((templateId, options = {}) => {
+    const template = certificateTemplates.find((entry) => entry._id === templateId);
+    if (!template) return false;
+    setForm((current) => ({
+      ...applyCertificateTemplateToForm(current, template),
+      generationChoiceMade: options.markChosen ?? true,
+      templatePickerOpen: options.keepPickerOpen ?? false,
+      templateCandidateId: template._id || '',
+    }));
+    return true;
+  }, [certificateTemplates]);
+
+  const chooseManualCertificateGenerator = () => {
+    setForm((current) => ({
+      ...current,
+      generationMode: 'manual',
+      generationChoiceMade: true,
+      templateId: '',
+      templateName: '',
+      templatePickerOpen: false,
+      templateCandidateId: '',
+    }));
+  };
+
+  const openCertificateTemplateChooser = () => {
+    setForm((current) => ({
+      ...current,
+      generationMode: 'template',
+      templatePickerOpen: true,
+      templateCandidateId: current.templateCandidateId || current.templateId || certificateTemplates[0]?._id || '',
+    }));
+  };
+
+  const previewSelectedCertificateTemplate = () => {
+    const templateId = form.templateCandidateId || form.templateId;
+    const template = certificateTemplates.find((entry) => entry._id === templateId);
+    if (!template) {
+      alert('Select a saved certificate template first.');
+      return;
+    }
+    const previewForm = {
+      ...applyCertificateTemplateToForm(form, template),
+      generationChoiceMade: true,
+    };
+    generateCertificate(buildCertificateBody(previewForm), { autoPrint: false });
+  };
+
+  const useSelectedCertificateTemplate = () => {
+    const templateId = form.templateCandidateId || form.templateId;
+    if (!templateId) {
+      alert('Select a saved certificate template first.');
+      return;
+    }
+    if (!applySelectedCertificateTemplate(templateId, { markChosen: true, keepPickerOpen: false })) {
+      alert('Selected certificate template was not found.');
+    }
+  };
+
+  const resetCertificateGenerationChoice = () => {
+    setForm((current) => ({
+      ...current,
+      generationChoiceMade: false,
+      templatePickerOpen: false,
+      templateCandidateId: current.templateId || current.templateCandidateId || '',
+    }));
+  };
 
   const saveCertificateTemplate = async () => {
-    const templateName = prompt('Template name for bulk certificates');
+    const templateName = prompt('Template name for future certificate use');
     if (!templateName?.trim()) return;
 
     try {
@@ -1026,9 +1172,9 @@ const buildTrainingBody = (f) => ({
       const { data: templates } = await api.get('/api/certificates/templates', auth);
       setCertificateTemplates(Array.isArray(templates) ? templates : []);
       setBulkTemplateId(current => current || templates?.[0]?._id || '');
-      alert('Bulk template saved');
+      alert('Certificate template saved');
     } catch (e) {
-      alert(e.response?.data?.message || 'Could not save bulk template');
+      alert(e.response?.data?.message || 'Could not save certificate template');
     } finally {
       setCertificateBusy('');
     }
@@ -1179,6 +1325,8 @@ const buildTrainingBody = (f) => ({
   const analyticsPageBreakdown = salesAnalytics?.pageBreakdown || [];
   const analyticsCampaignBreakdown = salesAnalytics?.campaignBreakdown || [];
   const analyticsMonthlyRevenue = salesAnalytics?.monthlyRevenue || [];
+  const analyticsBestSellerMonths = salesAnalytics?.bestSellers?.monthly || [];
+  const analyticsPreviousWeekBestSellers = salesAnalytics?.bestSellers?.previousWeek || null;
   const analyticsRecentSales = salesAnalytics?.recentSales || [];
 
   return (
@@ -1566,6 +1714,14 @@ const buildTrainingBody = (f) => ({
                       <input value={form.certificateDescription||''} onChange={e => sf('certificateDescription',e.target.value)} placeholder="Completion note shown to learners" className={inp} />
                     </>
                   )}
+                  <div>
+                    <input value={form.supportEmail||''} onChange={e => sf('supportEmail',e.target.value)} placeholder="Trainer / tutor support email" className={inp} />
+                    <p className={certHelp}>Learners will see this inside the digital library and secure viewer when they need help with lessons or modules.</p>
+                  </div>
+                  <div>
+                    <input value={form.supportWhatsApp||''} onChange={e => sf('supportWhatsApp',e.target.value)} placeholder="Trainer / tutor WhatsApp (optional)" className={inp} />
+                    <p className={certHelp}>Optional support line for quicker help. Example: `0594038888` or `+233594038888`.</p>
+                  </div>
 
                   <ImageUploader
                     images={form.images || []}
@@ -1582,6 +1738,9 @@ const buildTrainingBody = (f) => ({
                     token={token}
                     maxFiles={8}
                   />
+                  <p className="sm:col-span-2 text-xs text-gray-500 leading-relaxed">
+                    Downloads are off by default. Leave a file as view-only to keep it inside the learner library and only turn downloads on for files you intentionally want customers to keep offline.
+                  </p>
                 </div>
 
                 <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-xl">
@@ -1660,6 +1819,74 @@ const buildTrainingBody = (f) => ({
                     </select>
                     <p className={certHelp}>Use `pending` while reviewing, `generated` when the certificate is ready, and `declined` if it should not be issued.</p>
                   </div>
+
+                  <div>
+                    <select
+                      value={form.generationMode || 'manual'}
+                      onChange={e => {
+                        const nextMode = e.target.value === 'template' ? 'template' : 'manual';
+                        setForm(current => nextMode === 'manual'
+                          ? { ...current, generationMode: 'manual', templateId: '', templateName: '' }
+                          : { ...current, generationMode: 'template' });
+                      }}
+                      className={inp}
+                    >
+                      <option value="manual">Manual generator</option>
+                      <option value="template">Use saved template</option>
+                    </select>
+                    <p className={certHelp}>Choose `manual generator` to design this certificate directly here, or `use saved template` to prefill it from a reusable certificate layout.</p>
+                  </div>
+                  <div>
+                    <select
+                      value={form.templateId || ''}
+                      onChange={e => {
+                        const nextTemplateId = e.target.value;
+                        if (!nextTemplateId) {
+                          setForm(current => ({ ...current, templateId: '', templateName: '' }));
+                          return;
+                        }
+                        applySelectedCertificateTemplate(nextTemplateId);
+                      }}
+                      disabled={(form.generationMode || 'manual') !== 'template'}
+                      className={inp}
+                    >
+                      <option value="">Select saved template</option>
+                      {certificateTemplates.map(template => (
+                        <option key={template._id} value={template._id}>{template.name}</option>
+                      ))}
+                    </select>
+                    <p className={certHelp}>
+                      {(form.generationMode || 'manual') === 'template'
+                        ? 'Selecting a template loads its title, body, colors, frame, issuer and signatories into this request while keeping the learner details.'
+                        : 'Switch to `use saved template` if you want a saved certificate design to fill this request first.'}
+                    </p>
+                  </div>
+
+                  {form.templateId && (form.generationMode || 'manual') === 'template' && (() => {
+                    const selectedTemplate = certificateTemplates.find(template => template._id === form.templateId);
+                    if (!selectedTemplate) return null;
+                    return (
+                      <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-700">Saved Template Selected</p>
+                            <p className="text-sm font-extrabold text-blue-950 mt-1">{selectedTemplate.name}</p>
+                            <p className="text-xs text-blue-900/80 mt-1">
+                              {selectedTemplate.certificateTitle || selectedTemplate.productName || 'Certificate'}
+                              {selectedTemplate.organizerName ? ` • ${selectedTemplate.organizerName}` : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => applySelectedCertificateTemplate(form.templateId)}
+                            className="inline-flex items-center justify-center rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-800 hover:border-blue-400"
+                          >
+                            Re-apply Template
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div>
                     <input value={form.learnerName||''} onChange={e => sf('learnerName',e.target.value)} placeholder="Learner full name *" className={inp} />
@@ -1825,7 +2052,7 @@ const buildTrainingBody = (f) => ({
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-60"
                   >
                     {certificateBusy === 'save-template' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
-                    Save For Bulk
+                    Save As Template
                   </button>
                   {form.status === 'generated' && (
                     <div className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-bold ${
@@ -1879,6 +2106,11 @@ const buildTrainingBody = (f) => ({
                   {form.type === 'digital_request' && form.digitalAccess && (
                     <p className="text-xs text-gray-500 self-center">
                       This request is linked to a learner purchase and will update their library status after you save it.
+                    </p>
+                  )}
+                  {form.generationMode === 'manual' && (
+                    <p className="text-xs text-gray-500 self-center">
+                      Manual generator mode is active. If you like this finished design, save it as a reusable template for later learner requests and bulk generation.
                     </p>
                   )}
                 </div>
@@ -2060,7 +2292,7 @@ const buildTrainingBody = (f) => ({
               <div>
                 <h3 className="font-extrabold">Bulk Certificate Generator</h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  Save a finished certificate design for bulk use, then paste one learner per line using `Full Name, email, phone` or `Full Name | email | phone`.
+                  Save a finished certificate design as a template, then paste one learner per line using `Full Name, email, phone` or `Full Name | email | phone`.
                 </p>
               </div>
               <p className="text-xs text-gray-400">A4 output • reusable templates • email-ready</p>
@@ -2320,6 +2552,98 @@ const buildTrainingBody = (f) => ({
                 </div>
               </div>
             </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Best Sellers By Month</p>
+                  <h3 className="text-lg font-extrabold mt-1">Top earners across the latest monthly windows</h3>
+                </div>
+                <div className="grid gap-3 xl:grid-cols-3">
+                  {analyticsBestSellerMonths.map((window) => (
+                    <div key={window.key} className="rounded-3xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="mb-3">
+                        <p className="text-sm font-extrabold text-black">{window.label}</p>
+                        <p className="text-xs text-gray-500 mt-1">{window.periodLabel}</p>
+                      </div>
+                      <div className="space-y-3">
+                        {(window.groups || []).map((group) => {
+                          const topItem = group.topItems?.[0] || null;
+                          return (
+                            <div key={`${window.key}-${group.key}`} className="rounded-2xl border border-white bg-white px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">{group.label}</p>
+                                  {topItem ? (
+                                    <>
+                                      <p className="mt-1 text-sm font-extrabold text-black line-clamp-1">{topItem.label}</p>
+                                      <p className="mt-1 text-xs text-gray-500">
+                                        {pluralize(topItem.units, group.unitLabel)} / {pluralize(topItem.count, 'sale')}
+                                      </p>
+                                    </>
+                                  ) : (
+                                    <p className="mt-1 text-xs text-gray-500">No paid sales captured in this window.</p>
+                                  )}
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="text-sm font-extrabold text-black">{formatMoney(group.amount)}</p>
+                                  <p className="mt-1 text-xs text-gray-500">{pluralize(group.count, 'sale')}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Previous Week Best Sellers</p>
+                  <h3 className="text-lg font-extrabold mt-1">Top performers for the last completed 7 days</h3>
+                  {analyticsPreviousWeekBestSellers?.periodLabel && (
+                    <p className="text-xs text-gray-500 mt-1">{analyticsPreviousWeekBestSellers.periodLabel}</p>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {(analyticsPreviousWeekBestSellers?.groups || []).map((group) => (
+                    <div key={`previous-week-${group.key}`} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-extrabold text-sm text-black">{group.label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{group.description}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-extrabold text-sm text-black">{formatMoney(group.amount)}</p>
+                          <p className="text-xs text-gray-500">
+                            {pluralize(group.units, group.unitLabel)} / {pluralize(group.count, 'sale')}
+                          </p>
+                        </div>
+                      </div>
+                      {group.topItems?.length ? (
+                        <div className="mt-3 space-y-2">
+                          {group.topItems.map((item, index) => (
+                            <div key={`${group.key}-${item.key}`} className="flex items-start justify-between gap-3 rounded-xl border border-white bg-white px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-black line-clamp-1">{index + 1}. {item.label}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {pluralize(item.units, group.unitLabel)} / {pluralize(item.count, 'sale')}
+                                </p>
+                              </div>
+                              <p className="shrink-0 text-sm font-extrabold text-black">{formatMoney(item.amount)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-gray-500">No paid sales landed in this revenue source during that period.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2412,6 +2736,13 @@ const buildTrainingBody = (f) => ({
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                           {item.type === 'digital_request' ? 'DIGITAL REQUEST' : 'MANUAL'}
                         </span>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                          item.generationMode === 'template'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {formatCertificateGenerationMode(item.generationMode)}
+                        </span>
                         {item.certificateNumber && (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#fcfbf7] text-[#9a7a00] border border-[#FDC700]/30">
                             {item.certificateNumber}
@@ -2441,6 +2772,9 @@ const buildTrainingBody = (f) => ({
                       <p className="text-sm font-bold text-gray-700 mt-2">{item.certificateTitle || item.productName || 'Certificate'}</p>
                       {item.certificateSubtitle && <p className="text-xs text-gray-500 mt-0.5">{item.certificateSubtitle}</p>}
                       {item.productName && <p className="text-xs text-gray-500 mt-2">Programme: {item.productName}</p>}
+                      {item.templateName && (
+                        <p className="text-xs text-gray-500 mt-1">Template: {item.templateName}</p>
+                      )}
                       {item.type === 'digital_request' && (
                         <p className="text-xs text-gray-500 mt-1">
                           Completion: {completion.completedModules || 0}/{completion.totalModules || 0} modules ({completion.percent || 0}%)

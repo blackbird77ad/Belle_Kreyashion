@@ -3,6 +3,7 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import CertificateRecord from '../Models/CertificateRecord.mjs';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
+import Product from '../Models/Product.mjs';
 
 const ACCESS_SECRET = process.env.DIGITAL_ACCESS_SECRET || process.env.JWT_SECRET;
 
@@ -23,7 +24,9 @@ const hashDevice = (req) => hashText([
   req.headers['sec-ch-ua-mobile'] || '',
 ].join('|'));
 
-const isPreviewable = (file) => ['document', 'video', 'audio', 'image'].includes(file.fileKind);
+const PREVIEWABLE_FILE_KINDS = ['document', 'video', 'audio', 'image'];
+const isPreviewable = (file) => PREVIEWABLE_FILE_KINDS.includes(file.fileKind);
+const canDownloadAsset = (file) => !!file?.allowDownload || !isPreviewable(file);
 const isExpired = (grant) => !!grant?.expiresAt && new Date(grant.expiresAt) <= new Date();
 
 const computeProgress = (grant) => {
@@ -119,8 +122,10 @@ const authorizeDevice = async (grant, req) => {
   return { ok: true, deviceHash };
 };
 
-const toLibraryEntry = (grant, certificate = null) => {
+const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
   const certificateIssued = certificate?.emailStatus === 'sent';
+  const supportEmail = normalizeEmail(productMeta?.supportEmail || grant.supportEmail || '');
+  const supportWhatsApp = normalizePhone(productMeta?.supportWhatsApp || grant.supportWhatsApp || '');
 
   return {
     progress: computeProgress(grant),
@@ -133,6 +138,8 @@ const toLibraryEntry = (grant, certificate = null) => {
     productName: grant.productName,
     productImage: grant.productImage,
     productDesc: grant.productDesc,
+    supportEmail,
+    supportWhatsApp,
     digitalType: grant.digitalType,
     digitalAccessKind: grant.digitalAccessKind || 'paid',
     trialStatus: grant.trialStatus || 'none',
@@ -190,6 +197,7 @@ const toLibraryEntry = (grant, certificate = null) => {
       stepSummary: file.stepSummary || '',
       originalFilename: file.originalFilename,
       downloadName: file.downloadName,
+      allowDownload: canDownloadAsset(file),
       fileKind: file.fileKind,
       mimeType: file.mimeType,
       bytes: file.bytes,
@@ -221,8 +229,17 @@ export const getCustomerDigitalLibrary = async (req, res) => {
       status: 'generated',
     });
     const certificatesByGrant = new Map(certificates.map((record) => [String(record.digitalAccess), record]));
+    const productIds = [...new Set(visibleGrants.map((grant) => String(grant.productId || '')).filter(Boolean))];
+    const products = productIds.length
+      ? await Product.find({ _id: { $in: productIds } }).select('supportEmail supportWhatsApp')
+      : [];
+    const productsById = new Map(products.map((product) => [String(product._id), product]));
 
-    res.json(visibleGrants.map((grant) => toLibraryEntry(grant, certificatesByGrant.get(String(grant._id)) || null)));
+    res.json(visibleGrants.map((grant) => toLibraryEntry(
+      grant,
+      certificatesByGrant.get(String(grant._id)) || null,
+      productsById.get(String(grant.productId || '')) || null
+    )));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -249,6 +266,9 @@ export const createDigitalAssetAccessUrl = async (req, res) => {
 
     const asset = (grant.files || []).find((file) => file.assetId === assetId);
     if (!asset) return res.status(404).json({ message: 'File not found' });
+    if (mode === 'download' && !canDownloadAsset(asset)) {
+      return res.status(403).json({ message: 'This file is view-only in your digital library' });
+    }
 
     const token = jwt.sign({
       grantId: String(grant._id),
@@ -430,6 +450,10 @@ export const requestDigitalCertificate = async (req, res) => {
       record = await CertificateRecord.create({
         type: 'digital_request',
         status: 'pending',
+        generationMode: 'manual',
+        generationChoiceMade: false,
+        templateId: undefined,
+        templateName: '',
         digitalAccess: grant._id,
         productId: grant.productId,
         productName: grant.productName,
@@ -445,6 +469,11 @@ export const requestDigitalCertificate = async (req, res) => {
       });
     } else {
       record.status = 'pending';
+      record.generationMode = record.generationMode || 'manual';
+      if (record.generationChoiceMade === undefined) {
+        record.generationChoiceMade = !!record.templateId || record.status !== 'pending';
+      }
+      if (!record.templateId) record.templateName = '';
       record.requestedAt = new Date();
       record.learnerName = learnerName;
       record.learnerEmail = learnerEmail;

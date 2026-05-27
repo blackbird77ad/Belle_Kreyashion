@@ -45,11 +45,13 @@ export default function OrderConfirmation() {
         })
         .catch(() => {
           const ref = JSON.parse(pending || '{}').paymentRef;
+          clearCart();
           setErrMsg(`Payment received. Ref: ${ref}. Contact us to confirm your order.`);
           setState('error');
         });
     } else if (existing) {
       const payload = JSON.parse(existing);
+      clearCart();
       setOrder(payload.order);
       setWaUrl(payload.whatsappUrl);
       setCallUrl(payload.callUrl);

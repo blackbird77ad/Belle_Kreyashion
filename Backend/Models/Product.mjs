@@ -28,6 +28,7 @@ const digitalFileSchema = new mongoose.Schema({
   stepNumber: { type: Number, default: null },
   stepTitle: { type: String, trim: true, default: '' },
   stepSummary: { type: String, trim: true, default: '' },
+  allowDownload: { type: Boolean, default: false },
   secureUrl: { type: String, required: true },
   publicId: { type: String, required: true },
   originalFilename: { type: String, default: '' },
@@ -113,6 +114,8 @@ const productSchema = new mongoose.Schema({
   },
   limitedAccessMonths: { type: Number, default: 6 },
   accessNote: { type: String, default: '' },
+  supportEmail: { type: String, default: '' },
+  supportWhatsApp: { type: String, default: '' },
   digitalFiles: { type: [digitalFileSchema], default: [] },
 }, { timestamps: true });
 
@@ -159,6 +162,8 @@ productSchema.pre('save', function () {
       this.certificateTitle = '';
       this.certificateDescription = '';
     }
+    this.supportEmail = String(this.supportEmail || '').trim().toLowerCase();
+    this.supportWhatsApp = String(this.supportWhatsApp || '').trim();
   } else {
     this.digitalAccessKind = 'paid';
     this.digitalSkillLevel = 'all-levels';
@@ -176,6 +181,8 @@ productSchema.pre('save', function () {
     this.accessMode = 'customer_choice';
     this.limitedAccessMonths = 6;
     this.accessNote = '';
+    this.supportEmail = '';
+    this.supportWhatsApp = '';
     this.digitalFiles = [];
   }
 });

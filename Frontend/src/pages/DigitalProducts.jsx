@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
@@ -13,7 +13,10 @@ import {
   Tag,
   Zap,
 } from 'lucide-react';
+import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
+import { useCart } from '../context/CartContext';
+import { useCustomer } from '../context/CustomerContext';
 import { api } from '../hooks/useApi';
 import {
   DIGITAL_DURATION_OPTIONS,
@@ -87,9 +90,13 @@ const FilterChipGroup = ({ title, options, values, onToggle }) => (
 );
 
 export default function DigitalProducts() {
+  const { customer } = useCustomer();
+  const { removeOwnedDigitalItems } = useCart();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [digitalType, setDigitalType] = useState(searchParams.get('digitalType') || 'all');
   const [skillLevel, setSkillLevel] = useState(searchParams.get('skillLevel') || 'all');
@@ -180,7 +187,9 @@ export default function DigitalProducts() {
     if (minPrice) params.set('minPrice', minPrice);
     if (maxPrice) params.set('maxPrice', maxPrice);
 
-    api.get(`/api/products/public?${params.toString()}`)
+    api.get(`/api/products/public?${params.toString()}`, customer?.accessToken
+      ? { headers: { 'x-customer-token': customer.accessToken } }
+      : undefined)
       .then((response) => {
         setProducts(response.data || []);
         setLoading(false);
@@ -199,7 +208,17 @@ export default function DigitalProducts() {
     sort,
     special,
     topics,
+    customer?.accessToken,
   ]);
+
+  useEffect(() => {
+    const ownedProductIds = products
+      .filter((product) => product?.isDigital && product?.customerHasAccess && product?._id)
+      .map((product) => product._id);
+
+    if (!ownedProductIds.length) return;
+    removeOwnedDigitalItems(ownedProductIds);
+  }, [products]);
 
   const clearAll = () => {
     setSearch('');
@@ -239,7 +258,7 @@ export default function DigitalProducts() {
     <div className="pt-16 min-h-screen bg-[#fcfbf7]">
       <SEO
         title="Digital Products"
-        description="Browse Belle Kreyashon digital products with filters for skill level, format, duration, topic, inclusions, pricing and secure downloadable access."
+        description="Browse Belle Kreyashon digital products with filters for skill level, format, duration, topic, inclusions, pricing and secure library access."
         url="/digital-products"
       />
 
@@ -247,9 +266,9 @@ export default function DigitalProducts() {
         <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
           <div>
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[0.22em] mb-3">Digital Products</p>
-            <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">Protected downloads with clear filters for how people actually learn.</h1>
+            <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">Protected learning access with clear filters for how people actually learn.</h1>
             <p className="text-sm md:text-base text-gray-300 leading-relaxed max-w-2xl mt-4">
-              Browse by skill level, format, duration, topic, certification, downloadable assets and pricing, then open the product page for secure access after payment.
+              Browse by skill level, format, duration, topic, certification, downloadable assets and pricing, then open the product page for secure library access after payment.
             </p>
             <div className="flex flex-wrap gap-3 mt-6">
               <Link
@@ -270,7 +289,7 @@ export default function DigitalProducts() {
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             {[
               { icon: <ShieldCheck size={18} />, title: 'Protected access', text: 'Paid items unlock inside your customer library after payment.' },
-              { icon: <Download size={18} />, title: 'Formats that fit', text: 'Filter for videos, tutorials, audio, bundles and other learning formats.' },
+              { icon: <Download size={18} />, title: 'View-first delivery', text: 'Downloads can be disabled so learners stay inside your on-site library experience.' },
               { icon: <Lock size={18} />, title: 'Customer-only use', text: 'Access stays tied to the paying customer instead of being openly exposed.' },
             ].map((item) => (
               <div key={item.title} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
@@ -286,6 +305,50 @@ export default function DigitalProducts() {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="mb-6 rounded-3xl border border-gray-200 bg-white p-4 sm:p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">
+                {customer?.accessToken ? 'Customer Session Active' : 'Check Your Access'}
+              </p>
+              <h2 className="text-lg font-extrabold text-black mt-1">
+                {customer?.accessToken
+                  ? `Signed in${customer?.name ? ` as ${customer.name}` : ''}`
+                  : 'Sign in to see which digital products you already own'}
+              </h2>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-2xl">
+                {customer?.accessToken
+                  ? 'Products you already paid for will show a clear access state here and can be opened from your digital library.'
+                  : 'Use your customer details to reconnect, confirm your existing digital access, and move straight into your library without guessing what you already bought.'}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {customer?.accessToken ? (
+                <Link
+                  to="/digital-library"
+                  className="inline-flex items-center justify-center rounded-2xl bg-black px-5 py-3 text-sm font-extrabold text-white hover:bg-gray-900"
+                >
+                  Open My Library
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomerModal(true)}
+                  className="inline-flex items-center justify-center rounded-2xl bg-black px-5 py-3 text-sm font-extrabold text-white hover:bg-gray-900"
+                >
+                  Sign In As Customer
+                </button>
+              )}
+              <Link
+                to="/orders"
+                className="inline-flex items-center justify-center rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+              >
+                View Orders
+              </Link>
+            </div>
+          </div>
+        </div>
+
         <div className="mb-6 space-y-4">
           <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
             <div className="relative flex-1">
@@ -547,13 +610,20 @@ export default function DigitalProducts() {
                 const finalPrice = calcDiscountedPrice(product);
                 const isFreeDigital = product.digitalAccessKind === 'free';
                 const isTrialDigital = product.digitalAccessKind === 'trial';
+                const customerHasAccess = !!product.customerHasAccess;
 
                 return (
                   <Link
                     key={product._id}
                     to={`/shop/${product._id}`}
+                    onClick={(event) => {
+                      if (customerHasAccess) {
+                        event.preventDefault();
+                        navigate(`/digital-library?product=${product._id}`);
+                      }
+                    }}
                     className={`group overflow-hidden rounded-3xl border-2 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
-                      discounted ? 'border-[#FDC700]' : 'border-gray-100'
+                      customerHasAccess ? 'border-emerald-300' : discounted ? 'border-[#FDC700]' : 'border-gray-100'
                     }`}
                   >
                     <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#f7f0d7] via-white to-gray-100">
@@ -584,6 +654,11 @@ export default function DigitalProducts() {
                             Certified
                           </span>
                         )}
+                        {customerHasAccess && (
+                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 border border-emerald-100">
+                            You have access
+                          </span>
+                        )}
                         {discounted && (
                           <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2.5 py-1 text-[11px] font-extrabold text-black">
                             Sale
@@ -599,7 +674,7 @@ export default function DigitalProducts() {
                     <div className="p-4">
                       <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 mb-2">
                         <ShieldCheck size={13} className="text-[#B88900]" />
-                        Secure digital access
+                        {customerHasAccess ? 'Library access ready' : 'Secure digital access'}
                       </div>
 
                       <h2 className="text-lg font-extrabold leading-tight mb-2 line-clamp-2">{product.name}</h2>
@@ -634,6 +709,14 @@ export default function DigitalProducts() {
                         </div>
                       )}
 
+                      {product.digitalFileCount > 0 && (
+                        <p className="mt-3 text-xs text-gray-500">
+                          {product.downloadableDigitalFileCount > 0
+                            ? `${product.downloadableDigitalFileCount} file${product.downloadableDigitalFileCount === 1 ? '' : 's'} can be downloaded after access. Other files stay view-only in the library.`
+                            : 'Files stay view-only inside the digital library unless the admin allows download.'}
+                        </p>
+                      )}
+
                       <div className="mt-4 flex items-end justify-between gap-3">
                         <div>
                           <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400 mb-1">Price</p>
@@ -655,8 +738,12 @@ export default function DigitalProducts() {
                             </div>
                           )}
                         </div>
-                        <span className="inline-flex items-center gap-2 rounded-full bg-black px-4 py-2 text-xs font-extrabold text-white transition-colors group-hover:bg-[#1f1f1f]">
-                          Open Product
+                        <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-extrabold transition-colors ${
+                          customerHasAccess
+                            ? 'bg-emerald-600 text-white group-hover:bg-emerald-700'
+                            : 'bg-black text-white group-hover:bg-[#1f1f1f]'
+                        }`}>
+                          {customerHasAccess ? 'Open In Library' : 'Open Product'}
                           <ArrowRight size={14} />
                         </span>
                       </div>
@@ -711,6 +798,13 @@ export default function DigitalProducts() {
           </>
         )}
       </div>
+
+      {showCustomerModal && (
+        <CustomerModal
+          onClose={() => setShowCustomerModal(false)}
+          onSuccess={() => setShowCustomerModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,16 +1,38 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Minus, Plus, ChevronLeft, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Minus, Plus, ChevronLeft, ShieldCheck, Mail, Phone } from 'lucide-react';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
 
+const normalizeSupportWhatsApp = (value = '') => {
+  const cleaned = String(value || '').trim().replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('+')) return cleaned.slice(1);
+  if (cleaned.startsWith('0') && cleaned.length === 10) return `233${cleaned.slice(1)}`;
+  return cleaned;
+};
+
+const buildSupportEmailLink = (email = '', productName = '') => {
+  if (!email) return '';
+  const subject = encodeURIComponent(`Support needed for ${productName || 'digital training'}`);
+  const body = encodeURIComponent(`Hello trainer,\n\nI need help with ${productName || 'my digital training'} inside the Belle Kreyashon web library.\n\nThank you.`);
+  return `mailto:${email}?subject=${subject}&body=${body}`;
+};
+
+const buildSupportWhatsAppLink = (phone = '', productName = '') => {
+  const normalized = normalizeSupportWhatsApp(phone);
+  if (!normalized) return '';
+  const text = encodeURIComponent(`Hello trainer, I need help with ${productName || 'my digital training'} inside the Belle Kreyashon web library.`);
+  return `https://wa.me/${normalized}?text=${text}`;
+};
+
 export default function Product() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { cart, addToCart } = useCart();
+  const { cart, addToCart, removeOwnedDigitalItems } = useCart();
   const { customer } = useCustomer();
   const [product,   setProduct]   = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -23,15 +45,22 @@ export default function Product() {
   const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
 
   useEffect(() => {
-    api.get(`/api/products/public/${id}`)
+    api.get(`/api/products/public/${id}`, customer?.accessToken
+      ? { headers: { 'x-customer-token': customer.accessToken } }
+      : undefined)
       .then(r => { setProduct(r.data); setLoading(false); })
       .catch(() => { setLoading(false); navigate('/shop'); });
-  }, [id, navigate]);
+  }, [id, navigate, customer?.accessToken]);
 
   useEffect(() => {
     setAdded(false);
     setShowCheckoutPrompt(false);
   }, [id]);
+
+  useEffect(() => {
+    if (!product?._id || !product?.isDigital || !product?.customerHasAccess) return;
+    removeOwnedDigitalItems([product._id]);
+  }, [product?._id, product?.isDigital, product?.customerHasAccess]);
 
   const isDigital = !!product?.isDigital;
   const digitalAccessKind = product?.digitalAccessKind || 'paid';
@@ -40,6 +69,11 @@ export default function Product() {
   const isCertifiedDigital = isDigital && !!product?.isCertified;
   const freeTrialDays = product?.freeTrialDays || 7;
   const digitalOutline = product?.digitalOutline || [];
+  const customerHasAccess = !!product?.customerHasAccess;
+  const supportEmail = product?.supportEmail || '';
+  const supportWhatsApp = product?.supportWhatsApp || '';
+  const supportEmailLink = buildSupportEmailLink(supportEmail, product?.name || '');
+  const supportWhatsAppLink = buildSupportWhatsAppLink(supportWhatsApp, product?.name || '');
   const isWholesale = tab === 'wholesale';
   const retailPrice  = product?.retailPrice;
   const discountActive = !isWholesale && product?.discount?.active;
@@ -64,6 +98,11 @@ export default function Product() {
   };
 
   const handleAddToCart = () => {
+    if (isDigital && customerHasAccess) {
+      navigate(`/digital-library?product=${product._id}`);
+      return;
+    }
+
     if (isDigitalAlreadyInCart) {
       navigate('/shop/checkout');
       return;
@@ -184,6 +223,13 @@ export default function Product() {
                         Includes {product.digitalFileCount} secure file{product.digitalFileCount !== 1 ? 's' : ''}
                       </p>
                     )}
+                    {product.digitalFileCount > 0 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        {product.downloadableDigitalFileCount > 0
+                          ? `${product.downloadableDigitalFileCount} file${product.downloadableDigitalFileCount === 1 ? '' : 's'} can be downloaded if allowed. The rest stay view-only inside your library.`
+                          : 'Files stay view-only inside your digital library unless download is explicitly allowed.'}
+                      </p>
+                    )}
                     {isCertifiedDigital && (
                       <p className="text-xs font-bold text-amber-700 mt-2">
                         Certificate available after all modules are completed and the learner requests it.
@@ -202,6 +248,53 @@ export default function Product() {
                       Browse more digital products
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {isDigital && customerHasAccess && (
+              <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                <p className="text-sm font-extrabold text-emerald-800">You already have access to this digital product.</p>
+                <p className="text-xs text-emerald-900/80 leading-relaxed mt-1">
+                  Open your digital library to continue learning on-site, revisit your modules, and track certificate progress.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/digital-library?product=${product._id}`)}
+                  className="mt-3 inline-flex items-center justify-center rounded-2xl bg-black px-4 py-2.5 text-sm font-extrabold text-white hover:bg-gray-900"
+                >
+                  Open In My Library
+                </button>
+              </div>
+            )}
+
+            {isDigital && customerHasAccess && (supportEmail || supportWhatsApp) && (
+              <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4">
+                <p className="text-sm font-extrabold text-blue-900">Need help while learning?</p>
+                <p className="text-xs text-blue-900/80 leading-relaxed mt-1">
+                  Stay inside the web library for your lessons, and contact your trainer or tutor directly if you need support with any module.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {supportEmailLink && (
+                    <a
+                      href={supportEmailLink}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-sm font-extrabold text-white hover:bg-gray-900"
+                    >
+                      <Mail size={15} />
+                      Email Trainer
+                    </a>
+                  )}
+                  {supportWhatsAppLink && (
+                    <a
+                      href={supportWhatsAppLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-900 hover:border-blue-400"
+                    >
+                      <Phone size={15} />
+                      WhatsApp Trainer
+                    </a>
+                  )}
                 </div>
               </div>
             )}
@@ -291,6 +384,8 @@ export default function Product() {
                 <ShoppingBag size={18} />
                 {added
                   ? 'Added to Cart!'
+                  : customerHasAccess
+                    ? 'Open In My Library'
                   : isDigitalAlreadyInCart
                     ? 'Go Straight To Checkout'
                     : isFreeDigital

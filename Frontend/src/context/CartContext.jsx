@@ -4,6 +4,14 @@ import { useCustomer } from './CustomerContext';
 import { getAttributionSnapshot } from '../utils/attribution';
 
 const CartContext = createContext();
+const readStoredCart = () => {
+  try {
+    const saved = localStorage.getItem('bk_cart');
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
 
 const calculateCheckoutPrice = (product, isWholesale = false) => {
   const base = isWholesale ? product.wholesalePrice : product.retailPrice;
@@ -20,12 +28,7 @@ const calculateCheckoutPrice = (product, isWholesale = false) => {
 };
 
 export function CartProvider({ children }) {
-  const [cart, setCart] = useState(() => {
-    try {
-      const saved = localStorage.getItem('bk_cart');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  const [cart, setCart] = useState(() => readStoredCart());
   const { customer } = useCustomer();
   const timerRef = useRef(null);
 
@@ -34,6 +37,17 @@ export function CartProvider({ children }) {
     try { localStorage.setItem('bk_cart', JSON.stringify(cart)); }
     catch {}
   }, [cart]);
+
+  // Keep cart state in sync across open tabs/windows.
+  useEffect(() => {
+    const syncStoredCart = (event) => {
+      if (event.key !== null && event.key !== 'bk_cart') return;
+      setCart(readStoredCart());
+    };
+
+    window.addEventListener('storage', syncStoredCart);
+    return () => window.removeEventListener('storage', syncStoredCart);
+  }, []);
 
   // Save abandoned cart 30 seconds after cart changes (if customer is known)
   useEffect(() => {
@@ -94,13 +108,23 @@ export function CartProvider({ children }) {
   };
 
   const removeFromCart = (key) => setCart(prev => prev.filter(i => i.key !== key));
+  const removeOwnedDigitalItems = (ownedProductIds = []) => {
+    const ownedIds = new Set(
+      ownedProductIds
+        .map((productId) => String(productId || '').trim())
+        .filter(Boolean)
+    );
+    if (!ownedIds.size) return;
+
+    setCart((prev) => prev.filter((item) => !item.isDigital || !ownedIds.has(String(item.productId))));
+  };
   const clearCart = () => { setCart([]); try { localStorage.removeItem('bk_cart'); } catch {} };
 
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
   const subtotal  = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, updateQty, removeFromCart, clearCart, cartCount, subtotal }}>
+    <CartContext.Provider value={{ cart, addToCart, updateQty, removeFromCart, removeOwnedDigitalItems, clearCart, cartCount, subtotal }}>
       {children}
     </CartContext.Provider>
   );

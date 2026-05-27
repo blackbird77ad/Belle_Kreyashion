@@ -7,6 +7,7 @@ const PAYSTACK_KEY = process.env.PAYSTACK_SECRET_KEY;
 const DEFAULT_DEVICE_LIMIT = 2;
 const DEFAULT_TRIAL_DAYS = 7;
 const TRIAL_WORKER_INTERVAL_MS = Number(process.env.DIGITAL_TRIAL_WORKER_INTERVAL_MS) || (60 * 60 * 1000);
+const PREVIEWABLE_FILE_KINDS = new Set(['document', 'video', 'audio', 'image']);
 
 let workerStarted = false;
 let workerRunning = false;
@@ -24,6 +25,7 @@ const snapshotFiles = (product) => [...(product.digitalFiles || [])]
   stepNumber: file.stepNumber ?? null,
   stepTitle: file.stepTitle || '',
   stepSummary: file.stepSummary || '',
+  allowDownload: !!file.allowDownload || !PREVIEWABLE_FILE_KINDS.has(file.fileKind || 'other'),
   secureUrl: file.secureUrl,
   originalFilename: file.originalFilename || '',
   downloadName: file.downloadName || file.originalFilename || 'download',
@@ -136,6 +138,8 @@ export const grantDigitalAccessForOrder = async (order, context = {}) => {
         productName: product.name,
         productImage: product.images?.[0] || '',
         productDesc: product.desc || '',
+        supportEmail: product.supportEmail || '',
+        supportWhatsApp: product.supportWhatsApp || '',
         digitalType: product.digitalType || 'other',
         digitalAccessKind,
         trialStatus: digitalAccessKind === 'trial' ? 'trialing' : 'none',
