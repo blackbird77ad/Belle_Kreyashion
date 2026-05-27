@@ -7,6 +7,7 @@ import { useCustomer } from '../context/CustomerContext';
 const links = [
   { to: '/',         label: 'Home' },
   { to: '/shop',     label: 'Shop' },
+  { to: '/digital-products', label: 'Digital' },
   { to: '/services', label: 'Services' },
   { to: '/blog',     label: 'Blog' },
   { to: '/about',    label: 'About' },
@@ -45,12 +46,22 @@ export default function Navbar({ onCartOpen }) {
           {/* Desktop links */}
           <div className="hidden md:flex items-center gap-1">
             {links.map(l => {
-              const isActive = pathname === l.to;
+              const isActive =
+                pathname === l.to ||
+                (l.to === '/shop' && pathname.startsWith('/shop')) ||
+                (l.to === '/digital-products' && (pathname === '/digital-products' || pathname === '/digital-library'));
               const isShop   = l.to === '/shop';
+              const isDigital = l.to === '/digital-products';
               if (isShop) return (
                 <Link key={l.to} to={l.to}
                   className="px-4 py-2 rounded-xl bg-[#FDC700] text-black text-sm font-extrabold hover:bg-yellow-300 transition-all">
                   Shop
+                </Link>
+              );
+              if (isDigital) return (
+                <Link key={l.to} to={l.to}
+                  className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border ${isActive ? 'border-[#FDC700] bg-[#FDC700] text-black' : 'border-[#FDC700]/40 text-[#FDC700] hover:border-[#FDC700] hover:bg-white/5'}`}>
+                  Digital
                 </Link>
               );
               return (
@@ -131,13 +142,19 @@ export default function Navbar({ onCartOpen }) {
           <div className="md:hidden border-t" style={{ borderColor: '#1a1a1a', background: '#000' }}>
             <div className="px-3 py-3 flex flex-col gap-0.5">
               {links.map(l => {
-                const isActive = pathname === l.to;
+                const isActive =
+                  pathname === l.to ||
+                  (l.to === '/shop' && pathname.startsWith('/shop')) ||
+                  (l.to === '/digital-products' && (pathname === '/digital-products' || pathname === '/digital-library'));
                 const isShop   = l.to === '/shop';
+                const isDigital = l.to === '/digital-products';
                 return (
                   <Link key={l.to} to={l.to} onClick={() => setOpen(false)}
                     className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
                       isShop
                         ? 'bg-[#FDC700] text-black font-extrabold my-1'
+                        : isDigital
+                          ? 'border border-[#FDC700]/40 text-[#FDC700] my-1'
                         : isActive
                           ? 'text-[#FDC700] bg-white/5'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'

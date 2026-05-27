@@ -9,6 +9,7 @@ export const CATEGORIES = [
   { label: 'Beauty & Skincare',   value: 'Beauty & Skincare',   image: '/shop-category/anua-beauty.jpg' },
   { label: 'Health & Wellness',   value: 'Health & Wellness',   image: '/shop-category/lip-scrub.jpg' },
   { label: 'Fashion',             value: 'Fashion',             image: '/shop-category/bridal-robe-fashion.avif' },
+  { label: 'Digital Products',    value: 'Digital Products',    image: null },
 ];
 
 export const CATEGORY_VALUES = CATEGORIES.map(c => c.value);

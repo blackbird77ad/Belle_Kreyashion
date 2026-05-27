@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
+
 const customerSchema = new mongoose.Schema({
   customerId: { type: String, unique: true },
-  name:       { type: String, required: true, trim: true },
-  phone:      { type: String, required: true, unique: true, trim: true },
+  name: { type: String, required: true, trim: true },
+  phone: { type: String, required: true, unique: true, trim: true },
+  email: { type: String, unique: true, sparse: true, trim: true, lowercase: true, default: null },
+  paystackCustomerCode: { type: String, default: '' },
 }, { timestamps: true });
 
 customerSchema.pre('save', async function () {

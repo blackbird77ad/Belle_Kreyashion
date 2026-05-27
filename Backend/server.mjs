@@ -11,6 +11,8 @@ import deliveryRoutes     from './Routes/delivery.mjs';
 import consultationRoutes from './Routes/consultation.mjs';
 import blogRoutes         from './Routes/blog.mjs';
 import featuredRoutes     from './Routes/featured.mjs';
+import certificateRoutes  from './Routes/certificates.mjs';
+import { startDigitalTrialBillingWorker } from './Services/digitalAccessService.mjs';
 
 await connectDB();
 
@@ -42,6 +44,8 @@ app.use('/api/delivery',     deliveryRoutes);
 app.use('/api/consultation', consultationRoutes);
 app.use('/api/blog',         blogRoutes);
 app.use('/api/featured',     featuredRoutes);
+app.use('/api/certificates', certificateRoutes);
 
 const PORT = process.env.PORT || 8002;
+startDigitalTrialBillingWorker();
 app.listen(PORT, () => console.log(`Belle Kreyashon API running on port ${PORT}`));

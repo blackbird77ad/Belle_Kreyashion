@@ -26,6 +26,8 @@ const ProductCard = ({ product, onPartnerClick }) => {
   const discounted = product.discount?.active;
   const finalPrice = calcDiscountedPrice(product);
   const isPartner = product.isPartner;
+  const isFreeDigital = product.isDigital && product.digitalAccessKind === 'free';
+  const isTrialDigital = product.isDigital && product.digitalAccessKind === 'trial';
 
   const lastUpdated = isPartner && product.updatedAt
     ? new Date(product.updatedAt).toLocaleString('en-GB', {
@@ -84,8 +86,19 @@ const ProductCard = ({ product, onPartnerClick }) => {
         <p className="text-xs text-gray-400 mb-0.5">{product.category}</p>
         <h3 className="font-extrabold text-sm leading-tight line-clamp-2 mb-1">{product.name}</h3>
         <div className="flex items-center gap-2">
-          <p className="font-extrabold text-base">GHS {finalPrice?.toLocaleString()}</p>
-          {discounted && <p className="text-xs text-gray-400 line-through">GHS {product.retailPrice?.toLocaleString()}</p>}
+          {isFreeDigital ? (
+            <p className="font-extrabold text-base text-emerald-600">Free</p>
+          ) : isTrialDigital ? (
+            <div>
+              <p className="font-extrabold text-sm">{product.freeTrialDays || 7}-day free trial</p>
+              <p className="text-xs text-gray-400">Then GHS {finalPrice?.toLocaleString()}</p>
+            </div>
+          ) : (
+            <>
+              <p className="font-extrabold text-base">GHS {finalPrice?.toLocaleString()}</p>
+              {discounted && <p className="text-xs text-gray-400 line-through">GHS {product.retailPrice?.toLocaleString()}</p>}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -132,6 +145,8 @@ export default function Home() {
   const heroProducts = latestProducts || [];
   const activeHero = heroProducts[heroIndex] || null;
   const activeHeroPrice = activeHero ? calcDiscountedPrice(activeHero) : null;
+  const activeHeroIsFreeDigital = !!(activeHero?.isDigital && activeHero?.digitalAccessKind === 'free');
+  const activeHeroIsTrialDigital = !!(activeHero?.isDigital && activeHero?.digitalAccessKind === 'trial');
 
   useEffect(() => {
     if (heroProducts.length <= 1) return undefined;
@@ -266,9 +281,18 @@ export default function Home() {
                         <div className="space-y-1">
                           <div className="flex items-end gap-2">
                             <span className="text-lg sm:text-[1.35rem] font-extrabold text-black">
-                              GHS {activeHeroPrice?.toLocaleString()}
+                              {activeHeroIsFreeDigital
+                                ? 'Free'
+                                : activeHeroIsTrialDigital
+                                  ? `${activeHero.freeTrialDays || 7}-day free trial`
+                                  : `GHS ${activeHeroPrice?.toLocaleString()}`}
                             </span>
-                            {activeHero.discount?.active && (
+                            {activeHeroIsTrialDigital && (
+                              <span className="text-xs text-gray-400 mb-0.5">
+                                Then GHS {activeHeroPrice?.toLocaleString()}
+                              </span>
+                            )}
+                            {activeHero.discount?.active && !activeHeroIsTrialDigital && !activeHeroIsFreeDigital && (
                               <span className="text-xs text-gray-400 line-through mb-0.5">
                                 GHS {activeHero.retailPrice?.toLocaleString()}
                               </span>
@@ -339,6 +363,49 @@ export default function Home() {
               {b.icon} {b.text}
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="px-4 py-8 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="rounded-[28px] bg-black text-white overflow-hidden border border-black/5">
+            <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-0">
+              <div className="p-6 sm:p-8">
+                <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[0.22em] mb-3">Digital Access</p>
+                <h2 className="text-2xl md:text-3xl font-extrabold leading-tight mb-3">Prefer guides, videos, templates or downloadable bundles?</h2>
+                <p className="text-sm text-gray-300 leading-relaxed max-w-2xl mb-5">
+                  Browse digital products directly from their own page, then return to your secure library after payment whenever you need your files.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    to="/digital-products"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#FDC700] text-black text-sm font-extrabold hover:bg-yellow-300"
+                  >
+                    Explore Digital Products
+                    <ArrowRight size={16} />
+                  </Link>
+                  <Link
+                    to="/digital-library"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/15 text-sm font-bold text-white hover:border-white"
+                  >
+                    Open My Library
+                  </Link>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-[#1b1b1b] to-black p-6 sm:p-8 grid gap-3">
+                {[
+                  'Secure customer-only access after payment',
+                  'Perfect for PDFs, videos, audio, templates and mixed bundles',
+                  'Easy to find without searching through the full store first',
+                ].map((item) => (
+                  <div key={item} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-gray-200">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -52,18 +52,33 @@ export default function CartDrawer({ open, onClose }) {
                         <div className="font-extrabold text-sm leading-tight truncate">{item.name}</div>
                         {item.variant && <div className="text-xs text-gray-400">{item.variant}</div>}
                         {item.isWholesale && <div className="text-xs text-[#FDC700] font-bold">Wholesale</div>}
-                        <div className="text-sm font-bold mt-1">GHS {(item.price * item.qty).toLocaleString()}</div>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <button onClick={() => updateQty(item.key, item.qty - 1)}
-                            className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center hover:border-black transition-all">
-                            <Minus size={10} />
-                          </button>
-                          <span className="font-extrabold text-sm">{item.qty}</span>
-                          <button onClick={() => updateQty(item.key, item.qty + 1)}
-                            className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center hover:border-black transition-all">
-                            <Plus size={10} />
-                          </button>
+                        <div className="text-sm font-bold mt-1">
+                          {item.isDigital && item.digitalAccessKind === 'free'
+                            ? 'Free'
+                            : item.isDigital && item.digitalAccessKind === 'trial'
+                              ? `${item.freeTrialDays || 7}-day trial`
+                              : `GHS ${(item.price * item.qty).toLocaleString()}`}
                         </div>
+                        {item.isDigital && item.digitalAccessKind === 'trial' && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            Then GHS {Number(item.trialChargeAmount || 0).toLocaleString()} will be billed if the trial continues.
+                          </div>
+                        )}
+                        {item.isDigital ? (
+                          <div className="text-xs text-gray-400 mt-1.5">1 secure access per customer</div>
+                        ) : (
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <button onClick={() => updateQty(item.key, item.qty - 1)}
+                              className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center hover:border-black transition-all">
+                              <Minus size={10} />
+                            </button>
+                            <span className="font-extrabold text-sm">{item.qty}</span>
+                            <button onClick={() => updateQty(item.key, item.qty + 1)}
+                              className="w-6 h-6 rounded-full border border-gray-300 flex items-center justify-center hover:border-black transition-all">
+                              <Plus size={10} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <button onClick={() => removeFromCart(item.key)}
                         className="text-gray-300 hover:text-red-500 transition-colors shrink-0">

@@ -4,6 +4,20 @@ import { useCustomer } from './CustomerContext';
 
 const CartContext = createContext();
 
+const calculateCheckoutPrice = (product, isWholesale = false) => {
+  const base = isWholesale ? product.wholesalePrice : product.retailPrice;
+  if (!isWholesale && product.discount?.active) {
+    const now = new Date();
+    const notExpired = !product.discount.endDate || new Date(product.discount.endDate) >= now;
+    const notExhausted = !product.discount.limitCustomers || (product.discount.usedCount || 0) < product.discount.limitCustomers;
+    if (notExpired && notExhausted) {
+      if (product.discount.type === 'percent') return Math.round(base * (1 - product.discount.value / 100));
+      return Math.max(0, base - product.discount.value);
+    }
+  }
+  return base;
+};
+
 export function CartProvider({ children }) {
   const [cart, setCart] = useState(() => {
     try {
@@ -37,35 +51,35 @@ export function CartProvider({ children }) {
   }, [cart, customer]);
 
   const addToCart = (product, qty = 1, isWholesale = false, variant = null) => {
-    const key = `${product._id}-${isWholesale}-${variant}`;
+    const key = product.isDigital ? `digital-${product._id}` : `${product._id}-${isWholesale}-${variant}`;
     setCart(prev => {
       const existing = prev.find(i => i.key === key);
       const currentQty = existing ? existing.qty : 0;
-      // Cap total qty at stock limit
-      const maxAllowed = product.stock !== null ? product.stock : Infinity;
-      const addQty = Math.min(qty, maxAllowed - currentQty);
+      const requestedQty = product.isDigital ? 1 : qty;
+      const maxAllowed = product.isDigital ? 1 : (product.stock !== null ? product.stock : Infinity);
+      const addQty = Math.min(requestedQty, maxAllowed - currentQty);
       if (addQty <= 0) return prev; // already at max
       if (existing) return prev.map(i => i.key === key ? { ...i, qty: i.qty + addQty } : i);
+      const digitalAccessKind = product.isDigital ? (product.digitalAccessKind || 'paid') : null;
+      const checkoutPrice = calculateCheckoutPrice(product, isWholesale);
+      const priceNow = product.isDigital && digitalAccessKind !== 'paid' ? 0 : checkoutPrice;
+      const trialChargeAmount = product.isDigital && digitalAccessKind === 'trial' ? checkoutPrice : null;
       return [...prev, {
         key,
         productId: product._id,
         name:      product.name,
         image:     product.images?.[0] || '',
-        price: (() => {
-          const base = isWholesale ? product.wholesalePrice : product.retailPrice;
-          if (!isWholesale && product.discount?.active) {
-            const now = new Date();
-            const notExpired = !product.discount.endDate || new Date(product.discount.endDate) >= now;
-            const notExhausted = !product.discount.limitCustomers || (product.discount.usedCount || 0) < product.discount.limitCustomers;
-            if (notExpired && notExhausted) {
-              if (product.discount.type === 'percent') return Math.round(base * (1 - product.discount.value / 100));
-              return Math.max(0, base - product.discount.value);
-            }
-          }
-          return base;
-        })(),
-        qty,
+        price: priceNow,
+        qty: product.isDigital ? 1 : qty,
         isWholesale,
+        isDigital: !!product.isDigital,
+        digitalAccessKind,
+        freeTrialDays: product.isDigital && digitalAccessKind === 'trial' ? (product.freeTrialDays || 7) : 0,
+        trialChargeAmount,
+        digitalType: product.digitalType || '',
+        isSeries: !!product.isSeries,
+        seriesTitle: product.seriesTitle || '',
+        seriesDescription: product.seriesDescription || '',
         variant,
       }];
     });

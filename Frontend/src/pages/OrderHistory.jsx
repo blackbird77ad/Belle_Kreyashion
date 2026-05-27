@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Phone, Package, Truck, CheckCircle, Clock, XCircle, ChevronDown, ChevronUp, Calendar, Download } from 'lucide-react';
 import { generateInvoice } from '../utils/generateInvoice';
 import { api } from '../hooks/useApi';
@@ -168,6 +169,16 @@ export default function OrderHistory() {
             </button>
           </div>
           {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+          {customer?.accessToken && (
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <Link
+                to="/digital-library"
+                className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-black text-white text-sm font-bold hover:bg-gray-900"
+              >
+                Open Digital Library
+              </Link>
+            </div>
+          )}
         </div>
 
         {hasData && (

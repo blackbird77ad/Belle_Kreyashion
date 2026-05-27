@@ -1,0 +1,122 @@
+import mongoose from 'mongoose';
+
+const accessFileSchema = new mongoose.Schema({
+  assetId: { type: String, required: true },
+  label: { type: String, default: '' },
+  stepNumber: { type: Number, default: null },
+  stepTitle: { type: String, default: '' },
+  stepSummary: { type: String, default: '' },
+  secureUrl: { type: String, required: true },
+  originalFilename: { type: String, default: '' },
+  downloadName: { type: String, default: '' },
+  mimeType: { type: String, default: '' },
+  resourceType: { type: String, enum: ['image', 'video', 'raw'], default: 'raw' },
+  fileKind: {
+    type: String,
+    enum: ['document', 'video', 'audio', 'archive', 'image', 'other'],
+    default: 'other',
+  },
+  bytes: { type: Number, default: 0 },
+}, { _id: false });
+
+const accessLogSchema = new mongoose.Schema({
+  assetId: { type: String, required: true },
+  mode: { type: String, enum: ['inline', 'download'], default: 'inline' },
+  deviceHash: { type: String, default: '' },
+  userAgentHash: { type: String, default: '' },
+  openedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const approvedDeviceSchema = new mongoose.Schema({
+  deviceHash: { type: String, required: true },
+  label: { type: String, default: '' },
+  firstSeenAt: { type: Date, default: Date.now },
+  lastSeenAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const moduleProgressSchema = new mongoose.Schema({
+  assetId: { type: String, required: true },
+  label: { type: String, default: '' },
+  stepNumber: { type: Number, default: null },
+  openedAt: { type: Date, default: null },
+  completedAt: { type: Date, default: null },
+}, { _id: false });
+
+const billingAuthorizationSchema = new mongoose.Schema({
+  authorizationCode: { type: String, default: '' },
+  signature: { type: String, default: '' },
+  reusable: { type: Boolean, default: false },
+  last4: { type: String, default: '' },
+  bin: { type: String, default: '' },
+  bank: { type: String, default: '' },
+  brand: { type: String, default: '' },
+  cardType: { type: String, default: '' },
+  expMonth: { type: String, default: '' },
+  expYear: { type: String, default: '' },
+  email: { type: String, default: '' },
+  customerCode: { type: String, default: '' },
+  setupReference: { type: String, default: '' },
+  setupChargedAmount: { type: Number, default: 0 },
+}, { _id: false });
+
+const billingEventSchema = new mongoose.Schema({
+  reference: { type: String, default: '' },
+  amount: { type: Number, default: 0 },
+  status: { type: String, enum: ['trial-started', 'charged', 'failed'], default: 'trial-started' },
+  message: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const digitalAccessSchema = new mongoose.Schema({
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+  orderId: { type: String, required: true },
+  paymentRef: { type: String, default: '' },
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  productName: { type: String, required: true },
+  productImage: { type: String, default: '' },
+  productDesc: { type: String, default: '' },
+  digitalType: { type: String, default: 'other' },
+  accessType: { type: String, enum: ['limited', 'lifetime'], default: 'limited' },
+  accessMonths: { type: Number, default: null },
+  expiresAt: { type: Date, default: null },
+  customerId: { type: String, default: '' },
+  customerPhone: { type: String, default: '' },
+  customerEmail: { type: String, default: '' },
+  customerName: { type: String, default: '' },
+  quantity: { type: Number, default: 1 },
+  status: { type: String, enum: ['active', 'expired', 'revoked'], default: 'active' },
+  digitalAccessKind: { type: String, enum: ['paid', 'free', 'trial'], default: 'paid' },
+  trialStatus: { type: String, enum: ['none', 'trialing', 'converted', 'payment-failed'], default: 'none' },
+  trialEndsAt: { type: Date, default: null },
+  trialConvertedAt: { type: Date, default: null },
+  billingAmount: { type: Number, default: 0 },
+  billingCurrency: { type: String, default: 'GHS' },
+  billingAuthorization: { type: billingAuthorizationSchema, default: null },
+  lastChargeReference: { type: String, default: '' },
+  lastChargeError: { type: String, default: '' },
+  lastChargeAttemptAt: { type: Date, default: null },
+  chargeAttempts: { type: Number, default: 0 },
+  billingEvents: { type: [billingEventSchema], default: [] },
+  isSeries: { type: Boolean, default: false },
+  seriesTitle: { type: String, default: '' },
+  seriesDescription: { type: String, default: '' },
+  isCertified: { type: Boolean, default: false },
+  certificateTitle: { type: String, default: '' },
+  certificateDescription: { type: String, default: '' },
+  certificateStatus: { type: String, enum: ['not-applicable', 'in-progress', 'eligible', 'requested', 'generated', 'declined'], default: 'not-applicable' },
+  certificateRequestedAt: { type: Date, default: null },
+  certificateGeneratedAt: { type: Date, default: null },
+  certificateRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'CertificateRecord', default: null },
+  files: { type: [accessFileSchema], default: [] },
+  moduleProgress: { type: [moduleProgressSchema], default: [] },
+  maxDevices: { type: Number, default: 2 },
+  approvedDevices: { type: [approvedDeviceSchema], default: [] },
+  totalDownloads: { type: Number, default: 0 },
+  lastAccessedAt: { type: Date, default: null },
+  accessLogs: { type: [accessLogSchema], default: [] },
+}, { timestamps: true });
+
+digitalAccessSchema.index({ order: 1, productId: 1 }, { unique: true });
+digitalAccessSchema.index({ customerId: 1, status: 1, createdAt: -1 });
+
+export default mongoose.model('DigitalAccess', digitalAccessSchema);

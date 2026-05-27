@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Phone } from 'lucide-react';
+import { X, User, Phone, Mail } from 'lucide-react';
 import { api } from '../hooks/useApi';
 import { useCustomer } from '../context/CustomerContext';
 
@@ -56,9 +56,17 @@ function normalisePhone(raw) {
   return cleaned;
 }
 
+function validateEmail(raw) {
+  const cleaned = raw.trim().toLowerCase();
+  if (!cleaned) return 'Please enter your email address';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)) return 'Please enter a valid email address';
+  return null;
+}
+
 export default function CustomerModal({ onClose, onSuccess }) {
   const [isReturning, setIsReturning] = useState(false);
   const [name,    setName]    = useState('');
+  const [email,   setEmail]   = useState('');
   const [phone,   setPhone]   = useState('');
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -67,6 +75,13 @@ export default function CustomerModal({ onClose, onSuccess }) {
   const submit = async () => {
     setError('');
     if (!isReturning && !name.trim()) return setError('Please enter your name');
+    if (!isReturning) {
+      const emailErr = validateEmail(email);
+      if (emailErr) return setError(emailErr);
+    } else if (email.trim()) {
+      const emailErr = validateEmail(email);
+      if (emailErr) return setError(emailErr);
+    }
 
     const phoneErr = validatePhone(phone.trim());
     if (phoneErr) return setError(phoneErr);
@@ -76,10 +91,14 @@ export default function CustomerModal({ onClose, onSuccess }) {
     setLoading(true);
     try {
       const { data } = await api.post('/api/customers/identify', {
-        name:  isReturning ? normalisedPhone : name.trim(),
+        name:  name.trim(),
         phone: normalisedPhone,
+        email: email.trim().toLowerCase(),
       });
-      setCustomer(data.customer);
+      setCustomer({
+        ...data.customer,
+        accessToken: data.customerToken,
+      });
       onClose();
       onSuccess?.();
     } catch (err) {
@@ -102,7 +121,7 @@ export default function CustomerModal({ onClose, onSuccess }) {
         <div className="flex justify-between items-start mb-5">
           <div>
             <h2 className="font-extrabold text-lg">Almost there!</h2>
-            <p className="text-gray-400 text-sm mt-0.5">Quick detail so we can process your order</p>
+            <p className="text-gray-400 text-sm mt-0.5">Quick details so we can process your order and protect your purchases</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-all">
             <X size={16} />
@@ -129,6 +148,15 @@ export default function CustomerModal({ onClose, onSuccess }) {
                 className="w-full pl-9 pr-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all" />
             </div>
           )}
+          <div className="relative">
+            <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder={isReturning ? 'Email address (optional but recommended)' : 'Email address'}
+              inputMode="email"
+              className="w-full pl-9 pr-4 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all" />
+          </div>
           <div className="relative">
             <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input

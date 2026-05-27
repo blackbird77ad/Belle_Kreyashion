@@ -19,10 +19,12 @@ export default function Footer() {
           <div className="font-bold text-sm mb-3 text-[#FDC700] uppercase tracking-wider">Shop</div>
           <div className="flex flex-col gap-2 text-sm text-gray-400">
             <Link to="/shop" className="hover:text-white">All Products</Link>
+            <Link to="/digital-products" className="hover:text-white">Digital Products</Link>
             <Link to="/shop?category=Hair+Extensions" className="hover:text-white">Hair Extensions</Link>
             <Link to="/shop?category=Wigs" className="hover:text-white">Wigs</Link>
             <Link to="/shop?category=Beauty+%26+Skincare" className="hover:text-white">Beauty & Skincare</Link>
             <Link to="/orders" className="hover:text-white">My Orders</Link>
+            <Link to="/digital-library" className="hover:text-white">My Digital Library</Link>
           </div>
         </div>
         <div>

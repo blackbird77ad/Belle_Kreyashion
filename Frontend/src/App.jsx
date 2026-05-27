@@ -11,6 +11,7 @@ import Home from './pages/Home';
 
 // Everything else loads only when the customer navigates to it
 const Shop             = lazy(() => import('./pages/Shop'));
+const DigitalProducts  = lazy(() => import('./pages/DigitalProducts'));
 const Product          = lazy(() => import('./pages/Product'));
 const Checkout         = lazy(() => import('./pages/Checkout'));
 const Services         = lazy(() => import('./pages/Services'));
@@ -20,6 +21,7 @@ const About            = lazy(() => import('./pages/About'));
 const Contact          = lazy(() => import('./pages/Contact'));
 const OrderConfirmation= lazy(() => import('./pages/OrderConfirmation'));
 const OrderHistory     = lazy(() => import('./pages/OrderHistory'));
+const DigitalLibrary   = lazy(() => import('./pages/DigitalLibrary'));
 const Admin            = lazy(() => import('./pages/Admin'));
 
 // Simple loading spinner shown while a page is being loaded
@@ -51,6 +53,7 @@ function Layout() {
           <Routes>
             <Route path="/"                element={<Home />} />
             <Route path="/shop"            element={<Shop />} />
+            <Route path="/digital-products" element={<DigitalProducts />} />
             <Route path="/shop/checkout"   element={<Checkout />} />
             <Route path="/shop/:id"        element={<Product />} />
             <Route path="/services"        element={<Services />} />
@@ -60,6 +63,7 @@ function Layout() {
             <Route path="/contact"         element={<Contact />} />
             <Route path="/order-confirmed" element={<OrderConfirmation />} />
             <Route path="/orders"          element={<OrderHistory />} />
+            <Route path="/digital-library" element={<DigitalLibrary />} />
             <Route path="/admin"           element={<Admin />} />
           </Routes>
         </Suspense>

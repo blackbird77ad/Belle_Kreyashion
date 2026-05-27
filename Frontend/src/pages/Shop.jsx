@@ -342,6 +342,8 @@ export default function Shop() {
                   const discounted = product.discount?.active;
                   const finalPrice = calcDiscountedPrice(product);
                   const outOfStock = product.stock === 0;
+                  const isFreeDigital = product.isDigital && product.digitalAccessKind === 'free';
+                  const isTrialDigital = product.isDigital && product.digitalAccessKind === 'trial';
                   return (
                     <motion.div
                       key={product._id}
@@ -373,6 +375,11 @@ export default function Shop() {
                               Pre-Order
                             </span>
                           )}
+                          {product.isDigital && (
+                            <span className="absolute top-2 right-2 bg-black/85 text-[#FDC700] text-[11px] font-extrabold px-2.5 py-1 rounded-full">
+                              Digital
+                            </span>
+                          )}
                           {product.stock !== null && product.stock > 0 && product.stock <= 5 && (
                             <span className="absolute bottom-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                               Only {product.stock} left
@@ -387,7 +394,14 @@ export default function Shop() {
                         <div className={`p-3 ${discounted ? 'bg-yellow-50/30' : ''}`}>
                           <p className="text-xs text-gray-400 mb-0.5">{product.category}</p>
                           <h3 className="font-extrabold text-sm leading-tight line-clamp-2 mb-1">{product.name}</h3>
-                          {discounted ? (
+                          {isFreeDigital ? (
+                            <p className="font-extrabold text-base text-emerald-600">Free</p>
+                          ) : isTrialDigital ? (
+                            <div className="space-y-0.5">
+                              <p className="font-extrabold text-base text-black">{product.freeTrialDays || 7}-day free trial</p>
+                              <p className="text-xs text-gray-400">Then GHS {finalPrice?.toLocaleString()}</p>
+                            </div>
+                          ) : discounted ? (
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-extrabold text-base text-black">GHS {finalPrice?.toLocaleString()}</p>
                               <p className="text-xs text-gray-400 line-through">GHS {product.retailPrice?.toLocaleString()}</p>
@@ -398,7 +412,13 @@ export default function Shop() {
                           ) : (
                             <p className="font-extrabold text-base">GHS {product.retailPrice?.toLocaleString()}</p>
                           )}
-                          {product.stock !== null && <p className="text-xs text-gray-400 mt-0.5">{outOfStock ? 'Out of stock' : `${product.stock} in stock`}</p>}
+                          {product.isDigital ? (
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {isFreeDigital ? 'Secure access with no payment' : isTrialDigital ? 'Card setup required before trial starts' : 'Secure access after payment'}
+                            </p>
+                          ) : (
+                            product.stock !== null && <p className="text-xs text-gray-400 mt-0.5">{outOfStock ? 'Out of stock' : `${product.stock} in stock`}</p>
+                          )}
                           {product.wholesalePrice && <p className="text-xs text-[#FDC700] font-bold mt-0.5">Wholesale available</p>}
                         </div>
                       </Link>
