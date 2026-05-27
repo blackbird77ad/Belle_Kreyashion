@@ -6,6 +6,7 @@ import { WHATSAPP } from '../data/contact';
 import CustomerModal from '../components/CustomerModal';
 import { useCustomer } from '../context/CustomerContext';
 import SEO from '../components/SEO';
+import { getAttributionSnapshot } from '../utils/attribution';
 
 const WHATSAPP_NUM = WHATSAPP;
 
@@ -175,6 +176,7 @@ function TrainingModal({ event, onClose }) {
   const pay = () => {
     if (!name.trim() || !phone.trim()) return alert('Please enter your name and phone number');
     setLoading(true);
+    const sourceAttribution = getAttributionSnapshot();
     payWithPaystack({
       amount: event.price,
       name, phone,
@@ -188,6 +190,7 @@ function TrainingModal({ event, onClose }) {
             trainingTitle: event.title,
             customer: { name, phone },
             amount: event.price,
+            sourceAttribution,
           },
         }).then(res => {
           setLoading(false);
@@ -253,6 +256,7 @@ function ConsultationModal({ consultation, onClose }) {
   const pay = () => {
     if (!name.trim() || !phone.trim()) return alert('Please enter your name and phone number');
     setLoading(true);
+    const sourceAttribution = getAttributionSnapshot();
     payWithPaystack({
       amount: consultation.price,
       name, phone,
@@ -267,6 +271,7 @@ function ConsultationModal({ consultation, onClose }) {
             customer: { name, phone },
             amount: consultation.price,
             notes,
+            sourceAttribution,
           },
         }).then(res => {
           setLoading(false);

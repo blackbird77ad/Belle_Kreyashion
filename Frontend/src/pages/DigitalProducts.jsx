@@ -15,6 +15,16 @@ import {
 } from 'lucide-react';
 import SEO from '../components/SEO';
 import { api } from '../hooks/useApi';
+import {
+  DIGITAL_DURATION_OPTIONS,
+  DIGITAL_FORMAT_OPTIONS,
+  DIGITAL_INCLUSION_OPTIONS,
+  DIGITAL_PRICE_TYPE_OPTIONS,
+  DIGITAL_SKILL_LEVEL_OPTIONS,
+  DIGITAL_TOPIC_OPTIONS,
+  DIGITAL_TYPE_OPTIONS,
+  getDigitalOptionLabel,
+} from '../data/digitalProductOptions';
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest First' },
@@ -23,17 +33,6 @@ const SORT_OPTIONS = [
   { value: 'priceDesc', label: 'Price: High to Low' },
   { value: 'nameAsc', label: 'Name: A to Z' },
   { value: 'nameDesc', label: 'Name: Z to A' },
-];
-
-const DIGITAL_TYPE_OPTIONS = [
-  { value: 'all', label: 'All Types' },
-  { value: 'document', label: 'Documents' },
-  { value: 'video', label: 'Videos' },
-  { value: 'audio', label: 'Audio' },
-  { value: 'template', label: 'Templates' },
-  { value: 'bundle', label: 'Bundles' },
-  { value: 'mixed', label: 'Mixed Packs' },
-  { value: 'other', label: 'Other' },
 ];
 
 const SPECIAL_FILTERS = [
@@ -53,12 +52,52 @@ const formatType = (value) => {
   return value.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+const parseListParam = (value) => (value ? value.split(',').filter(Boolean) : []);
+const joinListParam = (values) => values.filter(Boolean).join(',');
+
+const toggleListValue = (values, nextValue) => (
+  values.includes(nextValue)
+    ? values.filter((value) => value !== nextValue)
+    : [...values, nextValue]
+);
+
+const FilterChipGroup = ({ title, options, values, onToggle }) => (
+  <div className="space-y-3">
+    <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">{title}</p>
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => {
+        const active = values.includes(option.value);
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onToggle(option.value)}
+            className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-all ${
+              active
+                ? 'border-black bg-black text-white'
+                : 'border-gray-200 bg-white text-gray-600 hover:border-black'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
+
 export default function DigitalProducts() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [digitalType, setDigitalType] = useState(searchParams.get('digitalType') || 'all');
+  const [skillLevel, setSkillLevel] = useState(searchParams.get('skillLevel') || 'all');
+  const [formatFilter, setFormatFilter] = useState(searchParams.get('format') || 'all');
+  const [durationFilter, setDurationFilter] = useState(searchParams.get('duration') || 'all');
+  const [priceType, setPriceType] = useState(searchParams.get('priceType') || 'all');
+  const [topics, setTopics] = useState(parseListParam(searchParams.get('topics')));
+  const [inclusions, setInclusions] = useState(parseListParam(searchParams.get('inclusions')));
   const [sort, setSort] = useState(searchParams.get('sort') || 'newest');
   const [special, setSpecial] = useState(searchParams.get('filter') || '');
   const [minPrice, setMinPrice] = useState(searchParams.get('minPrice') || '');
@@ -70,6 +109,12 @@ export default function DigitalProducts() {
   useEffect(() => {
     setSearch(searchParams.get('search') || '');
     setDigitalType(searchParams.get('digitalType') || 'all');
+    setSkillLevel(searchParams.get('skillLevel') || 'all');
+    setFormatFilter(searchParams.get('format') || 'all');
+    setDurationFilter(searchParams.get('duration') || 'all');
+    setPriceType(searchParams.get('priceType') || 'all');
+    setTopics(parseListParam(searchParams.get('topics')));
+    setInclusions(parseListParam(searchParams.get('inclusions')));
     setSort(searchParams.get('sort') || 'newest');
     setSpecial(searchParams.get('filter') || '');
     setMinPrice(searchParams.get('minPrice') || '');
@@ -80,6 +125,12 @@ export default function DigitalProducts() {
     const params = new URLSearchParams();
     if (search.trim()) params.set('search', search.trim());
     if (digitalType !== 'all') params.set('digitalType', digitalType);
+    if (skillLevel !== 'all') params.set('skillLevel', skillLevel);
+    if (formatFilter !== 'all') params.set('format', formatFilter);
+    if (durationFilter !== 'all') params.set('duration', durationFilter);
+    if (priceType !== 'all') params.set('priceType', priceType);
+    if (topics.length) params.set('topics', joinListParam(topics));
+    if (inclusions.length) params.set('inclusions', joinListParam(inclusions));
     if (sort !== 'newest') params.set('sort', sort);
     if (special) params.set('filter', special);
     if (minPrice) params.set('minPrice', minPrice);
@@ -88,7 +139,22 @@ export default function DigitalProducts() {
     if (nextString !== searchParams.toString()) {
       setSearchParams(params, { replace: true });
     }
-  }, [digitalType, maxPrice, minPrice, search, searchParams, setSearchParams, sort, special]);
+  }, [
+    digitalType,
+    durationFilter,
+    formatFilter,
+    inclusions,
+    maxPrice,
+    minPrice,
+    priceType,
+    search,
+    searchParams,
+    setSearchParams,
+    skillLevel,
+    sort,
+    special,
+    topics,
+  ]);
 
   useEffect(() => {
     setLoading(true);
@@ -101,6 +167,12 @@ export default function DigitalProducts() {
 
     if (search.trim()) params.set('search', search.trim());
     if (digitalType !== 'all') params.set('digitalType', digitalType);
+    if (skillLevel !== 'all') params.set('digitalSkillLevel', skillLevel);
+    if (formatFilter !== 'all') params.set('digitalFormat', formatFilter);
+    if (durationFilter !== 'all') params.set('digitalDuration', durationFilter);
+    if (priceType !== 'all') params.set('priceType', priceType);
+    if (topics.length) params.set('digitalTopics', joinListParam(topics));
+    if (inclusions.length) params.set('digitalInclusions', joinListParam(inclusions));
     if (sort) params.set('sort', sort);
     if (special === 'featured') params.set('featured', 'true');
     if (special === 'fastSelling') params.set('fastSelling', 'true');
@@ -114,11 +186,30 @@ export default function DigitalProducts() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [digitalType, maxPrice, minPrice, search, sort, special]);
+  }, [
+    digitalType,
+    durationFilter,
+    formatFilter,
+    inclusions,
+    maxPrice,
+    minPrice,
+    priceType,
+    search,
+    skillLevel,
+    sort,
+    special,
+    topics,
+  ]);
 
   const clearAll = () => {
     setSearch('');
     setDigitalType('all');
+    setSkillLevel('all');
+    setFormatFilter('all');
+    setDurationFilter('all');
+    setPriceType('all');
+    setTopics([]);
+    setInclusions([]);
     setSort('newest');
     setSpecial('');
     setMinPrice('');
@@ -129,6 +220,12 @@ export default function DigitalProducts() {
   const activeFilterCount = [
     search.trim(),
     digitalType !== 'all',
+    skillLevel !== 'all',
+    formatFilter !== 'all',
+    durationFilter !== 'all',
+    priceType !== 'all',
+    topics.length,
+    inclusions.length,
     sort !== 'newest',
     special,
     minPrice,
@@ -142,7 +239,7 @@ export default function DigitalProducts() {
     <div className="pt-16 min-h-screen bg-[#fcfbf7]">
       <SEO
         title="Digital Products"
-        description="Browse Belle Kreyashon digital products including documents, videos, audio resources, templates and secure downloadable bundles."
+        description="Browse Belle Kreyashon digital products with filters for skill level, format, duration, topic, inclusions, pricing and secure downloadable access."
         url="/digital-products"
       />
 
@@ -150,9 +247,9 @@ export default function DigitalProducts() {
         <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
           <div>
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[0.22em] mb-3">Digital Products</p>
-            <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">Protected downloads customers can find in one place.</h1>
+            <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">Protected downloads with clear filters for how people actually learn.</h1>
             <p className="text-sm md:text-base text-gray-300 leading-relaxed max-w-2xl mt-4">
-              Explore digital documents, videos, templates, audio resources and bundled files without digging through the main shop first.
+              Browse by skill level, format, duration, topic, certification, downloadable assets and pricing, then open the product page for secure access after payment.
             </p>
             <div className="flex flex-wrap gap-3 mt-6">
               <Link
@@ -173,7 +270,7 @@ export default function DigitalProducts() {
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             {[
               { icon: <ShieldCheck size={18} />, title: 'Protected access', text: 'Paid items unlock inside your customer library after payment.' },
-              { icon: <Download size={18} />, title: 'Easy delivery', text: 'Documents, videos, templates and mixed digital bundles are all supported.' },
+              { icon: <Download size={18} />, title: 'Formats that fit', text: 'Filter for videos, tutorials, audio, bundles and other learning formats.' },
               { icon: <Lock size={18} />, title: 'Customer-only use', text: 'Access stays tied to the paying customer instead of being openly exposed.' },
             ].map((item) => (
               <div key={item.title} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
@@ -196,7 +293,7 @@ export default function DigitalProducts() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search guides, videos, templates and bundles..."
+                placeholder="Search guides, videos, templates, coding resources and bundles..."
                 className="w-full rounded-2xl border border-gray-200 bg-white pl-10 pr-10 py-3 text-sm outline-none focus:border-black"
               />
               {search && (
@@ -225,7 +322,7 @@ export default function DigitalProducts() {
 
           <div className={`${showFilters ? 'block' : 'hidden'} lg:block`}>
             <div className="rounded-3xl border border-gray-200 bg-white p-4 sm:p-5 space-y-5">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_auto]">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Sort By</span>
                   <select
@@ -247,6 +344,60 @@ export default function DigitalProducts() {
                     className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
                   >
                     {DIGITAL_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Skill Level</span>
+                  <select
+                    value={skillLevel}
+                    onChange={(event) => setSkillLevel(event.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    {DIGITAL_SKILL_LEVEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Format</span>
+                  <select
+                    value={formatFilter}
+                    onChange={(event) => setFormatFilter(event.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    {DIGITAL_FORMAT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_auto]">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Duration</span>
+                  <select
+                    value={durationFilter}
+                    onChange={(event) => setDurationFilter(event.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    {DIGITAL_DURATION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Price Type</span>
+                  <select
+                    value={priceType}
+                    onChange={(event) => setPriceType(event.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    {DIGITAL_PRICE_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -314,6 +465,20 @@ export default function DigitalProducts() {
                   ))}
                 </div>
               </div>
+
+              <FilterChipGroup
+                title="Topic / Subject"
+                options={DIGITAL_TOPIC_OPTIONS}
+                values={topics}
+                onToggle={(value) => setTopics((current) => toggleListValue(current, value))}
+              />
+
+              <FilterChipGroup
+                title="Inclusions"
+                options={DIGITAL_INCLUSION_OPTIONS}
+                values={inclusions}
+                onToggle={(value) => setInclusions((current) => toggleListValue(current, value))}
+              />
             </div>
           </div>
         </div>
@@ -322,6 +487,12 @@ export default function DigitalProducts() {
           <div className="mb-4 flex flex-wrap items-center gap-2">
             {search.trim() && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Search: {search.trim()}</span>}
             {digitalType !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Type: {formatType(digitalType)}</span>}
+            {skillLevel !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Skill: {getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, skillLevel)}</span>}
+            {formatFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Format: {getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, formatFilter)}</span>}
+            {durationFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Duration: {getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, durationFilter)}</span>}
+            {priceType !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Price Type: {getDigitalOptionLabel(DIGITAL_PRICE_TYPE_OPTIONS, priceType)}</span>}
+            {topics.map((topic) => <span key={topic} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Topic: {getDigitalOptionLabel(DIGITAL_TOPIC_OPTIONS, topic)}</span>)}
+            {inclusions.map((inclusion) => <span key={inclusion} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Inclusion: {getDigitalOptionLabel(DIGITAL_INCLUSION_OPTIONS, inclusion)}</span>)}
             {special && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Filter: {SPECIAL_FILTERS.find((item) => item.key === special)?.label}</span>}
             {sort !== 'newest' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Sort: {SORT_OPTIONS.find((item) => item.value === sort)?.label}</span>}
             {minPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Min: GHS {Number(minPrice).toLocaleString()}</span>}
@@ -349,7 +520,7 @@ export default function DigitalProducts() {
             <BookOpen size={38} className="mx-auto mb-4 text-gray-300" />
             <h2 className="text-xl font-extrabold mb-2">No digital products found</h2>
             <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed mb-6">
-              Try a different type, price range or search term, or clear the filters to see everything available.
+              Try a different skill level, format, topic, inclusion or price range, or clear the filters to see everything available.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
@@ -403,6 +574,11 @@ export default function DigitalProducts() {
                         <span className="inline-flex items-center rounded-full bg-black px-2.5 py-1 text-[11px] font-extrabold text-[#FDC700]">
                           {formatType(product.digitalType)}
                         </span>
+                        {product.digitalFormat && (
+                          <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-gray-700">
+                            {getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, product.digitalFormat)}
+                          </span>
+                        )}
                         {product.isCertified && (
                           <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-extrabold text-amber-700 border border-amber-100">
                             Certified
@@ -427,15 +603,36 @@ export default function DigitalProducts() {
                       </div>
 
                       <h2 className="text-lg font-extrabold leading-tight mb-2 line-clamp-2">{product.name}</h2>
-                      {product.isSeries && (
-                        <p className="text-xs font-bold text-purple-600 mb-2 uppercase tracking-[0.16em]">Step-by-step series</p>
-                      )}
-                      {product.isCertified && (
-                        <p className="text-xs font-bold text-amber-700 mb-2 uppercase tracking-[0.16em]">Certificate available</p>
-                      )}
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {product.digitalSkillLevel && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                            {getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, product.digitalSkillLevel)}
+                          </span>
+                        )}
+                        {product.digitalDuration && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                            {getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, product.digitalDuration)}
+                          </span>
+                        )}
+                        {(product.digitalTopics || []).slice(0, 2).map((topic) => (
+                          <span key={topic} className="rounded-full bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-[#9a7a00] border border-[#FDC700]/25">
+                            {getDigitalOptionLabel(DIGITAL_TOPIC_OPTIONS, topic)}
+                          </span>
+                        ))}
+                      </div>
                       <p className="text-sm text-gray-500 leading-relaxed line-clamp-3 min-h-[4rem]">
                         {product.desc || product.certificateDescription || product.accessNote || 'Open this digital product to view the full description and secure purchase details.'}
                       </p>
+
+                      {(product.digitalInclusions || []).length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {product.digitalInclusions.slice(0, 3).map((inclusion) => (
+                            <span key={inclusion} className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                              {getDigitalOptionLabel(DIGITAL_INCLUSION_OPTIONS, inclusion)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="mt-4 flex items-end justify-between gap-3">
                         <div>

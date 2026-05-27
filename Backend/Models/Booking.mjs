@@ -1,5 +1,19 @@
 import mongoose from 'mongoose';
 
+const sourceAttributionSchema = new mongoose.Schema({
+  sourcePage: { type: String, default: '' },
+  sourcePath: { type: String, default: '' },
+  sourceQuery: { type: String, default: '' },
+  utmSource: { type: String, default: '' },
+  utmMedium: { type: String, default: '' },
+  utmCampaign: { type: String, default: '' },
+  utmTerm: { type: String, default: '' },
+  utmContent: { type: String, default: '' },
+  landingPage: { type: String, default: '' },
+  firstSeenAt: { type: String, default: '' },
+  lastSeenAt: { type: String, default: '' },
+}, { _id: false });
+
 const bookingSchema = new mongoose.Schema({
   bookingId:   { type: String, unique: true },
   type:             { type: String, enum: ['training', 'consultation'], required: true },
@@ -12,6 +26,7 @@ const bookingSchema = new mongoose.Schema({
   paymentRef:  String,
   paymentStatus: { type: String, enum: ['pending', 'paid'], default: 'pending' },
   notes:       { type: String, default: '' },
+  sourceAttribution: { type: sourceAttributionSchema, default: null },
 }, { timestamps: true });
 
 bookingSchema.pre('save', async function () {

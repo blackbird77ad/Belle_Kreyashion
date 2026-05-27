@@ -1,4 +1,11 @@
 import mongoose from 'mongoose';
+import {
+  DIGITAL_DURATIONS,
+  DIGITAL_FORMATS,
+  DIGITAL_INCLUSIONS,
+  DIGITAL_SKILL_LEVELS,
+  DIGITAL_TOPICS,
+} from '../Constants/digitalProductOptions.mjs';
 
 const variantSchema = new mongoose.Schema({
   name: { type: String },
@@ -69,6 +76,29 @@ const productSchema = new mongoose.Schema({
     enum: ['paid', 'free', 'trial'],
     default: 'paid',
   },
+  digitalSkillLevel: {
+    type: String,
+    enum: [...DIGITAL_SKILL_LEVELS, null, ''],
+    default: 'all-levels',
+  },
+  digitalFormat: {
+    type: String,
+    enum: [...DIGITAL_FORMATS, null, ''],
+    default: null,
+  },
+  digitalDuration: {
+    type: String,
+    enum: [...DIGITAL_DURATIONS, null, ''],
+    default: null,
+  },
+  digitalTopics: {
+    type: [{ type: String, enum: DIGITAL_TOPICS }],
+    default: [],
+  },
+  digitalInclusions: {
+    type: [{ type: String, enum: DIGITAL_INCLUSIONS }],
+    default: [],
+  },
   freeTrialDays: { type: Number, default: 0 },
   isSeries: { type: Boolean, default: false },
   seriesTitle: { type: String, default: '' },
@@ -93,6 +123,8 @@ productSchema.pre('save', function () {
 
   if (this.preOrderType === '') this.preOrderType = null;
   if (this.digitalType === '') this.digitalType = null;
+  if (this.digitalFormat === '') this.digitalFormat = null;
+  if (this.digitalDuration === '') this.digitalDuration = null;
   if (this.accessMode === '') this.accessMode = 'customer_choice';
 
   if (this.isDigital) {
@@ -107,6 +139,11 @@ productSchema.pre('save', function () {
     this.accessMode = this.accessMode || 'customer_choice';
     this.limitedAccessMonths = Number(this.limitedAccessMonths) > 0 ? Number(this.limitedAccessMonths) : 6;
     this.digitalAccessKind = this.digitalAccessKind || 'paid';
+    this.digitalSkillLevel = this.digitalSkillLevel || 'all-levels';
+    this.digitalFormat = this.digitalFormat || null;
+    this.digitalDuration = this.digitalDuration || null;
+    this.digitalTopics = Array.isArray(this.digitalTopics) ? this.digitalTopics : [];
+    this.digitalInclusions = Array.isArray(this.digitalInclusions) ? this.digitalInclusions : [];
     this.freeTrialDays = this.digitalAccessKind === 'trial'
       ? Math.max(1, Number(this.freeTrialDays) || 7)
       : 0;
@@ -124,6 +161,11 @@ productSchema.pre('save', function () {
     }
   } else {
     this.digitalAccessKind = 'paid';
+    this.digitalSkillLevel = 'all-levels';
+    this.digitalFormat = null;
+    this.digitalDuration = null;
+    this.digitalTopics = [];
+    this.digitalInclusions = [];
     this.freeTrialDays = 0;
     this.isSeries = false;
     this.seriesTitle = '';

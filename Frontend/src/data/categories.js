@@ -1,3 +1,5 @@
+import digitalProductsCover from '../assets/hero.png';
+
 export const CATEGORIES = [
   { label: 'All',                 value: 'All',                 image: null },
   { label: 'Hair Extensions',     value: 'Hair Extensions',     image: '/shop-category/hairextension.avif' },
@@ -9,7 +11,7 @@ export const CATEGORIES = [
   { label: 'Beauty & Skincare',   value: 'Beauty & Skincare',   image: '/shop-category/anua-beauty.jpg' },
   { label: 'Health & Wellness',   value: 'Health & Wellness',   image: '/shop-category/lip-scrub.jpg' },
   { label: 'Fashion',             value: 'Fashion',             image: '/shop-category/bridal-robe-fashion.avif' },
-  { label: 'Digital Products',    value: 'Digital Products',    image: null },
+  { label: 'Digital Products',    value: 'Digital Products',    image: digitalProductsCover, href: '/digital-products' },
 ];
 
 export const CATEGORY_VALUES = CATEGORIES.map(c => c.value);

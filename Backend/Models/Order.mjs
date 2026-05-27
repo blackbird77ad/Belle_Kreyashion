@@ -1,5 +1,19 @@
 import mongoose from 'mongoose';
 
+const sourceAttributionSchema = new mongoose.Schema({
+  sourcePage: { type: String, default: '' },
+  sourcePath: { type: String, default: '' },
+  sourceQuery: { type: String, default: '' },
+  utmSource: { type: String, default: '' },
+  utmMedium: { type: String, default: '' },
+  utmCampaign: { type: String, default: '' },
+  utmTerm: { type: String, default: '' },
+  utmContent: { type: String, default: '' },
+  landingPage: { type: String, default: '' },
+  firstSeenAt: { type: String, default: '' },
+  lastSeenAt: { type: String, default: '' },
+}, { _id: false });
+
 const orderItemSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
   name: String,
@@ -13,6 +27,7 @@ const orderItemSchema = new mongoose.Schema({
   accessType: { type: String, enum: ['limited', 'lifetime', null], default: null },
   accessMonths: { type: Number, default: null },
   variant: { type: String, default: null },
+  sourceAttribution: { type: sourceAttributionSchema, default: null },
 }, { _id: false });
 
 const trialChargeSchema = new mongoose.Schema({
@@ -33,6 +48,8 @@ const orderSchema = new mongoose.Schema({
     address: { type: String, default: '' },
   },
   items: [orderItemSchema],
+  sourceAttribution: { type: sourceAttributionSchema, default: null },
+  sourcePages: [{ type: String }],
   subtotal: Number,
   fulfillment: {
     type: String,

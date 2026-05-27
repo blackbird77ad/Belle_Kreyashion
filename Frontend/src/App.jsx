@@ -5,6 +5,7 @@ import { CartProvider } from './context/CartContext';
 import Navbar     from './components/Navbar';
 import Footer     from './components/Footer';
 import CartDrawer from './components/CartDrawer';
+import { rememberAttributionFromLocation } from './utils/attribution';
 
 // Home loads immediately — it's the first thing customers see
 import Home from './pages/Home';
@@ -36,6 +37,16 @@ function PageLoader() {
 const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => window.scrollTo(0, 0), [pathname]);
+  return null;
+};
+
+const AttributionTracker = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    rememberAttributionFromLocation(location);
+  }, [location]);
+
   return null;
 };
 
@@ -79,6 +90,7 @@ export default function App() {
       <CustomerProvider>
         <CartProvider>
           <ScrollToTop />
+          <AttributionTracker />
           <Layout />
         </CartProvider>
       </CustomerProvider>

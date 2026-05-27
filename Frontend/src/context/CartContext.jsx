@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api } from '../hooks/useApi';
 import { useCustomer } from './CustomerContext';
+import { getAttributionSnapshot } from '../utils/attribution';
 
 const CartContext = createContext();
 
@@ -64,6 +65,7 @@ export function CartProvider({ children }) {
       const checkoutPrice = calculateCheckoutPrice(product, isWholesale);
       const priceNow = product.isDigital && digitalAccessKind !== 'paid' ? 0 : checkoutPrice;
       const trialChargeAmount = product.isDigital && digitalAccessKind === 'trial' ? checkoutPrice : null;
+      const sourceAttribution = getAttributionSnapshot();
       return [...prev, {
         key,
         productId: product._id,
@@ -81,6 +83,7 @@ export function CartProvider({ children }) {
         seriesTitle: product.seriesTitle || '',
         seriesDescription: product.seriesDescription || '',
         variant,
+        sourceAttribution,
       }];
     });
   };

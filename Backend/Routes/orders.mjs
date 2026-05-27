@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   saveAbandonedCart, getAbandonedCarts, toggleFollowUp,
-  verifyAndCreateOrder, createFreeDigitalOrder, getAllOrders, updateOrderStatus, getCustomerOrders,
+  verifyAndCreateOrder, createFreeDigitalOrder, getAllOrders, getSalesAnalytics, updateOrderStatus, getCustomerOrders,
   runDigitalTrialBillingTrigger,
 } from '../Controllers/orderController.mjs';
 import { protect, protectAdminOrCron } from '../Middlewares/auth.mjs';
@@ -15,6 +15,7 @@ router.post('/trial-billing/run', protectAdminOrCron, runDigitalTrialBillingTrig
 router.post('/free-digital',            createFreeDigitalOrder);
 router.post('/verify',                  verifyAndCreateOrder);
 router.get('/',               protect,  getAllOrders);
+router.get('/analytics',      protect,  getSalesAnalytics);
 router.patch('/:id/status',   protect,  updateOrderStatus);
 router.get('/customer/:phone',          getCustomerOrders);
 export default router;

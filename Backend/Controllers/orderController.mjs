@@ -1,5 +1,6 @@
 import axios from 'axios';
 import AbandonedCart from '../Models/AbandonedCart.mjs';
+import Booking from '../Models/Booking.mjs';
 import Customer from '../Models/Customer.mjs';
 import Order from '../Models/Order.mjs';
 import { grantDigitalAccessForOrder, processDueTrialCharges } from '../Services/digitalAccessService.mjs';
@@ -22,6 +23,118 @@ const isFreeOnlyDigitalOrder = (orderData) => {
   return items.length > 0
     && items.every((item) => item.isDigital && item.digitalAccessKind === 'free')
     && Number(orderData.total || 0) === 0;
+};
+
+const sumAmount = (items = []) => items.reduce((total, item) => total + (Number(item) || 0), 0);
+
+const buildMonthBuckets = (months = 6) => {
+  const formatter = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' });
+  const buckets = [];
+  const cursor = new Date();
+  cursor.setDate(1);
+  cursor.setHours(0, 0, 0, 0);
+
+  for (let offset = months - 1; offset >= 0; offset -= 1) {
+    const date = new Date(cursor.getFullYear(), cursor.getMonth() - offset, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    buckets.push({
+      key,
+      label: formatter.format(date),
+      amount: 0,
+      orders: 0,
+      bookings: 0,
+    });
+  }
+
+  return buckets;
+};
+
+const getEntryAttribution = (entry = {}) => entry?.sourceAttribution || null;
+
+const getOrderPrimarySourcePath = (order = {}) => {
+  const uniquePaths = [...new Set((order.sourcePages || []).filter(Boolean))];
+  if (uniquePaths.length === 1) return uniquePaths[0];
+  if (uniquePaths.length > 1) return 'mixed-sources';
+  return order.sourceAttribution?.sourcePath || order.sourceAttribution?.sourcePage || '';
+};
+
+const classifySourcePath = (sourcePath = '') => {
+  if (sourcePath === 'mixed-sources') {
+    return {
+      key: 'mixed-sources',
+      label: 'Mixed Cart Sources',
+      description: 'Orders that were built from more than one page before checkout',
+    };
+  }
+
+  const cleanPath = String(sourcePath || '').split('?')[0].trim();
+
+  if (!cleanPath) {
+    return { key: 'unknown-source', label: 'Unknown / direct', description: 'Older sales or sales without a saved source page' };
+  }
+  if (cleanPath === '/') {
+    return { key: 'home', label: 'Home Page', description: 'Sales that started from the home page' };
+  }
+  if (cleanPath === '/shop') {
+    return { key: 'shop', label: 'Shop Page', description: 'Sales that started from the main shop listing' };
+  }
+  if (cleanPath.startsWith('/shop/')) {
+    return { key: 'product-pages', label: 'Product Pages', description: 'Sales that started from individual product pages' };
+  }
+  if (cleanPath === '/digital-products') {
+    return { key: 'digital-products-page', label: 'Digital Products Page', description: 'Sales that started from the digital products page' };
+  }
+  if (cleanPath === '/services') {
+    return { key: 'services-page', label: 'Services Page', description: 'Bookings or sales that started from the services page' };
+  }
+  if (cleanPath.startsWith('/blog')) {
+    return { key: 'blog-pages', label: 'Blog Pages', description: 'Sales that started from blog content' };
+  }
+  if (cleanPath === '/digital-library') {
+    return { key: 'digital-library', label: 'Digital Library', description: 'Actions started from the learner digital library' };
+  }
+  if (cleanPath === '/contact') {
+    return { key: 'contact-page', label: 'Contact Page', description: 'Sales that started from the contact page' };
+  }
+  if (cleanPath === '/about') {
+    return { key: 'about-page', label: 'About Page', description: 'Sales that started from the about page' };
+  }
+
+  return {
+    key: 'other-pages',
+    label: 'Other Pages',
+    description: cleanPath || 'Pages outside the main shop sections',
+  };
+};
+
+const buildCampaignInfo = (attribution = {}) => {
+  if (!attribution?.utmCampaign && !attribution?.utmSource && !attribution?.utmMedium) {
+    return {
+      key: 'direct-none',
+      label: 'Direct / none',
+      description: 'No UTM campaign tags were saved for this sale',
+    };
+  }
+
+  return {
+    key: `${attribution.utmCampaign || ''}|${attribution.utmSource || ''}|${attribution.utmMedium || ''}`.toLowerCase(),
+    label: attribution.utmCampaign || attribution.utmSource || 'Tracked campaign',
+    description: [attribution.utmSource, attribution.utmMedium].filter(Boolean).join(' • ') || 'UTM-tracked sale',
+  };
+};
+
+const pushBreakdownAmount = (map, meta, amount) => {
+  const existing = map.get(meta.key) || {
+    key: meta.key,
+    label: meta.label,
+    description: meta.description,
+    amount: 0,
+    count: 0,
+  };
+
+  existing.amount += Number(amount) || 0;
+  existing.count += 1;
+  map.set(meta.key, existing);
 };
 
 const buildWhatsAppMessage = (order, paymentRef) => {
@@ -232,6 +345,237 @@ export const getAllOrders = async (req, res) => {
     res.json(await Order.find(query).sort({ createdAt: -1 }));
   } catch {
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const getSalesAnalytics = async (req, res) => {
+  try {
+    const [orders, bookings] = await Promise.all([
+      Order.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }),
+      Booking.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }),
+    ]);
+
+    const activeOrders = orders.filter((order) => order.status !== 'cancelled');
+    const cancelledOrderCount = orders.length - activeOrders.length;
+
+    let physicalProductRevenue = 0;
+    let digitalProductRevenue = 0;
+    let deliveryRevenue = 0;
+    let physicalUnits = 0;
+    let digitalUnits = 0;
+    let freeDigitalClaims = 0;
+    let trialOrderCount = 0;
+    const pageBreakdownMap = new Map();
+    const campaignBreakdownMap = new Map();
+
+    activeOrders.forEach((order) => {
+      deliveryRevenue += Number(order.deliveryFee) || 0;
+      if ((order.items || []).some((item) => item.isDigital && item.digitalAccessKind === 'trial')) {
+        trialOrderCount += 1;
+      }
+
+       pushBreakdownAmount(
+        pageBreakdownMap,
+        classifySourcePath(getOrderPrimarySourcePath(order)),
+        order.total
+      );
+      pushBreakdownAmount(
+        campaignBreakdownMap,
+        buildCampaignInfo(getEntryAttribution(order)),
+        order.total
+      );
+
+      (order.items || []).forEach((item) => {
+        const qty = Number(item.qty) || 0;
+        const lineAmount = (Number(item.price) || 0) * qty;
+        if (item.isDigital) {
+          digitalProductRevenue += lineAmount;
+          digitalUnits += qty;
+          if (item.digitalAccessKind === 'free') freeDigitalClaims += qty || 1;
+        } else {
+          physicalProductRevenue += lineAmount;
+          physicalUnits += qty;
+        }
+      });
+    });
+
+    const trainingBookings = bookings.filter((booking) => booking.type === 'training');
+    const consultationBookings = bookings.filter((booking) => booking.type === 'consultation');
+    const trainingRevenue = sumAmount(trainingBookings.map((booking) => booking.amount));
+    const consultationRevenue = sumAmount(consultationBookings.map((booking) => booking.amount));
+    const orderRevenue = sumAmount(activeOrders.map((order) => order.total));
+    const bookingRevenue = trainingRevenue + consultationRevenue;
+    const totalRevenue = orderRevenue + bookingRevenue;
+
+    bookings.forEach((booking) => {
+      pushBreakdownAmount(
+        pageBreakdownMap,
+        classifySourcePath(booking.sourceAttribution?.sourcePath || booking.sourceAttribution?.sourcePage || ''),
+        booking.amount
+      );
+      pushBreakdownAmount(
+        campaignBreakdownMap,
+        buildCampaignInfo(getEntryAttribution(booking)),
+        booking.amount
+      );
+    });
+
+    const monthlyRevenue = buildMonthBuckets(6);
+    const monthlyMap = new Map(monthlyRevenue.map((bucket) => [bucket.key, bucket]));
+    const addToMonthlyBucket = (dateValue, amount, key) => {
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) return;
+      const bucketKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const bucket = monthlyMap.get(bucketKey);
+      if (!bucket) return;
+      bucket.amount += Number(amount) || 0;
+      bucket[key] += 1;
+    };
+
+    activeOrders.forEach((order) => addToMonthlyBucket(order.createdAt, order.total, 'orders'));
+    bookings.forEach((booking) => addToMonthlyBucket(booking.createdAt, booking.amount, 'bookings'));
+
+    const now = Date.now();
+    const last7DaysRevenue = totalRevenue === 0
+      ? 0
+      : sumAmount([
+          ...activeOrders
+            .filter((order) => now - new Date(order.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000)
+            .map((order) => order.total),
+          ...bookings
+            .filter((booking) => now - new Date(booking.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000)
+            .map((booking) => booking.amount),
+        ]);
+    const last30DaysRevenue = totalRevenue === 0
+      ? 0
+      : sumAmount([
+          ...activeOrders
+            .filter((order) => now - new Date(order.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000)
+            .map((order) => order.total),
+          ...bookings
+            .filter((booking) => now - new Date(booking.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000)
+            .map((booking) => booking.amount),
+        ]);
+
+    const revenueDenominator = totalRevenue || 1;
+    const breakdown = [
+      {
+        key: 'products',
+        label: 'Products',
+        description: 'Physical shop sales',
+        amount: physicalProductRevenue,
+        count: physicalUnits,
+        share: Math.round((physicalProductRevenue / revenueDenominator) * 100),
+      },
+      {
+        key: 'digital-products',
+        label: 'Digital Products',
+        description: 'Guides, courses, templates and bundles',
+        amount: digitalProductRevenue,
+        count: digitalUnits,
+        share: Math.round((digitalProductRevenue / revenueDenominator) * 100),
+      },
+      {
+        key: 'training',
+        label: 'Training',
+        description: 'Paid training bookings',
+        amount: trainingRevenue,
+        count: trainingBookings.length,
+        share: Math.round((trainingRevenue / revenueDenominator) * 100),
+      },
+      {
+        key: 'consultations',
+        label: 'Consultations',
+        description: 'Paid consultation bookings',
+        amount: consultationRevenue,
+        count: consultationBookings.length,
+        share: Math.round((consultationRevenue / revenueDenominator) * 100),
+      },
+      {
+        key: 'delivery-fees',
+        label: 'Delivery Fees',
+        description: 'Delivery charges collected on paid orders',
+        amount: deliveryRevenue,
+        count: activeOrders.filter((order) => Number(order.deliveryFee) > 0).length,
+        share: Math.round((deliveryRevenue / revenueDenominator) * 100),
+      },
+    ].sort((a, b) => b.amount - a.amount);
+
+    const pageBreakdown = [...pageBreakdownMap.values()]
+      .map((item) => ({
+        ...item,
+        share: Math.round((item.amount / revenueDenominator) * 100),
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const campaignBreakdown = [...campaignBreakdownMap.values()]
+      .map((item) => ({
+        ...item,
+        share: Math.round((item.amount / revenueDenominator) * 100),
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const recentSales = [
+      ...activeOrders.map((order) => ({
+        id: order._id,
+        type: 'order',
+        source: (order.items || []).every((item) => item.isDigital)
+          ? 'Digital Products'
+          : (order.items || []).some((item) => item.isDigital)
+            ? 'Mixed Order'
+            : 'Products',
+        title: order.items?.length === 1
+          ? order.items[0]?.name || order.orderId
+          : `${order.items?.length || 0} item order`,
+        customerName: order.customer?.name || 'Customer',
+        amount: Number(order.total) || 0,
+        createdAt: order.createdAt,
+        sourcePage: classifySourcePath(getOrderPrimarySourcePath(order)).label,
+        utmCampaign: order.sourceAttribution?.utmCampaign || '',
+      })),
+      ...bookings.map((booking) => ({
+        id: booking._id,
+        type: 'booking',
+        source: booking.type === 'training' ? 'Training' : 'Consultation',
+        title: booking.trainingTitle || booking.consultationTitle || booking.bookingId,
+        customerName: booking.customer?.name || 'Customer',
+        amount: Number(booking.amount) || 0,
+        createdAt: booking.createdAt,
+        sourcePage: classifySourcePath(booking.sourceAttribution?.sourcePath || booking.sourceAttribution?.sourcePage || '').label,
+        utmCampaign: booking.sourceAttribution?.utmCampaign || '',
+      })),
+    ]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 8);
+
+    res.json({
+      summary: {
+        totalRevenue,
+        orderRevenue,
+        bookingRevenue,
+        physicalProductRevenue,
+        digitalProductRevenue,
+        trainingRevenue,
+        consultationRevenue,
+        deliveryRevenue,
+        orderCount: activeOrders.length,
+        bookingCount: bookings.length,
+        cancelledOrderCount,
+        freeDigitalClaims,
+        trialOrderCount,
+        averageOrderValue: activeOrders.length ? Math.round(orderRevenue / activeOrders.length) : 0,
+        averageBookingValue: bookings.length ? Math.round(bookingRevenue / bookings.length) : 0,
+        last7DaysRevenue,
+        last30DaysRevenue,
+      },
+      breakdown,
+      pageBreakdown,
+      campaignBreakdown,
+      monthlyRevenue,
+      recentSales,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 };
 

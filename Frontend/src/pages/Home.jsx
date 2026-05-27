@@ -13,6 +13,12 @@ import {
 import { useEffect, useState } from 'react';
 import { useFetch } from '../hooks/useApi';
 import { CATEGORIES } from '../data/categories';
+import {
+  DIGITAL_DURATION_OPTIONS,
+  DIGITAL_FORMAT_OPTIONS,
+  DIGITAL_SKILL_LEVEL_OPTIONS,
+  getDigitalOptionLabel,
+} from '../data/digitalProductOptions';
 import { useCart } from '../context/CartContext';
 import SEO from '../components/SEO';
 
@@ -20,6 +26,11 @@ const calcDiscountedPrice = (p) => {
   if (!p.discount?.active) return p.retailPrice;
   if (p.discount.type === 'percent') return Math.round(p.retailPrice * (1 - p.discount.value / 100));
   return Math.max(0, p.retailPrice - p.discount.value);
+};
+
+const getCyclicItems = (items = [], start = 0, count = 0) => {
+  if (items.length <= count) return items;
+  return Array.from({ length: count }, (_, index) => items[(start + index) % items.length]);
 };
 
 const ProductCard = ({ product, onPartnerClick }) => {
@@ -133,20 +144,24 @@ export default function Home() {
   const [partnerNotice, setPartnerNotice] = useState(null);
   const [toast, setToast] = useState('');
   const [heroIndex, setHeroIndex] = useState(0);
+  const [digitalIndex, setDigitalIndex] = useState(0);
   const { addToCart } = useCart();
 
-  const { data: latestProducts } = useFetch('/api/products/public?limit=5');
-  const { data: fastSelling } = useFetch('/api/products/public?fastSelling=true&limit=8');
-  const { data: featured } = useFetch('/api/products/public?featured=true&limit=12');
-  const { data: discounted } = useFetch('/api/products/discounted');
+  const { data: latestProducts } = useFetch('/api/products/public?isDigital=false&limit=5');
+  const { data: fastSelling } = useFetch('/api/products/public?isDigital=false&fastSelling=true&limit=8');
+  const { data: featured } = useFetch('/api/products/public?isDigital=false&featured=true&limit=12');
+  const { data: discounted } = useFetch('/api/products/public?isDigital=false&discounted=true&limit=12');
   const { data: tools } = useFetch('/api/products/public?category=Braiding%20%26%20Tools&limit=6');
   const { data: mannequins } = useFetch('/api/products/public?category=Mannequins%20%26%20Stands&limit=6');
+  const { data: digitalShowcase } = useFetch('/api/products/public?isDigital=true&sort=newest&limit=9');
 
   const heroProducts = latestProducts || [];
+  const digitalProducts = digitalShowcase || [];
   const activeHero = heroProducts[heroIndex] || null;
   const activeHeroPrice = activeHero ? calcDiscountedPrice(activeHero) : null;
   const activeHeroIsFreeDigital = !!(activeHero?.isDigital && activeHero?.digitalAccessKind === 'free');
   const activeHeroIsTrialDigital = !!(activeHero?.isDigital && activeHero?.digitalAccessKind === 'trial');
+  const visibleDigitalProducts = getCyclicItems(digitalProducts, digitalIndex, Math.min(3, digitalProducts.length));
 
   useEffect(() => {
     if (heroProducts.length <= 1) return undefined;
@@ -161,6 +176,12 @@ export default function Home() {
       setHeroIndex(0);
     }
   }, [heroIndex, heroProducts.length]);
+
+  useEffect(() => {
+    if (digitalProducts.length && digitalIndex > digitalProducts.length - 1) {
+      setDigitalIndex(0);
+    }
+  }, [digitalIndex, digitalProducts.length]);
 
   return (
     <div className="pt-16">
@@ -366,49 +387,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="px-4 py-8 bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="rounded-[28px] bg-black text-white overflow-hidden border border-black/5">
-            <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-0">
-              <div className="p-6 sm:p-8">
-                <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[0.22em] mb-3">Digital Access</p>
-                <h2 className="text-2xl md:text-3xl font-extrabold leading-tight mb-3">Prefer guides, videos, templates or downloadable bundles?</h2>
-                <p className="text-sm text-gray-300 leading-relaxed max-w-2xl mb-5">
-                  Browse digital products directly from their own page, then return to your secure library after payment whenever you need your files.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    to="/digital-products"
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#FDC700] text-black text-sm font-extrabold hover:bg-yellow-300"
-                  >
-                    Explore Digital Products
-                    <ArrowRight size={16} />
-                  </Link>
-                  <Link
-                    to="/digital-library"
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/15 text-sm font-bold text-white hover:border-white"
-                  >
-                    Open My Library
-                  </Link>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-[#1b1b1b] to-black p-6 sm:p-8 grid gap-3">
-                {[
-                  'Secure customer-only access after payment',
-                  'Perfect for PDFs, videos, audio, templates and mixed bundles',
-                  'Easy to find without searching through the full store first',
-                ].map((item) => (
-                  <div key={item} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-gray-200">
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Fast Selling */}
       {fastSelling?.length > 0 && (
         <section className="py-14 px-4 bg-gray-50">
@@ -496,7 +474,7 @@ export default function Home() {
           {CATEGORIES.filter((c) => c.value !== 'All').map((cat) => (
             <Link
               key={cat.value}
-              to={`/shop?category=${encodeURIComponent(cat.value)}`}
+              to={cat.href || `/shop?category=${encodeURIComponent(cat.value)}`}
               className="relative rounded-2xl overflow-hidden group cursor-pointer aspect-[3/4]"
             >
               <div className="absolute inset-0 bg-black/40 group-hover:bg-black/55 transition-all z-10" />
@@ -574,6 +552,149 @@ export default function Home() {
           </Link>
         </div>
       </section>
+
+      {digitalProducts.length > 0 && (
+        <section className="px-4 py-16 bg-white">
+          <div className="max-w-7xl mx-auto">
+            <div className="rounded-[30px] overflow-hidden border border-black/10 bg-black text-white shadow-[0_22px_60px_rgba(0,0,0,0.14)]">
+              <div className="grid xl:grid-cols-[0.92fr_1.08fr]">
+                <div className="p-6 sm:p-8 border-b xl:border-b-0 xl:border-r border-white/10">
+                  <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[0.22em] mb-3">Digital Access</p>
+                  <h2 className="text-2xl md:text-3xl font-extrabold leading-tight mb-3">Prefer guides, videos, templates or downloadable bundles?</h2>
+                  <p className="text-sm text-gray-300 leading-relaxed max-w-xl mb-5">
+                    Browse digital products directly from their own page, then return to your secure library after payment whenever you need your files.
+                  </p>
+                  <div className="flex flex-wrap gap-3 mb-5">
+                    <Link
+                      to="/digital-products"
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#FDC700] text-black text-sm font-extrabold hover:bg-yellow-300"
+                    >
+                      Explore Digital Products
+                      <ArrowRight size={16} />
+                    </Link>
+                    <Link
+                      to="/digital-library"
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/15 text-sm font-bold text-white hover:border-white"
+                    >
+                      Open My Library
+                    </Link>
+                  </div>
+                  <div className="grid gap-3">
+                    {[
+                      'Secure customer-only access after payment',
+                      'Perfect for PDFs, videos, audio, templates and mixed bundles',
+                      'Easy to find without searching through the full store first',
+                    ].map((item) => (
+                      <div key={item} className="rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-gray-200">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 sm:p-8 bg-gradient-to-br from-[#151515] via-black to-[#111]">
+                  <div className="flex items-center justify-between gap-3 mb-5">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#B88900]">Digital Showcase</p>
+                      <h3 className="text-xl font-extrabold mt-1">Available now</h3>
+                    </div>
+                    {digitalProducts.length > 3 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDigitalIndex((current) => (current - 1 + digitalProducts.length) % digitalProducts.length)}
+                          className="w-10 h-10 rounded-full border border-white/15 bg-white/5 text-white hover:border-white/40"
+                          aria-label="Previous digital products"
+                        >
+                          <ChevronLeft size={16} className="mx-auto" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDigitalIndex((current) => (current + 1) % digitalProducts.length)}
+                          className="w-10 h-10 rounded-full border border-white/15 bg-white/5 text-white hover:border-white/40"
+                          aria-label="Next digital products"
+                        >
+                          <ChevronRight size={16} className="mx-auto" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {visibleDigitalProducts.map((product) => {
+                      const finalPrice = calcDiscountedPrice(product);
+                      return (
+                        <Link
+                          key={product._id}
+                          to={`/shop/${product._id}`}
+                          className="group rounded-3xl border border-white/10 bg-white/5 overflow-hidden hover:bg-white/10 transition-all"
+                        >
+                          <div className="aspect-[4/3] bg-gradient-to-br from-[#f7f0d7] via-white to-gray-100 overflow-hidden">
+                            {product.images?.[0] ? (
+                              <img
+                                src={product.images[0]}
+                                alt={product.name}
+                                className="w-full h-full object-contain p-4 transition-transform duration-300 group-hover:scale-[1.03]"
+                                onError={(event) => { event.target.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                Digital product
+                              </div>
+                            )}
+                          </div>
+                          <div className="p-4">
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {product.digitalSkillLevel && (
+                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white">
+                                  {getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, product.digitalSkillLevel, 'All Levels')}
+                                </span>
+                              )}
+                              {product.digitalFormat && (
+                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white">
+                                  {getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, product.digitalFormat)}
+                                </span>
+                              )}
+                              {product.digitalDuration && (
+                                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold text-white">
+                                  {getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, product.digitalDuration)}
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="font-extrabold text-base leading-tight line-clamp-2 mb-2">{product.name}</h4>
+                            <p className="text-sm text-gray-300 leading-relaxed line-clamp-3 min-h-[3.75rem]">
+                              {product.desc || product.accessNote || 'Open this digital product to view the full details, secure access and checkout options.'}
+                            </p>
+                            <div className="mt-4 flex items-end justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 mb-1">Price</p>
+                                <p className="font-extrabold text-lg text-white">
+                                  {product.digitalAccessKind === 'free'
+                                    ? 'Free'
+                                    : product.digitalAccessKind === 'trial'
+                                      ? `${product.freeTrialDays || 7}-day trial`
+                                      : `GHS ${finalPrice?.toLocaleString()}`}
+                                </p>
+                                {product.digitalAccessKind === 'trial' && (
+                                  <p className="text-xs text-gray-400">Then GHS {finalPrice?.toLocaleString()}</p>
+                                )}
+                              </div>
+                              <span className="inline-flex items-center gap-2 rounded-full bg-[#FDC700] px-4 py-2 text-xs font-extrabold text-black group-hover:bg-yellow-300">
+                                Open
+                                <ArrowRight size={14} />
+                              </span>
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Partner stock notice modal */}
       {partnerNotice && (

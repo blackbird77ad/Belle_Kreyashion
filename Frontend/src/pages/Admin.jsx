@@ -1,10 +1,29 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../hooks/useApi';
-import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List } from 'lucide-react';
 import { CATEGORIES, CATEGORY_VALUES } from '../data/categories';
+import {
+  DIGITAL_DURATION_OPTIONS,
+  DIGITAL_FORMAT_OPTIONS,
+  DIGITAL_INCLUSION_OPTIONS,
+  DIGITAL_SKILL_LEVEL_OPTIONS,
+  DIGITAL_TOPIC_OPTIONS,
+  getDigitalOptionLabel,
+} from '../data/digitalProductOptions';
 import { generateCertificate } from '../utils/generateCertificate';
 
-const TABS = ['Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured','Invoice'];
+const TABS = ['Analytics','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured','Invoice'];
+const PRODUCT_LIKE_TABS = new Set(['Products', 'Digital Products', 'Featured']);
+const BLOG_LIKE_TABS = new Set(['Blog']);
+const WIDE_GRID_TABS = new Set(['Certificates', 'Orders', 'Bookings']);
+
+const getCollectionLayoutClass = (tab, viewMode) => {
+  if (viewMode === 'list') return 'flex flex-col gap-3';
+  if (PRODUCT_LIKE_TABS.has(tab)) return 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3';
+  if (BLOG_LIKE_TABS.has(tab)) return 'grid grid-cols-1 sm:grid-cols-2 gap-3';
+  if (WIDE_GRID_TABS.has(tab)) return 'grid grid-cols-1 xl:grid-cols-2 gap-3';
+  return 'grid grid-cols-1 lg:grid-cols-2 gap-3';
+};
 
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
 const certHelp = 'mt-1 text-[11px] leading-relaxed text-gray-500';
@@ -29,6 +48,8 @@ const formatAdminDate = (value) => {
   return date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
 };
 
+const formatMoney = (value = 0) => `GHS ${Number(value || 0).toLocaleString()}`;
+
 const isCertificateIssued = (item = {}) => item.emailStatus === 'sent';
 
 const formatCertificateEmailStatus = (item = {}) => {
@@ -46,6 +67,7 @@ const EMPTY_DIGITAL = {
   name:'', desc:'', category:'Digital Products', images:[], retailPrice:'', available:true, featured:false, fastSelling:false,
   hasDiscount:false, discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},
   isDigital:true, digitalType:'mixed', accessNote:'', digitalFiles:[],
+  digitalSkillLevel:'all-levels', digitalFormat:'', digitalDuration:'', digitalTopics:[], digitalInclusions:[],
   digitalAccessKind:'paid', freeTrialDays:'7', isSeries:false, seriesTitle:'', seriesDescription:'',
   isCertified:false, certificateTitle:'', certificateDescription:'',
 };
@@ -78,6 +100,7 @@ const CERTIFICATE_FONTS = [
   { value:'executive_sans', label:'Executive Sans' },
 ];
 const TAB_FORM_LABELS = {
+  Analytics: 'Analytics',
   Products: 'Product',
   'Digital Products': 'Digital Product',
   Certificates: 'Certificate',
@@ -550,6 +573,7 @@ export default function Admin() {
   const [customCat, setCustomCat] = useState('');
 
   const [data,    setData]    = useState([]);
+  const [salesAnalytics, setSalesAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [page,    setPage]    = useState(1);
   const PAGE_SIZE = 20;
@@ -561,6 +585,8 @@ export default function Admin() {
   const [showForm, setShowForm] = useState(false);
   const [editId,   setEditId]   = useState(null);
   const [form,     setForm]     = useState({});
+  const [showTabMenu, setShowTabMenu] = useState(false);
+  const [viewMode, setViewMode] = useState('list');
 
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   const [orderFilter,    setOrderFilter]    = useState('all');
@@ -623,6 +649,7 @@ export default function Admin() {
   };
 
   const ENDPOINTS = {
+    Analytics: '/api/orders/analytics',
     Products: '/api/products', 'Digital Products': '/api/products', Certificates: '/api/certificates', Training: '/api/training',
     Delivery: '/api/delivery', Orders: '/api/orders',
     Abandoned: '/api/orders/abandoned', Consultations: '/api/consultation',
@@ -634,11 +661,18 @@ export default function Admin() {
     setLoading(true);
     setData([]);
     let ep = ENDPOINTS[t];
+    if (t !== 'Analytics') setSalesAnalytics(null);
     if (t === 'Featured') ep = '/api/products?isPartner=true';
     if (t === 'Products') ep = '/api/products?isDigital=false';
     if (t === 'Digital Products') ep = '/api/products?isDigital=true';
     const q = s ? `${ep.includes('?') ? '&' : '?'}search=${encodeURIComponent(s)}` : '';
     try {
+      if (t === 'Analytics') {
+        const { data: analytics } = await api.get(ep, auth);
+        setSalesAnalytics(analytics);
+        setLoading(false);
+        return;
+      }
       const requests = [api.get(ep + q, auth)];
       if (t === 'Certificates') requests.push(api.get('/api/certificates/templates', auth));
       const [r, templatesResponse] = await Promise.all(requests);
@@ -665,12 +699,17 @@ export default function Admin() {
         return;
       }
       setData([]);
+      if (t === 'Analytics') setSalesAnalytics(null);
       if (t === 'Certificates') setCertificateTemplates([]);
     }
     setLoading(false);
   }, [expireSession, token]);
 
   useEffect(() => { load(tab, ''); setSearch(''); setShowForm(false); setEditId(null); setPage(1); }, [tab]);
+
+  useEffect(() => {
+    setShowTabMenu(false);
+  }, [tab]);
 
   const getEmptyForm = (t) => {
     const map = { Products: EMPTY_PROD, 'Digital Products': EMPTY_DIGITAL, Certificates: EMPTY_CERT, Training: EMPTY_TRAIN, Delivery: EMPTY_ZONE, Consultations: EMPTY_CONSULT, Blog: EMPTY_BLOG, Featured: EMPTY_FEATURED };
@@ -682,6 +721,11 @@ export default function Admin() {
     setEditId(null);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTabChange = (nextTab) => {
+    setTab(nextTab);
+    setShowTabMenu(false);
   };
 
   const openEdit = (item) => {
@@ -711,6 +755,11 @@ export default function Admin() {
         discount:        item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
         isDigital:       true,
         digitalType:     item.digitalType || 'mixed',
+        digitalSkillLevel: item.digitalSkillLevel || 'all-levels',
+        digitalFormat:   item.digitalFormat || '',
+        digitalDuration: item.digitalDuration || '',
+        digitalTopics:   Array.isArray(item.digitalTopics) ? item.digitalTopics : [],
+        digitalInclusions: Array.isArray(item.digitalInclusions) ? item.digitalInclusions : [],
         digitalAccessKind: item.digitalAccessKind || 'paid',
         freeTrialDays:   item.freeTrialDays ? String(item.freeTrialDays) : '7',
         isSeries:        !!item.isSeries,
@@ -780,6 +829,15 @@ export default function Admin() {
   };
 
   const closeForm = () => { setShowForm(false); setEditId(null); };
+  const toggleFormArrayValue = (key, value) => setForm(f => {
+    const current = Array.isArray(f[key]) ? f[key] : [];
+    return {
+      ...f,
+      [key]: current.includes(value)
+        ? current.filter((entry) => entry !== value)
+        : [...current, value],
+    };
+  });
 
   const buildProductBody = (f) => {
     const b = { ...f };
@@ -812,6 +870,11 @@ export default function Admin() {
       fastSelling:  !!f.fastSelling,
       isDigital:    true,
       digitalType:  f.digitalType || 'mixed',
+      digitalSkillLevel: f.digitalSkillLevel || 'all-levels',
+      digitalFormat: f.digitalFormat || '',
+      digitalDuration: f.digitalDuration || '',
+      digitalTopics: Array.isArray(f.digitalTopics) ? f.digitalTopics : [],
+      digitalInclusions: Array.isArray(f.digitalInclusions) ? f.digitalInclusions : [],
       digitalAccessKind,
       freeTrialDays: digitalAccessKind === 'trial' ? Math.max(1, Number(f.freeTrialDays) || 7) : 0,
       isSeries:     !!f.isSeries,
@@ -1106,32 +1169,124 @@ const buildTrainingBody = (f) => ({
 
   const pagedData  = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
   const totalPages = Math.ceil(data.length / PAGE_SIZE);
+  const tabsWithoutSearch = ['Analytics', 'Abandoned', 'Delivery', 'Invoice'];
+  const canToggleView = !['Analytics', 'Invoice'].includes(tab);
+  const collectionLayoutClass = getCollectionLayoutClass(tab, viewMode);
+  const useGridCards = viewMode === 'grid';
+  const mobileActionTabs = !['Analytics', 'Orders','Abandoned','Bookings','Invoice'].includes(tab);
+  const analyticsSummary = salesAnalytics?.summary || {};
+  const analyticsBreakdown = salesAnalytics?.breakdown || [];
+  const analyticsPageBreakdown = salesAnalytics?.pageBreakdown || [];
+  const analyticsCampaignBreakdown = salesAnalytics?.campaignBreakdown || [];
+  const analyticsMonthlyRevenue = salesAnalytics?.monthlyRevenue || [];
+  const analyticsRecentSales = salesAnalytics?.recentSales || [];
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-black text-white px-4 py-3.5 flex justify-between items-center sticky top-0 z-20">
-        <div className="font-extrabold">BELLE <span className="text-[#FDC700]">KREYASHON</span> <span className="text-gray-500 font-normal text-xs ml-1">Admin</span></div>
-        <button onClick={logout} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white"><LogOut size={14} /> Logout</button>
+        <div className="min-w-0 font-extrabold text-sm sm:text-base">
+          BELLE <span className="text-[#FDC700]">KREYASHON</span> <span className="text-gray-500 font-normal text-xs ml-1">Admin</span>
+        </div>
+        <button onClick={logout} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white shrink-0">
+          <LogOut size={14} />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white border-b border-gray-100 px-4 overflow-x-auto sticky top-12 z-10">
-        <div className="flex">
-          {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-3 py-3 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${tab === t ? 'border-[#FDC700] text-black' : 'border-transparent text-gray-400 hover:text-black'}`}>
-              {t}
-            </button>
-          ))}
+      {/* Mobile section switcher */}
+      <div className="md:hidden bg-white border-b border-gray-100 px-4 py-3 sticky top-14 z-[15]">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowTabMenu(true)}
+            className="inline-flex items-center justify-center h-11 w-11 rounded-2xl border border-gray-200 bg-gray-50 text-gray-700"
+          >
+            <Menu size={18} />
+          </button>
+          <div className="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-[#fcfbf7] px-3 py-2.5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Current Section</p>
+            <p className="text-sm font-extrabold text-gray-900 truncate">{tab}</p>
+          </div>
+          {canToggleView && (
+            <div className="inline-flex items-center rounded-2xl border border-gray-200 bg-white p-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all ${viewMode === 'list' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'}`}
+              >
+                <List size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all ${viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'}`}
+              >
+                <LayoutGrid size={16} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Desktop tabs */}
+      <div className="hidden md:block bg-white border-b border-gray-100 sticky top-14 z-10">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex flex-wrap gap-x-1">
+            {TABS.map(t => (
+              <button key={t} onClick={() => handleTabChange(t)}
+                className={`px-3 py-3 text-xs font-bold whitespace-nowrap border-b-2 transition-all ${tab === t ? 'border-[#FDC700] text-black' : 'border-transparent text-gray-400 hover:text-black'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {showTabMenu && (
+        <div className="md:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-sm" onClick={() => setShowTabMenu(false)}>
+          <div
+            className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-white px-4 py-4 shadow-2xl max-h-[78vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#B88900]">Admin Sections</p>
+                <h3 className="text-lg font-extrabold mt-1">Choose where to work</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTabMenu(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {TABS.map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => handleTabChange(t)}
+                  className={`rounded-2xl border px-3 py-3 text-left text-sm font-bold transition-all ${
+                    tab === t
+                      ? 'border-black bg-black text-white'
+                      : 'border-gray-200 bg-[#fcfbf7] text-gray-700'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-6xl mx-auto px-4 py-5">
 
         {/* Search + Add bar */}
-        <div className="flex gap-2 mb-5">
-          {!['Abandoned','Delivery'].includes(tab) && (
+        <div className="flex flex-col gap-3 mb-5 lg:flex-row lg:items-center">
+          {!tabsWithoutSearch.includes(tab) ? (
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={e => setSearch(e.target.value)}
@@ -1139,23 +1294,47 @@ const buildTrainingBody = (f) => ({
                 placeholder={`Search ${tab.toLowerCase()}...`}
                 className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black" />
             </div>
-          )}
-          {['Abandoned','Delivery'].includes(tab) && <div className="flex-1" />}
-          {!['Orders','Abandoned','Bookings','Invoice'].includes(tab) && (
-            <button onClick={openNew} className="flex items-center gap-1 px-4 py-2.5 bg-black text-white font-bold text-sm rounded-xl hover:bg-gray-900 shrink-0">
-              <Plus size={15} /> Add
-            </button>
-          )}
-          {['Orders','Abandoned'].includes(tab) && search && (
-            <button onClick={() => { setSearch(''); load(tab,''); }} className="px-3 py-2.5 bg-gray-100 text-sm font-bold rounded-xl hover:bg-gray-200"><X size={14} /></button>
-          )}
-          {!['Abandoned','Delivery'].includes(tab) && (
-            <button onClick={() => load(tab, search)} className="px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">Search</button>
-          )}
+          ) : <div className="hidden lg:block flex-1" />}
+          <div className="flex flex-wrap gap-2 sm:flex-nowrap lg:justify-end">
+            {canToggleView && (
+              <div className="hidden md:inline-flex items-center rounded-xl border border-gray-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`inline-flex h-9 items-center justify-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'}`}
+                >
+                  <List size={14} />
+                  List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`inline-flex h-9 items-center justify-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'}`}
+                >
+                  <LayoutGrid size={14} />
+                  Grid
+                </button>
+              </div>
+            )}
+            {mobileActionTabs && (
+              <button onClick={openNew} className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-4 py-2.5 bg-black text-white font-bold text-sm rounded-xl hover:bg-gray-900 shrink-0">
+                <Plus size={15} /> Add
+              </button>
+            )}
+            {['Orders','Abandoned'].includes(tab) && search && (
+              <button onClick={() => { setSearch(''); load(tab,''); }} className="px-3 py-2.5 bg-gray-100 text-sm font-bold rounded-xl hover:bg-gray-200 shrink-0"><X size={14} /></button>
+            )}
+            {!tabsWithoutSearch.includes(tab) && (
+              <button onClick={() => load(tab, search)} className="flex-1 sm:flex-none px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">Search</button>
+            )}
+            {tab === 'Analytics' && (
+              <button onClick={() => load(tab, '')} className="flex-1 sm:flex-none px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">Refresh</button>
+            )}
+          </div>
         </div>
 
         {/* ── FORM PANEL ─────────────────────────────────────────────────────── */}
-        {showForm && !['Orders','Abandoned'].includes(tab) && (
+        {showForm && !['Analytics','Orders','Abandoned'].includes(tab) && (
           <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-extrabold">{editId ? `Edit ${TAB_FORM_LABELS[tab] || tab}` : `New ${TAB_FORM_LABELS[tab] || tab}`}</h3>
@@ -1284,6 +1463,69 @@ const buildTrainingBody = (f) => ({
                   )}
                   <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={3} className={inp+' resize-none sm:col-span-2'} />
                   <textarea value={form.accessNote||''} onChange={e => sf('accessNote',e.target.value)} placeholder="Access note or purchase guidance (optional)" rows={2} className={inp+' resize-none sm:col-span-2'} />
+                  <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4 space-y-4">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Learning Filters</p>
+                      <p className="mt-1 text-xs text-gray-500">These settings feed the public digital-product filters so learners can find the right course, guide or bundle quickly.</p>
+                    </div>
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <select value={form.digitalSkillLevel||'all-levels'} onChange={e => sf('digitalSkillLevel', e.target.value)} className={inp}>
+                        {DIGITAL_SKILL_LEVEL_OPTIONS.filter(option => option.value !== 'all').map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <select value={form.digitalFormat||''} onChange={e => sf('digitalFormat', e.target.value)} className={inp}>
+                        <option value="">Choose format</option>
+                        {DIGITAL_FORMAT_OPTIONS.filter(option => option.value !== 'all').map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <select value={form.digitalDuration||''} onChange={e => sf('digitalDuration', e.target.value)} className={inp}>
+                        <option value="">Choose duration</option>
+                        {DIGITAL_DURATION_OPTIONS.filter(option => option.value !== 'all').map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Topic / Subject</p>
+                      <div className="flex flex-wrap gap-2">
+                        {DIGITAL_TOPIC_OPTIONS.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => toggleFormArrayValue('digitalTopics', option.value)}
+                            className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-all ${
+                              form.digitalTopics?.includes(option.value)
+                                ? 'border-black bg-black text-white'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-black'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Inclusions</p>
+                      <div className="flex flex-wrap gap-2">
+                        {DIGITAL_INCLUSION_OPTIONS.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => toggleFormArrayValue('digitalInclusions', option.value)}
+                            className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-all ${
+                              form.digitalInclusions?.includes(option.value)
+                                ? 'border-black bg-black text-white'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-black'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                   <label className="sm:col-span-2 flex items-start gap-2 text-sm font-bold cursor-pointer p-3 bg-gray-50 rounded-xl">
                     <input
                       type="checkbox"
@@ -1893,16 +2135,190 @@ const buildTrainingBody = (f) => ({
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
                   placeholder="Filter by customer name or phone..."
                   className="w-full pl-8 pr-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-black" />
               </div>
-              {customerSearch && <button onClick={() => setCustomerSearch('')} className="px-3 py-2 bg-gray-100 rounded-xl text-xs font-bold"><X size={13}/></button>}
+              {customerSearch && <button onClick={() => setCustomerSearch('')} className="px-3 py-2 bg-gray-100 rounded-xl text-xs font-bold shrink-0"><X size={13}/></button>}
               <button onClick={() => downloadCSV(data, 'belle-kreyashon-orders.csv')}
                 className="px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-900 whitespace-nowrap">↓ Export CSV</button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'Analytics' && !loading && salesAnalytics && (
+          <div className="space-y-5 mb-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: 'Total Revenue', value: formatMoney(analyticsSummary.totalRevenue), hint: `${formatMoney(analyticsSummary.last30DaysRevenue)} in the last 30 days` },
+                { label: 'Shop Orders', value: formatMoney(analyticsSummary.orderRevenue), hint: `${analyticsSummary.orderCount || 0} paid order${analyticsSummary.orderCount === 1 ? '' : 's'}` },
+                { label: 'Bookings', value: formatMoney(analyticsSummary.bookingRevenue), hint: `${analyticsSummary.bookingCount || 0} paid booking${analyticsSummary.bookingCount === 1 ? '' : 's'}` },
+                { label: 'Digital Claims', value: `${analyticsSummary.freeDigitalClaims || 0}`, hint: `${analyticsSummary.trialOrderCount || 0} trial order${analyticsSummary.trialOrderCount === 1 ? '' : 's'}` },
+              ].map((card) => (
+                <div key={card.label} className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">{card.label}</p>
+                  <p className="mt-2 text-2xl font-extrabold text-black">{card.value}</p>
+                  <p className="mt-2 text-xs text-gray-500">{card.hint}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Sales Breakdown</p>
+                    <h3 className="text-lg font-extrabold mt-1">Where revenue is coming from</h3>
+                  </div>
+                  <p className="text-xs font-bold text-gray-500">Paid orders and bookings</p>
+                </div>
+                <div className="space-y-3">
+                  {analyticsBreakdown.map((item) => (
+                    <div key={item.key} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-extrabold text-sm text-black">{item.label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-extrabold text-sm text-black">{formatMoney(item.amount)}</p>
+                          <p className="text-xs text-gray-500">{item.count || 0} item{item.count === 1 ? '' : 's'} • {item.share || 0}%</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 h-2 rounded-full bg-white">
+                        <div className="h-full rounded-full bg-black" style={{ width: `${Math.max(item.share || 0, item.amount > 0 ? 6 : 0)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Operational Snapshot</p>
+                  <h3 className="text-lg font-extrabold mt-1">Quick totals for daily decisions</h3>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  {[
+                    { label: 'Physical Products', value: formatMoney(analyticsSummary.physicalProductRevenue) },
+                    { label: 'Digital Products', value: formatMoney(analyticsSummary.digitalProductRevenue) },
+                    { label: 'Training Revenue', value: formatMoney(analyticsSummary.trainingRevenue) },
+                    { label: 'Consultation Revenue', value: formatMoney(analyticsSummary.consultationRevenue) },
+                    { label: 'Delivery Fees', value: formatMoney(analyticsSummary.deliveryRevenue) },
+                    { label: 'Average Order Value', value: formatMoney(analyticsSummary.averageOrderValue) },
+                    { label: 'Average Booking Value', value: formatMoney(analyticsSummary.averageBookingValue) },
+                    { label: 'Cancelled Orders', value: `${analyticsSummary.cancelledOrderCount || 0}` },
+                  ].map((metric) => (
+                    <div key={metric.label} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-400">{metric.label}</p>
+                      <p className="mt-1 text-lg font-extrabold text-black">{metric.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Page Sources</p>
+                  <h3 className="text-lg font-extrabold mt-1">Which pages started the sales</h3>
+                </div>
+                <div className="space-y-3">
+                  {analyticsPageBreakdown.map((item) => (
+                    <div key={item.key} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-extrabold text-sm text-black">{item.label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-extrabold text-sm text-black">{formatMoney(item.amount)}</p>
+                          <p className="text-xs text-gray-500">{item.count || 0} sale{item.count === 1 ? '' : 's'} • {item.share || 0}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Campaign Sources</p>
+                  <h3 className="text-lg font-extrabold mt-1">Which UTM campaigns or channels converted</h3>
+                </div>
+                <div className="space-y-3">
+                  {analyticsCampaignBreakdown.map((item) => (
+                    <div key={item.key} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-extrabold text-sm text-black">{item.label}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-extrabold text-sm text-black">{formatMoney(item.amount)}</p>
+                          <p className="text-xs text-gray-500">{item.count || 0} sale{item.count === 1 ? '' : 's'} • {item.share || 0}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Monthly Revenue</p>
+                  <h3 className="text-lg font-extrabold mt-1">Last six months</h3>
+                </div>
+                <div className="space-y-3">
+                  {analyticsMonthlyRevenue.map((item) => {
+                    const maxAmount = Math.max(...analyticsMonthlyRevenue.map((entry) => entry.amount || 0), 1);
+                    return (
+                      <div key={item.key}>
+                        <div className="flex items-center justify-between gap-3 mb-1">
+                          <p className="text-sm font-bold text-black">{item.label}</p>
+                          <p className="text-xs font-bold text-gray-500">{formatMoney(item.amount)}</p>
+                        </div>
+                        <div className="h-2 rounded-full bg-gray-100">
+                          <div
+                            className="h-full rounded-full bg-[#FDC700]"
+                            style={{ width: `${Math.max(((item.amount || 0) / maxAmount) * 100, item.amount > 0 ? 8 : 0)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-400">{item.orders || 0} orders • {item.bookings || 0} bookings</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Recent Sales</p>
+                  <h3 className="text-lg font-extrabold mt-1">Latest paid activity</h3>
+                </div>
+                <div className="space-y-3">
+                  {analyticsRecentSales.map((sale) => (
+                    <div key={`${sale.type}-${sale.id}`} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-extrabold text-sm text-black line-clamp-1">{sale.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{sale.source} • {sale.customerName}</p>
+                          {sale.sourcePage && <p className="text-xs text-gray-400 mt-1">Origin: {sale.sourcePage}</p>}
+                          {sale.utmCampaign && <p className="text-xs text-gray-400 mt-1">Campaign: {sale.utmCampaign}</p>}
+                          <p className="text-xs text-gray-400 mt-1">{formatAdminDate(sale.createdAt)}</p>
+                        </div>
+                        <p className="font-extrabold text-sm text-black shrink-0">{formatMoney(sale.amount)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1910,14 +2326,14 @@ const buildTrainingBody = (f) => ({
         {loading && <div className="text-center py-10 text-gray-400 text-sm">Loading...</div>}
 
         {/* ── DATA GRID ───────────────────────────────────────────────────────── */}
-        {!loading && (
+        {!loading && tab !== 'Analytics' && (
           <>
-          <div className={tab === 'Products' || tab === 'Digital Products' || tab === 'Featured' ? 'grid sm:grid-cols-2 lg:grid-cols-3 gap-3' : tab === 'Blog' ? 'grid sm:grid-cols-2 gap-3' : 'flex flex-col gap-3'}>
+          <div className={collectionLayoutClass}>
 
             {/* PRODUCTS */}
             {tab === 'Products' && pagedData.map(item => (
-              <div key={item._id} className="bg-white rounded-2xl p-3 border border-gray-100 flex gap-3">
-                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+              <div key={item._id} className={`bg-white rounded-2xl border border-gray-100 ${useGridCards ? 'p-4 flex flex-col h-full' : 'p-3 flex gap-3'}`}>
+                <div className={`${useGridCards ? 'w-full aspect-[4/3] mb-3' : 'w-16 h-16 shrink-0'} rounded-xl overflow-hidden bg-gray-100`}>
                   {item.images?.[0] && <img src={item.images[0]} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display='none'; }} />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1932,7 +2348,7 @@ const buildTrainingBody = (f) => ({
                     {item.discount?.active && <span className="text-xs bg-green-50 text-green-600 font-bold px-1.5 py-0.5 rounded-full">Discount</span>}
                   </div>
                 </div>
-                <div className="flex flex-col items-center gap-2 shrink-0">
+                <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col items-center gap-2 shrink-0'}`}>
                   <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
                   <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
                   <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
@@ -1941,8 +2357,8 @@ const buildTrainingBody = (f) => ({
             ))}
 
             {tab === 'Digital Products' && pagedData.map(item => (
-              <div key={item._id} className="bg-white rounded-2xl p-3 border border-gray-100 flex gap-3">
-                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+              <div key={item._id} className={`bg-white rounded-2xl border border-gray-100 ${useGridCards ? 'p-4 flex flex-col h-full' : 'p-3 flex gap-3'}`}>
+                <div className={`${useGridCards ? 'w-full aspect-[4/3] mb-3' : 'w-16 h-16 shrink-0'} rounded-xl overflow-hidden bg-gray-100`}>
                   {item.images?.[0] && <img src={item.images[0]} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display='none'; }} />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1957,6 +2373,9 @@ const buildTrainingBody = (f) => ({
                   </p>
                   <p className="text-xs text-gray-400">{item.digitalFiles?.length || 0} secure file{item.digitalFiles?.length === 1 ? '' : 's'}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
+                    {item.digitalSkillLevel && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, item.digitalSkillLevel, 'All Levels')}</span>}
+                    {item.digitalFormat && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, item.digitalFormat)}</span>}
+                    {item.digitalDuration && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, item.digitalDuration)}</span>}
                     {item.digitalAccessKind === 'free' && <span className="text-xs bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded-full">Free</span>}
                     {item.digitalAccessKind === 'trial' && <span className="text-xs bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">Trial</span>}
                     {item.isSeries && <span className="text-xs bg-purple-50 text-purple-600 font-bold px-1.5 py-0.5 rounded-full">Series</span>}
@@ -1967,7 +2386,7 @@ const buildTrainingBody = (f) => ({
                     {item.available ? <span className="text-xs bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">Live</span> : <span className="text-xs bg-gray-100 text-gray-500 font-bold px-1.5 py-0.5 rounded-full">Hidden</span>}
                   </div>
                 </div>
-                <div className="flex flex-col items-center gap-2 shrink-0">
+                <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col items-center gap-2 shrink-0'}`}>
                   <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
                   <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
                   <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
@@ -2242,8 +2661,8 @@ const buildTrainingBody = (f) => ({
             {tab === 'Featured' && pagedData.map(item => {
               const expired = item.partnerSubEnd && new Date(item.partnerSubEnd) < new Date();
               return (
-                <div key={item._id} className={`bg-white rounded-2xl p-3 border flex gap-3 ${expired?'border-red-200 opacity-60':'border-gray-100'}`}>
-                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 shrink-0">
+                <div key={item._id} className={`bg-white rounded-2xl border ${useGridCards ? 'p-4 flex flex-col h-full' : 'p-3 flex gap-3'} ${expired?'border-red-200 opacity-60':'border-gray-100'}`}>
+                  <div className={`${useGridCards ? 'w-full aspect-[4/3] mb-3' : 'w-14 h-14 shrink-0'} rounded-xl overflow-hidden bg-gray-100`}>
                     {item.images?.[0] && <img src={item.images[0]} alt="" className="w-full h-full object-cover" onError={e=>{e.target.style.display='none';}} />}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -2258,7 +2677,7 @@ const buildTrainingBody = (f) => ({
                       {expired              && <span className="text-xs bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">Expired</span>}
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 shrink-0">
+                  <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col gap-2 shrink-0'}`}>
                     <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
                     <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
                     <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
@@ -2309,7 +2728,7 @@ const buildTrainingBody = (f) => ({
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-5">
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
               <button onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}
                 className="px-3 py-1.5 text-xs font-bold rounded-xl border-2 border-gray-200 hover:border-black disabled:opacity-40">Prev</button>
               <span className="text-xs text-gray-500 font-bold">{page} / {totalPages} ({data.length} total)</span>

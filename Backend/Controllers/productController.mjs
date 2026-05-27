@@ -1,4 +1,11 @@
 import Product from '../Models/Product.mjs';
+import {
+  DIGITAL_DURATIONS,
+  DIGITAL_FORMATS,
+  DIGITAL_INCLUSIONS,
+  DIGITAL_SKILL_LEVELS,
+  DIGITAL_TOPICS,
+} from '../Constants/digitalProductOptions.mjs';
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
 
@@ -38,6 +45,34 @@ const parseDigitalFiles = (digitalFiles) => {
   }
   return [];
 };
+
+const parseStringList = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    if (!value.trim()) return [];
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item).trim()).filter(Boolean);
+    } catch {
+      return value.split(',').map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+};
+
+const normalizeSingleOption = (value, allowed, fallback = null) => (
+  allowed.includes(value) ? value : fallback
+);
+
+const normalizeOptionList = (value, allowed) => (
+  [...new Set(parseStringList(value))]
+    .filter((item) => allowed.includes(item))
+);
+
+const parseQueryList = (value, allowed) => (
+  parseStringList(value).filter((item) => allowed.includes(item))
+);
 
 const roundMoney = (value) => Math.round(Number(value) || 0);
 const stepRank = (file = {}) => (file.stepNumber ?? Number.MAX_SAFE_INTEGER);
@@ -113,6 +148,11 @@ const toPublicProduct = (doc) => {
     product.accessMode = accessMode;
     product.limitedAccessMonths = limitedAccessMonths;
     product.digitalAccessKind = product.digitalAccessKind || 'paid';
+    product.digitalSkillLevel = product.digitalSkillLevel || null;
+    product.digitalFormat = product.digitalFormat || null;
+    product.digitalDuration = product.digitalDuration || null;
+    product.digitalTopics = Array.isArray(product.digitalTopics) ? product.digitalTopics : [];
+    product.digitalInclusions = Array.isArray(product.digitalInclusions) ? product.digitalInclusions : [];
     product.freeTrialDays = product.digitalAccessKind === 'trial'
       ? Math.max(1, Number(product.freeTrialDays) || 7)
       : 0;
@@ -156,6 +196,11 @@ const cleanBody = (body) => {
 
   if (b.depositPercent !== undefined) b.depositPercent = b.depositPercent ? Number(b.depositPercent) : null;
   if (b.limitedAccessMonths !== undefined) b.limitedAccessMonths = Number(b.limitedAccessMonths) > 0 ? Number(b.limitedAccessMonths) : 6;
+  if (b.digitalSkillLevel !== undefined) b.digitalSkillLevel = normalizeSingleOption(b.digitalSkillLevel, DIGITAL_SKILL_LEVELS, 'all-levels');
+  if (b.digitalFormat !== undefined) b.digitalFormat = normalizeSingleOption(b.digitalFormat, DIGITAL_FORMATS);
+  if (b.digitalDuration !== undefined) b.digitalDuration = normalizeSingleOption(b.digitalDuration, DIGITAL_DURATIONS);
+  if (b.digitalTopics !== undefined) b.digitalTopics = normalizeOptionList(b.digitalTopics, DIGITAL_TOPICS);
+  if (b.digitalInclusions !== undefined) b.digitalInclusions = normalizeOptionList(b.digitalInclusions, DIGITAL_INCLUSIONS);
 
   if (b.discount) {
     b.discount = {
@@ -181,6 +226,11 @@ const cleanBody = (body) => {
     b.depositPercent = null;
     b.digitalType = b.digitalType || 'mixed';
     b.digitalAccessKind = b.digitalAccessKind || 'paid';
+    b.digitalSkillLevel = b.digitalSkillLevel || 'all-levels';
+    b.digitalFormat = b.digitalFormat || null;
+    b.digitalDuration = b.digitalDuration || null;
+    b.digitalTopics = normalizeOptionList(b.digitalTopics, DIGITAL_TOPICS);
+    b.digitalInclusions = normalizeOptionList(b.digitalInclusions, DIGITAL_INCLUSIONS);
     b.freeTrialDays = b.digitalAccessKind === 'trial'
       ? Math.max(1, Number(b.freeTrialDays) || 7)
       : 0;
@@ -211,6 +261,11 @@ const cleanBody = (body) => {
   } else {
     b.digitalType = null;
     b.digitalAccessKind = 'paid';
+    b.digitalSkillLevel = 'all-levels';
+    b.digitalFormat = null;
+    b.digitalDuration = null;
+    b.digitalTopics = [];
+    b.digitalInclusions = [];
     b.freeTrialDays = 0;
     b.isSeries = false;
     b.seriesTitle = '';
@@ -239,6 +294,12 @@ export const getPublicProducts = async (req, res) => {
       outOfStock,
       isDigital,
       digitalType,
+      digitalSkillLevel,
+      digitalFormat,
+      digitalDuration,
+      digitalTopics,
+      digitalInclusions,
+      priceType,
       minPrice,
       maxPrice,
       sort,
@@ -250,6 +311,17 @@ export const getPublicProducts = async (req, res) => {
     if (isDigital === 'true') query.isDigital = true;
     if (isDigital === 'false') query.isDigital = { $ne: true };
     if (digitalType && digitalType !== 'all') query.digitalType = digitalType;
+    if (digitalSkillLevel && digitalSkillLevel !== 'all') query.digitalSkillLevel = normalizeSingleOption(digitalSkillLevel, DIGITAL_SKILL_LEVELS);
+    if (digitalFormat && digitalFormat !== 'all') query.digitalFormat = normalizeSingleOption(digitalFormat, DIGITAL_FORMATS);
+    if (digitalDuration && digitalDuration !== 'all') query.digitalDuration = normalizeSingleOption(digitalDuration, DIGITAL_DURATIONS);
+    if (priceType && priceType !== 'all') {
+      const normalizedPriceType = normalizeSingleOption(priceType, ['free', 'trial', 'paid']);
+      if (normalizedPriceType) query.digitalAccessKind = normalizedPriceType;
+    }
+    const topicFilters = parseQueryList(digitalTopics, DIGITAL_TOPICS);
+    if (topicFilters.length) query.digitalTopics = { $in: topicFilters };
+    const inclusionFilters = parseQueryList(digitalInclusions, DIGITAL_INCLUSIONS);
+    if (inclusionFilters.length) query.digitalInclusions = { $in: inclusionFilters };
     if (featured === 'true') query.featured = true;
     if (fastSelling === 'true') query.fastSelling = true;
     if (isPreOrder === 'true') query.isPreOrder = true;
@@ -269,6 +341,11 @@ export const getPublicProducts = async (req, res) => {
         { desc: { $regex: search, $options: 'i' } },
         { category: { $regex: search, $options: 'i' } },
         { digitalType: { $regex: search, $options: 'i' } },
+        { digitalSkillLevel: { $regex: search, $options: 'i' } },
+        { digitalFormat: { $regex: search, $options: 'i' } },
+        { digitalDuration: { $regex: search, $options: 'i' } },
+        { digitalTopics: { $elemMatch: { $regex: search, $options: 'i' } } },
+        { digitalInclusions: { $elemMatch: { $regex: search, $options: 'i' } } },
         { accessNote: { $regex: search, $options: 'i' } },
       ];
     }
@@ -340,6 +417,11 @@ export const getAllProducts = async (req, res) => {
         { category: { $regex: search, $options: 'i' } },
         { digitalType: { $regex: search, $options: 'i' } },
         { digitalAccessKind: { $regex: search, $options: 'i' } },
+        { digitalSkillLevel: { $regex: search, $options: 'i' } },
+        { digitalFormat: { $regex: search, $options: 'i' } },
+        { digitalDuration: { $regex: search, $options: 'i' } },
+        { digitalTopics: { $elemMatch: { $regex: search, $options: 'i' } } },
+        { digitalInclusions: { $elemMatch: { $regex: search, $options: 'i' } } },
         { seriesTitle: { $regex: search, $options: 'i' } },
         { accessMode: { $regex: search, $options: 'i' } },
       ];

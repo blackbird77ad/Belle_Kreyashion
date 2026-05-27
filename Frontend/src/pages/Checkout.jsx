@@ -4,6 +4,7 @@ import { Globe, Loader2, MapPin, Package } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import { api, useFetch } from '../hooks/useApi';
+import { getAttributionSnapshot } from '../utils/attribution';
 
 const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
@@ -91,6 +92,15 @@ export default function Checkout() {
     setError('');
     setLoading(true);
 
+    const checkoutAttribution = getAttributionSnapshot();
+    const itemAttributions = cart.map((item) => item.sourceAttribution || checkoutAttribution);
+    const sourcePages = [...new Set(
+      itemAttributions
+        .map((item) => item?.sourcePath || item?.sourcePage || '')
+        .filter(Boolean)
+    )];
+    const primaryAttribution = itemAttributions.find((item) => item?.utmCampaign || item?.utmSource) || itemAttributions[0] || checkoutAttribution;
+
     const orderData = {
       customer: {
         ...customer,
@@ -107,6 +117,7 @@ export default function Checkout() {
         trialDays: item.digitalAccessKind === 'trial' ? Number(item.freeTrialDays || 7) : null,
         trialChargeAmount: item.digitalAccessKind === 'trial' ? Number(item.trialChargeAmount || 0) : null,
         variant: item.variant,
+        sourceAttribution: item.sourceAttribution || checkoutAttribution,
       })),
       subtotal,
       fulfillment: digitalOnly ? 'digital' : fulfillment,
@@ -121,6 +132,8 @@ export default function Checkout() {
       total,
       orderType: digitalOnly ? 'digital' : fulfillment === 'international' ? 'international' : 'standard',
       paymentPurpose: hasTrialItems && total === 0 ? 'trial_setup' : 'purchase',
+      sourceAttribution: primaryAttribution,
+      sourcePages,
     };
 
     if (freeOnlyDigital) {
