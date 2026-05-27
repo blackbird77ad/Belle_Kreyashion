@@ -99,6 +99,8 @@ const wrapText = (text = '', maxWidth = 300, fontSize = 12) => {
 const buildTextCommands = (lines, {
   x,
   y,
+  width = 0,
+  align = 'left',
   font = 'F1',
   fontSize = 12,
   lineHeight = 15,
@@ -109,17 +111,26 @@ const buildTextCommands = (lines, {
     'BT',
     `/${font} ${fontSize} Tf`,
     `${color} rg`,
-    `${lineHeight} TL`,
-    `1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm`,
   ];
 
   filtered.forEach((line, index) => {
-    if (index > 0) commands.push('T*');
+    const lineWidth = estimateTextWidth(line, fontSize);
+    let lineX = x;
+    if (width > 0 && align === 'center') lineX = x + Math.max(0, (width - lineWidth) / 2);
+    if (width > 0 && align === 'right') lineX = x + Math.max(0, width - lineWidth);
+    const lineY = y - (index * lineHeight);
+    commands.push(`1 0 0 1 ${lineX.toFixed(2)} ${lineY.toFixed(2)} Tm`);
     commands.push(`(${escapePdfText(line)}) Tj`);
   });
 
   commands.push('ET');
   return commands.join('\n');
+};
+
+const measureTextBlockHeight = (lines, fontSize = 12, lineHeight = 15) => {
+  const entries = Array.isArray(lines) ? lines : [String(lines || '')];
+  if (!entries.length) return 0;
+  return fontSize + (Math.max(entries.length - 1, 0) * lineHeight);
 };
 
 const buildRectangle = ({ x, y, width, height, fillColor = null, strokeColor = null, lineWidth = 1 }) => {
@@ -195,24 +206,54 @@ export const buildCertificatePdf = (record, { brandName = 'BELLE KREYASHON' } = 
   };
   const frame = frameStyles[record.frameStyle] || frameStyles.classic;
 
-  const fonts = fontBaseNames(record.fontFamily || 'classic_serif');
   const outer = { x: 24, y: 24, width: PAGE_WIDTH - 48, height: PAGE_HEIGHT - 48 };
   const inner = { x: 40, y: 40, width: PAGE_WIDTH - 80, height: PAGE_HEIGHT - 80 };
-  const topY = PAGE_HEIGHT - 78;
-  const brandWidth = 170;
-  const leftX = 68;
-  const bodyMaxWidth = 620;
+  const contentBox = { x: inner.x + 60, width: inner.width - 120 };
+  const titleMaxWidth = Math.min(contentBox.width, 660);
+  const bodyMaxWidth = Math.min(contentBox.width, 580);
+  const footerTextWidth = Math.min(contentBox.width, 520);
   const sponsorText = sponsors.length ? `Sponsors: ${sponsors.join(', ')}` : '';
 
-  const titleLines = wrapText(title.toUpperCase(), 620, 26);
-  const subtitleLines = subtitle ? wrapText(subtitle.toUpperCase(), 320, 10) : [];
-  const brandLines = wrapText(String(brandName || '').trim().toUpperCase(), 620, 11);
-  const learnerLines = wrapText(learnerName, 620, 27);
+  const titleLines = wrapText(title.toUpperCase(), titleMaxWidth, 26);
+  const subtitleLines = subtitle ? wrapText(subtitle.toUpperCase(), Math.min(contentBox.width, 520), 10) : [];
+  const brandLines = wrapText(String(brandName || '').trim().toUpperCase(), titleMaxWidth, 11);
+  const learnerLines = wrapText(learnerName, bodyMaxWidth, 27);
   const bodyLines = wrapText(body, bodyMaxWidth, 15);
-  const programmeLines = productName ? wrapText(productName, 620, 20) : [];
+  const programmeLines = productName ? wrapText(productName, bodyMaxWidth, 20) : [];
   const issueText = issueDate ? `Issued ${issueDate}` : '';
-  const issueLines = issueText ? wrapText(issueText, 620, 12.5) : [];
-  const numberLines = certificateNumber ? wrapText(certificateNumber, 150, 9.5) : [];
+  const issueLines = issueText ? wrapText(issueText, bodyMaxWidth, 12.5) : [];
+  const numberLines = certificateNumber ? wrapText(certificateNumber, Math.min(contentBox.width, 320), 9.5) : [];
+
+  const titleLineHeight = 32;
+  const subtitleLineHeight = 13;
+  const brandLineHeight = 14;
+  const learnerLineHeight = 31;
+  const bodyLineHeight = 21;
+  const programmeLineHeight = 24;
+  const issueLineHeight = 14;
+  const labelLineHeight = 12;
+  const sponsorLineHeight = 11.5;
+  const organizerLineHeight = 18;
+
+  let contentStackHeight = measureTextBlockHeight(['CERTIFICATE'], 9.5, 12) + 14;
+  contentStackHeight += measureTextBlockHeight(titleLines, 28, titleLineHeight);
+  contentStackHeight += subtitleLines.length
+    ? 10 + measureTextBlockHeight(subtitleLines, 10, subtitleLineHeight)
+    : 16;
+  contentStackHeight += 16 + measureTextBlockHeight(brandLines, 11, brandLineHeight);
+  contentStackHeight += 20 + measureTextBlockHeight(['Presented To'], 11, labelLineHeight);
+  contentStackHeight += 14 + measureTextBlockHeight(learnerLines, 27, learnerLineHeight);
+  contentStackHeight += measureTextBlockHeight(bodyLines, 15, bodyLineHeight);
+  if (programmeLines.length) {
+    contentStackHeight += 16 + measureTextBlockHeight(['Programme'], 10, labelLineHeight);
+    contentStackHeight += 12 + measureTextBlockHeight(programmeLines, 20, programmeLineHeight);
+  }
+  if (issueLines.length) contentStackHeight += 18 + measureTextBlockHeight(issueLines, 12.5, issueLineHeight);
+
+  const contentTopY = PAGE_HEIGHT - 88;
+  const contentBottomY = 188;
+  const availableContentHeight = contentTopY - contentBottomY;
+  let cursorY = contentTopY - Math.max(0, (availableContentHeight - contentStackHeight) / 2);
 
   const commands = [];
   commands.push(buildRectangle({
@@ -241,175 +282,208 @@ export const buildCertificatePdf = (record, { brandName = 'BELLE KREYASHON' } = 
   }));
 
   commands.push(buildTextCommands(['CERTIFICATE'], {
-    x: leftX,
-    y: topY,
+    x: contentBox.x,
+    y: cursorY,
+    width: contentBox.width,
+    align: 'center',
     font: 'F2',
     fontSize: 9.5,
     lineHeight: 12,
     color: accentColor,
   }));
+  cursorY -= 14 + measureTextBlockHeight(['CERTIFICATE'], 9.5, 12);
+
   commands.push(buildTextCommands(titleLines, {
-    x: leftX,
-    y: topY - 26,
+    x: contentBox.x,
+    y: cursorY,
+    width: contentBox.width,
+    align: 'center',
     font: 'F2',
     fontSize: 28,
-    lineHeight: 31,
+    lineHeight: titleLineHeight,
     color: primaryColor,
   }));
+  cursorY -= measureTextBlockHeight(titleLines, 28, titleLineHeight) + (subtitleLines.length ? 10 : 16);
+
   if (subtitleLines.length) {
-    const subtitleY = topY - 26 - (titleLines.length * 31) - 4;
     commands.push(buildTextCommands(subtitleLines, {
-      x: leftX,
-      y: subtitleY,
+      x: contentBox.x,
+      y: cursorY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F2',
       fontSize: 10,
-      lineHeight: 12,
+      lineHeight: subtitleLineHeight,
       color: accentColor,
     }));
+    cursorY -= measureTextBlockHeight(subtitleLines, 10, subtitleLineHeight) + 16;
   }
-  const brandY = subtitleLines.length
-    ? topY - 26 - (titleLines.length * 31) - 4 - (subtitleLines.length * 12) - 14
-    : topY - 26 - (titleLines.length * 31) - 18;
+
   commands.push(buildTextCommands(brandLines, {
-    x: leftX,
-    y: brandY,
+    x: contentBox.x,
+    y: cursorY,
+    width: contentBox.width,
+    align: 'center',
     font: 'F2',
     fontSize: 11,
-    lineHeight: 13,
+    lineHeight: brandLineHeight,
     color: primaryColor,
   }));
-  const contentTop = brandY - (brandLines.length * 13) - 26;
+  cursorY -= measureTextBlockHeight(brandLines, 11, brandLineHeight) + 20;
 
   commands.push(buildTextCommands(['Presented To'], {
-    x: leftX,
-    y: contentTop,
+    x: contentBox.x,
+    y: cursorY,
+    width: contentBox.width,
+    align: 'center',
     font: 'F2',
     fontSize: 11,
-    lineHeight: 13,
+    lineHeight: labelLineHeight,
     color: '0.420 0.451 0.510',
   }));
+  cursorY -= measureTextBlockHeight(['Presented To'], 11, labelLineHeight) + 14;
 
-  const learnerStartY = contentTop - 28;
   commands.push(buildTextCommands(learnerLines, {
-    x: leftX,
-    y: learnerStartY,
+    x: contentBox.x,
+    y: cursorY,
+    width: contentBox.width,
+    align: 'center',
     font: 'F2',
     fontSize: 27,
-    lineHeight: 31,
+    lineHeight: learnerLineHeight,
     color: primaryColor,
   }));
+  cursorY -= measureTextBlockHeight(learnerLines, 27, learnerLineHeight) + 14;
 
-  const learnerBlockHeight = learnerLines.length * 31;
-  const bodyStartY = learnerStartY - learnerBlockHeight - 14;
   commands.push(buildTextCommands(bodyLines, {
-    x: leftX,
-    y: bodyStartY,
+    x: contentBox.x,
+    y: cursorY,
+    width: contentBox.width,
+    align: 'center',
     font: 'F1',
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: bodyLineHeight,
     color: fontColor,
   }));
+  cursorY -= measureTextBlockHeight(bodyLines, 15, bodyLineHeight);
 
   if (programmeLines.length) {
-    const programmeLabelY = bodyStartY - (bodyLines.length * 20) - 18;
+    cursorY -= 16;
     commands.push(buildTextCommands(['Programme'], {
-      x: leftX,
-      y: programmeLabelY,
+      x: contentBox.x,
+      y: cursorY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F2',
       fontSize: 10,
-      lineHeight: 12,
+      lineHeight: labelLineHeight,
       color: '0.420 0.451 0.510',
     }));
+    cursorY -= measureTextBlockHeight(['Programme'], 10, labelLineHeight) + 12;
+
     commands.push(buildTextCommands(programmeLines, {
-      x: leftX,
-      y: programmeLabelY - 18,
+      x: contentBox.x,
+      y: cursorY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F2',
       fontSize: 20,
-      lineHeight: 24,
+      lineHeight: programmeLineHeight,
       color: primaryColor,
     }));
+    cursorY -= measureTextBlockHeight(programmeLines, 20, programmeLineHeight);
+  }
 
-    if (issueLines.length) {
-      const issueStartY = programmeLabelY - 18 - (programmeLines.length * 24) - 24;
-      commands.push(buildTextCommands(issueLines, {
-        x: leftX,
-        y: issueStartY,
-        font: 'F2',
-        fontSize: 12.5,
-        lineHeight: 14,
-        color: fontColor,
-      }));
-    }
-  } else if (issueLines.length) {
-    const issueStartY = bodyStartY - (bodyLines.length * 20) - 24;
+  if (issueLines.length) {
+    cursorY -= 18;
     commands.push(buildTextCommands(issueLines, {
-      x: leftX,
-      y: issueStartY,
+      x: contentBox.x,
+      y: cursorY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F2',
       fontSize: 12.5,
-      lineHeight: 14,
+      lineHeight: issueLineHeight,
       color: fontColor,
     }));
   }
 
-  const footerBaseY = 108;
+  const footerBaseY = 110;
+  let footerTextY = signatories.length ? 156 : 148;
   if (sponsorText) {
-    const sponsorLines = wrapText(sponsorText, 360, 9.5);
+    const sponsorLines = wrapText(sponsorText, footerTextWidth, 9.5);
     commands.push(buildTextCommands(sponsorLines, {
-      x: leftX,
-      y: footerBaseY + 30,
+      x: contentBox.x,
+      y: footerTextY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F1',
       fontSize: 9.5,
-      lineHeight: 11.5,
+      lineHeight: sponsorLineHeight,
       color: '0.420 0.451 0.510',
     }));
+    footerTextY -= measureTextBlockHeight(sponsorLines, 9.5, sponsorLineHeight) + 10;
   }
 
   if (showOrganizerBlock) {
     commands.push(buildTextCommands(['Issued By'], {
-      x: leftX,
-      y: footerBaseY + 8,
+      x: contentBox.x,
+      y: footerTextY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F2',
       fontSize: 10,
-      lineHeight: 12,
+      lineHeight: labelLineHeight,
       color: '0.420 0.451 0.510',
     }));
-    const organizerLines = wrapText(organizerName, 260, 15);
+    footerTextY -= measureTextBlockHeight(['Issued By'], 10, labelLineHeight) + 8;
+    const organizerLines = wrapText(organizerName, footerTextWidth, 15);
     commands.push(buildTextCommands(organizerLines, {
-      x: leftX,
-      y: footerBaseY - 10,
+      x: contentBox.x,
+      y: footerTextY,
+      width: contentBox.width,
+      align: 'center',
       font: 'F2',
       fontSize: 15,
-      lineHeight: 18,
+      lineHeight: organizerLineHeight,
       color: primaryColor,
     }));
+    footerTextY -= measureTextBlockHeight(organizerLines, 15, organizerLineHeight) + 8;
   }
 
   if (signatories.length) {
     const signWidth = 156;
     const signGap = 18;
+    const totalWidth = (signatories.length * signWidth) + ((signatories.length - 1) * signGap);
+    const signStartX = (PAGE_WIDTH - totalWidth) / 2;
     signatories.forEach((signatory, index) => {
-      const x = 392 + (index * (signWidth + signGap));
+      const x = signStartX + (index * (signWidth + signGap));
       commands.push(buildLine({
         x1: x,
-        y1: 116,
+        y1: footerBaseY,
         x2: x + signWidth,
-        y2: 116,
+        y2: footerBaseY,
         strokeColor: primaryColor,
         lineWidth: 1.1,
       }));
-      commands.push(buildTextCommands(wrapText(signatory.name || '', signWidth, 11.5), {
+      const signNameLines = wrapText(signatory.name || '', signWidth, 11.5);
+      commands.push(buildTextCommands(signNameLines, {
         x,
-        y: 100,
+        y: footerBaseY - 16,
+        width: signWidth,
+        align: 'center',
         font: 'F2',
         fontSize: 11.5,
         lineHeight: 13,
         color: primaryColor,
       }));
       if (signatory.role) {
+        const signRoleY = footerBaseY - 20 - measureTextBlockHeight(signNameLines, 11.5, 13);
         commands.push(buildTextCommands(wrapText(signatory.role, signWidth, 9.5), {
           x,
-          y: 84,
+          y: signRoleY,
+          width: signWidth,
+          align: 'center',
           font: 'F1',
           fontSize: 9.5,
           lineHeight: 11,
@@ -421,8 +495,10 @@ export const buildCertificatePdf = (record, { brandName = 'BELLE KREYASHON' } = 
 
   if (numberLines.length) {
     commands.push(buildTextCommands(numberLines, {
-      x: PAGE_WIDTH - 188,
-      y: 78,
+      x: contentBox.x,
+      y: signatories.length ? 66 : 78,
+      width: contentBox.width,
+      align: 'center',
       font: 'F1',
       fontSize: 9.5,
       lineHeight: 11,

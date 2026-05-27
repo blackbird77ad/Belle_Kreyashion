@@ -1,17 +1,53 @@
 import axios from 'axios';
 import nodemailer from 'nodemailer';
-import { buildCertificateHtml } from '../Utils/certificateHtml.mjs';
 import { buildCertificatePdf } from '../Utils/certificatePdf.mjs';
 
 let transporter = null;
 
+const escapeHtml = (value = '') => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const getSmtpSettings = () => ({
+  host: process.env.SMTP_HOST || process.env.MAIL_HOST || '',
+  port: Number(process.env.SMTP_PORT || process.env.MAIL_PORT || 587),
+  user: process.env.SMTP_USER || process.env.MAIL_USER || process.env.EMAIL_USER || '',
+  pass: process.env.SMTP_PASS || process.env.MAIL_PASS || process.env.EMAIL_PASS || '',
+});
+
+const normalizeConfiguredValue = (value = '') => String(value || '').trim().replace(/^['"]|['"]$/g, '');
+
+const extractEmailAddress = (value = '') => {
+  const input = normalizeConfiguredValue(value);
+  const bracketMatch = input.match(/<([^<>@\s]+@[^<>@\s]+)>/);
+  if (bracketMatch) return bracketMatch[1].trim().toLowerCase();
+
+  const plainMatch = input.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return plainMatch ? plainMatch[0].trim().toLowerCase() : '';
+};
+
+const extractEmailDomain = (value = '') => {
+  const email = extractEmailAddress(value);
+  return email.split('@')[1] || '';
+};
+
+const usesPlaceholderDomain = (value = '') => {
+  const domain = extractEmailDomain(value);
+  return ['yourdomain.com', 'example.com', 'example.org', 'example.net', 'localhost'].includes(domain);
+};
+
+const hasSmtpConfig = () => {
+  const { host, user, pass } = getSmtpSettings();
+  return !!(host && user && pass);
+};
+
 const getTransporter = () => {
   if (transporter) return transporter;
 
-  const host = process.env.SMTP_HOST || process.env.MAIL_HOST || '';
-  const port = Number(process.env.SMTP_PORT || process.env.MAIL_PORT || 587);
-  const user = process.env.SMTP_USER || process.env.MAIL_USER || process.env.EMAIL_USER || '';
-  const pass = process.env.SMTP_PASS || process.env.MAIL_PASS || process.env.EMAIL_PASS || '';
+  const { host, port, user, pass } = getSmtpSettings();
 
   if (!host || !user || !pass) {
     throw new Error(
@@ -31,38 +67,87 @@ const getTransporter = () => {
 };
 
 const resolveSender = () => {
-  const sender =
-    process.env.RESEND_FROM_EMAIL ||
-    process.env.CERTIFICATE_FROM_EMAIL ||
-    process.env.SMTP_FROM ||
-    process.env.MAIL_FROM ||
-    process.env.SMTP_USER ||
-    process.env.MAIL_USER ||
-    process.env.EMAIL_USER ||
-    '';
+  const candidates = [
+    process.env.CERTIFICATE_FROM_EMAIL,
+    process.env.RESEND_FROM_EMAIL,
+    process.env.SMTP_FROM,
+    process.env.MAIL_FROM,
+    process.env.SMTP_USER,
+    process.env.MAIL_USER,
+    process.env.EMAIL_USER,
+  ]
+    .map(normalizeConfiguredValue)
+    .filter(Boolean);
 
-  if (!sender) {
+  const sender = candidates.find((value) => extractEmailAddress(value) && !usesPlaceholderDomain(value)) || '';
+  if (sender) {
+    return {
+      formatted: sender,
+      email: extractEmailAddress(sender),
+      domain: extractEmailDomain(sender),
+    };
+  }
+
+  if (candidates.some((value) => usesPlaceholderDomain(value))) {
     throw new Error(
-      'Certificate sender email is not configured. Set CERTIFICATE_FROM_EMAIL or SMTP_FROM. ' +
-      'If you prefer, SMTP_USER can also serve as the sender address.'
+      'Certificate sender email is still using a placeholder domain. ' +
+      'Update CERTIFICATE_FROM_EMAIL or RESEND_FROM_EMAIL to a verified address such as "Belle Kreyashon <certificates@your-real-domain.com>".'
     );
   }
 
-  return sender;
+  if (!candidates.length) {
+    throw new Error(
+      'Certificate sender email is not configured. Set CERTIFICATE_FROM_EMAIL or RESEND_FROM_EMAIL. ' +
+      'SMTP_FROM can also be used when you prefer SMTP delivery.'
+    );
+  }
+
+  throw new Error(
+    'Certificate sender email format is invalid. Use a plain address or the format "Belle Kreyashon <mail@verified-domain.com>".'
+  );
 };
 
 const buildCertificateFilename = (record) => String(record.certificateNumber || 'certificate').replace(/[^A-Za-z0-9-_]/g, '-');
 
-const sendWithResend = async ({ record, sender, subject, html, pdf }) => {
+const buildCertificateEmailHtml = (record) => `
+  <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
+    <p>Hello ${escapeHtml(record.learnerName || 'Learner')},</p>
+    <p>
+      Your certificate${record.certificateTitle ? ` for <strong>${escapeHtml(record.certificateTitle)}</strong>` : ''} is ready.
+    </p>
+    <p>
+      Your PDF certificate is attached to this email. Please download it from your recipient email
+      and save a backup in your cloud storage for safekeeping.
+    </p>
+    <p>Thank you,<br/>Belle Kreyashon</p>
+  </div>
+`;
+
+const buildCertificateEmailText = (record) => [
+  `Hello ${record.learnerName || 'Learner'},`,
+  '',
+  `Your certificate${record.certificateTitle ? ` for ${record.certificateTitle}` : ''} is ready.`,
+  'Your PDF certificate is attached to this email.',
+  'Please download it from your recipient email and save a backup in your cloud storage for safekeeping.',
+  '',
+  'Thank you,',
+  'Belle Kreyashon',
+].join('\n');
+
+const sendWithResend = async ({ record, sender, subject, html, text, pdf }) => {
   const apiKey = String(process.env.RESEND_API_KEY || '').trim();
   if (!apiKey) return null;
 
+  if (!sender?.email) {
+    throw new Error('Resend sender email format is invalid');
+  }
+
   const payload = {
-    from: sender,
+    from: sender.formatted,
     to: [record.learnerEmail],
     subject,
     html,
-    text: `Hello ${record.learnerName || 'Learner'}, your certificate is ready.`,
+    text,
     attachments: [
       {
         filename: `${buildCertificateFilename(record)}.pdf`,
@@ -93,31 +178,29 @@ export const sendCertificateEmail = async (record) => {
   }
 
   const sender = resolveSender();
-  const html = buildCertificateHtml(record, { autoPrint: false });
+  const html = buildCertificateEmailHtml(record);
+  const text = buildCertificateEmailText(record);
   const pdf = buildCertificatePdf(record);
   const subject = `Your Belle Kreyashon certificate${record.certificateTitle ? ` - ${record.certificateTitle}` : ''}`;
   const safeNumber = buildCertificateFilename(record);
 
-  const resendResult = await sendWithResend({ record, sender, subject, html, pdf }).catch((error) => {
-    error.message = `Resend send failed: ${error.response?.data?.message || error.message}`;
-    throw error;
+  let resendFailed = false;
+  const resendResult = await sendWithResend({ record, sender, subject, html, text, pdf }).catch((error) => {
+    error.message = `Resend send failed for ${sender.formatted} (${sender.domain}): ${error.response?.data?.message || error.message}`;
+    if (!hasSmtpConfig()) throw error;
+    resendFailed = true;
+    return null;
   });
   if (resendResult) return resendResult;
 
   const mailer = getTransporter();
 
   await mailer.sendMail({
-    from: sender,
+    from: sender.formatted,
     to: record.learnerEmail,
     subject,
-    html: `
-      <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-        <p>Hello ${record.learnerName || 'Learner'},</p>
-        <p>Your certificate${record.certificateTitle ? ` for <strong>${record.certificateTitle}</strong>` : ''} is ready.</p>
-        <p>We attached your A4 landscape PDF certificate for easy viewing, printing and forwarding when needed.</p>
-        <p>Thank you,<br/>Belle Kreyashon</p>
-      </div>
-    `,
+    html,
+    text,
     attachments: [
       {
         filename: `${safeNumber}.pdf`,
@@ -128,7 +211,7 @@ export const sendCertificateEmail = async (record) => {
   });
 
   return {
-    provider: 'smtp',
+    provider: resendFailed ? 'smtp-fallback' : 'smtp',
     id: '',
   };
 };

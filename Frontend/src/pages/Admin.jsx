@@ -22,6 +22,25 @@ const toDateInput = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+const formatAdminDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+};
+
+const isCertificateIssued = (item = {}) => item.emailStatus === 'sent';
+
+const formatCertificateEmailStatus = (item = {}) => {
+  if (item.emailStatus === 'sent') {
+    return `Issued to learner${item.emailSentAt ? ` on ${formatAdminDate(item.emailSentAt)}` : ''}`;
+  }
+  if (item.emailStatus === 'failed') {
+    return `Email failed${item.emailError ? `: ${item.emailError}` : ''}`;
+  }
+  return 'Email not sent yet';
+};
+
 const EMPTY_PROD = { name:'',desc:'',category:'',images:[],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:false,partnerBrand:'',partnerContact:'' };
 const EMPTY_DIGITAL = {
   name:'', desc:'', category:'Digital Products', images:[], retailPrice:'', available:true, featured:false, fastSelling:false,
@@ -37,7 +56,7 @@ const EMPTY_CERT = {
   certificateTitle:'', certificateSubtitle:'', certificateBody:'', issueDate:toDateInput(new Date()),
   primaryColor:'#111827', accentColor:'#FDC700', backgroundColor:'#FFFDF7', fontColor:'#374151', fontFamily:'classic_serif', frameStyle:'classic',
   organizerName:'Belle Kreyashon', sponsors:'', signatoryOneName:'', signatoryOneRole:'', signatoryTwoName:'', signatoryTwoRole:'',
-  notes:'',
+  notes:'', emailStatus:'unsent', emailSentAt:'', emailError:'',
 };
 const EMPTY_TRAIN = { title:'',desc:'',date:'',venue:'',price:'',capacity:'',image:'',partners:'',sponsors:'',active:true };
 const EMPTY_ZONE  = { name:'', fee:'' };
@@ -988,7 +1007,7 @@ const buildTrainingBody = (f) => ({
       const updated = response.certificate;
       setData(current => current.map(entry => entry._id === updated._id ? updated : entry));
       if (editId === updated._id) openEdit(updated);
-      alert(`Certificate email sent${response.delivery?.provider ? ` via ${response.delivery.provider}` : ''}`);
+      alert(`Certificate email sent${response.delivery?.provider ? ` via ${response.delivery.provider}` : ''}. This certificate is now marked as issued.`);
     } catch (e) {
       alert(e.response?.data?.message || 'Could not send the certificate email');
     } finally {
@@ -1566,6 +1585,22 @@ const buildTrainingBody = (f) => ({
                     {certificateBusy === 'save-template' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
                     Save For Bulk
                   </button>
+                  {form.status === 'generated' && (
+                    <div className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-bold ${
+                      isCertificateIssued(form)
+                        ? 'border-green-200 bg-green-50 text-green-700'
+                        : form.emailStatus === 'failed'
+                          ? 'border-red-200 bg-red-50 text-red-600'
+                          : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}>
+                      {isCertificateIssued(form)
+                        ? <CheckCircle size={15} />
+                        : form.emailStatus === 'failed'
+                          ? <AlertCircle size={15} />
+                          : <Circle size={15} />}
+                      {formatCertificateEmailStatus(form)}
+                    </div>
+                  )}
                   {editId && form.status === 'generated' && (
                     <button
                       type="button"
@@ -1966,19 +2001,20 @@ const buildTrainingBody = (f) => ({
                       </div>
                       <p className="font-extrabold text-sm">{item.learnerName}</p>
                       {item.status === 'generated' && (
-                        <p className={`text-xs font-bold mt-1 ${
-                          item.emailStatus === 'sent'
+                        <div className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs font-bold ${
+                          isCertificateIssued(item)
                             ? 'text-green-600'
                             : item.emailStatus === 'failed'
                               ? 'text-red-500'
                               : 'text-gray-500'
                         }`}>
-                          {item.emailStatus === 'sent'
-                            ? `Email sent${item.emailSentAt ? ` on ${new Date(item.emailSentAt).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}` : ''}`
+                          {isCertificateIssued(item)
+                            ? <CheckCircle size={13} />
                             : item.emailStatus === 'failed'
-                              ? `Email failed${item.emailError ? `: ${item.emailError}` : ''}`
-                              : 'Email not sent yet'}
-                        </p>
+                              ? <AlertCircle size={13} />
+                              : <Circle size={13} />}
+                          <span>{formatCertificateEmailStatus(item)}</span>
+                        </div>
                       )}
                       <p className="text-xs text-gray-400 mt-0.5">
                         {[item.learnerEmail, item.learnerPhone].filter(Boolean).join(' • ') || 'No learner contact added yet'}
@@ -2013,6 +2049,11 @@ const buildTrainingBody = (f) => ({
                     </div>
 
                     <div className="flex flex-row lg:flex-col gap-2 shrink-0">
+                      {item.status === 'generated' && isCertificateIssued(item) && (
+                        <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-green-200 bg-green-50 text-green-600">
+                          <CheckCircle size={15} />
+                        </div>
+                      )}
                       <button onClick={() => openEdit(item)} className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black">
                         <Pencil size={15} />
                       </button>

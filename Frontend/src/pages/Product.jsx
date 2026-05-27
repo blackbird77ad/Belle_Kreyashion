@@ -10,7 +10,7 @@ import SEO from '../components/SEO';
 export default function Product() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { addToCart } = useCart();
+  const { cart, addToCart } = useCart();
   const { customer } = useCustomer();
   const [product,   setProduct]   = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -20,11 +20,17 @@ export default function Product() {
   const [imgIdx,    setImgIdx]    = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [added,     setAdded]     = useState(false);
+  const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
 
   useEffect(() => {
     api.get(`/api/products/public/${id}`)
       .then(r => { setProduct(r.data); setLoading(false); })
       .catch(() => { setLoading(false); navigate('/shop'); });
+  }, [id, navigate]);
+
+  useEffect(() => {
+    setAdded(false);
+    setShowCheckoutPrompt(false);
   }, [id]);
 
   const isDigital = !!product?.isDigital;
@@ -43,14 +49,26 @@ export default function Product() {
       : Math.max(0, retailPrice - product.discount.value)
     : retailPrice;
   const price        = isWholesale ? product?.wholesalePrice : finalPrice;
+  const digitalCartKey = product?._id ? `digital-${product._id}` : '';
+  const isDigitalAlreadyInCart = !!(isDigital && digitalCartKey && cart.some((item) => item.key === digitalCartKey));
 
   const doAddToCart = () => {
     addToCart(product, qty, isWholesale, variant);
+    if (isDigital) {
+      setShowCheckoutPrompt(true);
+      return;
+    }
+
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleAddToCart = () => {
+    if (isDigitalAlreadyInCart) {
+      navigate('/shop/checkout');
+      return;
+    }
+
     if (!customer) {
       setShowModal(true); // modal will call doAddToCart on success
       return;
@@ -271,8 +289,48 @@ export default function Product() {
               <button onClick={handleAddToCart} disabled={product.stock !== null && product.stock < qty}
                 className={`w-full py-4 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${added ? 'bg-green-500 text-white' : 'bg-[#FDC700] text-black hover:bg-yellow-300'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                 <ShoppingBag size={18} />
-                {added ? 'Added to Cart!' : isFreeDigital ? 'Get Free Access' : isTrialDigital ? 'Start Free Trial' : isDigital ? 'Buy Secure Access' : isWholesale ? 'Add Wholesale Order' : product.isPreOrder ? 'Pre-Order Now' : 'Add to Cart'}
+                {added
+                  ? 'Added to Cart!'
+                  : isDigitalAlreadyInCart
+                    ? 'Go Straight To Checkout'
+                    : isFreeDigital
+                      ? 'Get Free Access'
+                      : isTrialDigital
+                        ? 'Start Free Trial'
+                        : isDigital
+                          ? 'Buy Secure Access'
+                          : isWholesale
+                            ? 'Add Wholesale Order'
+                            : product.isPreOrder
+                              ? 'Pre-Order Now'
+                              : 'Add to Cart'}
               </button>
+            )}
+            {isDigital && (showCheckoutPrompt || isDigitalAlreadyInCart) && (
+              <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+                <p className="text-sm font-extrabold text-emerald-800">
+                  Secure access is ready in your cart
+                </p>
+                <p className="text-xs text-emerald-900/80 leading-relaxed mt-1">
+                  The learner can stay on this page, then move straight into secure Paystack checkout whenever ready.
+                </p>
+                <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/shop/checkout')}
+                    className="inline-flex items-center justify-center rounded-2xl bg-black px-4 py-3 text-sm font-extrabold text-white hover:bg-gray-900 transition-all"
+                  >
+                    Continue To Checkout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/digital-products')}
+                    className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-emerald-800 hover:border-emerald-400 transition-all"
+                  >
+                    Keep Browsing Digital Products
+                  </button>
+                </div>
+              </div>
             )}
             {product.stock !== null && product.stock > 0 && product.stock <= 5 && (
               <p className="text-center text-xs text-red-500 font-bold mt-2">Only {product.stock} left in stock!</p>

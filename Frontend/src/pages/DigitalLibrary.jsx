@@ -345,7 +345,12 @@ export default function DigitalLibrary() {
 
         {!loading && library.length > 0 && (
           <div className="grid gap-5">
-            {library.map((item) => (
+            {library.map((item) => {
+              const certificateIssued = item.certificateStatus === 'generated' && (
+                item.certificateIssued || item.certificate?.issued || item.certificate?.emailStatus === 'sent'
+              );
+
+              return (
               <div key={item._id} className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
                 <div className="grid md:grid-cols-[220px_1fr] gap-0">
                   <div className="bg-[#fcfbf7] min-h-[220px]">
@@ -439,17 +444,26 @@ export default function DigitalLibrary() {
 
                         {item.isCertified && (
                           <div className="lg:text-right">
-                            <div className="inline-flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
-                              <Award size={14} />
+                            <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold border ${
+                              certificateIssued
+                                ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                : 'border-amber-100 bg-amber-50 text-amber-700'
+                            }`}>
+                              {certificateIssued ? <CheckCircle2 size={14} /> : <Award size={14} />}
                               {item.certificateStatus === 'generated'
-                                ? 'Certificate ready'
+                                ? (certificateIssued ? 'Certificate issued' : 'Certificate ready')
                                 : item.certificateStatus === 'requested'
                                   ? 'Certificate requested'
                                   : item.certificateStatus === 'eligible'
                                     ? 'Certificate eligible'
                                     : 'Certificate in progress'}
                             </div>
-                            {item.certificateDescription && (
+                            {certificateIssued && (
+                              <p className="text-xs text-gray-500 mt-2 max-w-sm">
+                                Check your recipient email to download it, and save a copy to cloud storage for backup.
+                              </p>
+                            )}
+                            {!certificateIssued && item.certificateDescription && (
                               <p className="text-xs text-gray-500 mt-2 max-w-sm">{item.certificateDescription}</p>
                             )}
                             {item.certificateStatus === 'eligible' && (
@@ -465,6 +479,11 @@ export default function DigitalLibrary() {
                             {item.certificateStatus === 'requested' && (
                               <p className="text-xs font-bold text-amber-700 mt-3">
                                 Your request has been sent for admin review. Once approved, your finished certificate will be sent to your email as a PDF.
+                              </p>
+                            )}
+                            {item.certificateStatus === 'generated' && certificateIssued && (
+                              <p className="text-xs font-bold text-emerald-700 mt-3">
+                                Certificate issued successfully. Check your recipient email, then keep a cloud backup after downloading it.
                               </p>
                             )}
                             {item.certificateStatus === 'generated' && item.certificate && (
@@ -564,7 +583,8 @@ export default function DigitalLibrary() {
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

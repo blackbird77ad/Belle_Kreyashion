@@ -167,42 +167,52 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       width:297mm;
       min-height:210mm;
       margin:0 auto;
-      padding:8mm;
+      padding:10mm;
       display:flex;
-      align-items:stretch;
+      align-items:center;
       justify-content:center;
     }
     .card{
       width:100%;
-      min-height:194mm;
+      min-height:190mm;
       background:${frameTheme.cardBackground};
       border:${frameTheme.borderSize} solid ${primaryColor};
       border-radius:${frameTheme.borderRadius};
-      padding:10mm 12mm 9mm;
+      padding:10mm;
       box-shadow:0 16px 42px rgba(17,24,39,.08);
       position:relative;
       overflow:hidden;
+      display:flex;
     }
     .inner{
+      width:100%;
       min-height:100%;
       border:${frameTheme.innerBorder};
       border-radius:20px;
-      padding:8mm 10mm;
-      display:grid;
-      grid-template-rows:auto 1fr auto;
-      gap:8mm;
+      padding:12mm 14mm;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:5mm;
+      text-align:center;
     }
-    .topbar{display:block}
-    .eyebrow{font-size:11px;letter-spacing:.28em;font-weight:800;color:${accentColor};text-transform:uppercase}
+    .topbar,.content,.footer{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+    }
+    .eyebrow{font-size:11px;letter-spacing:.28em;font-weight:800;color:${accentColor};text-transform:uppercase;text-align:center}
     .brand{
-      margin-top:3mm;
+      margin-top:2mm;
       font-size:12px;
       font-weight:800;
       letter-spacing:.24em;
       text-transform:uppercase;
       color:${primaryColor};
-      text-align:left;
-      max-width:100%;
+      text-align:center;
+      max-width:220mm;
     }
     .title{
       font-size:34px;
@@ -210,8 +220,8 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       line-height:1.05;
       text-transform:uppercase;
       color:${primaryColor};
-      margin:0 0 4mm 0;
-      white-space:nowrap;
+      margin:0;
+      max-width:220mm;
     }
     .subtitle{
       font-size:13px;
@@ -219,12 +229,12 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       letter-spacing:.16em;
       text-transform:uppercase;
       color:${accentColor};
-      margin:0;
+      margin:2mm 0 0;
+      max-width:200mm;
     }
-    .content{display:block}
     .left{
-      max-width:226mm;
-      padding-right:0;
+      max-width:212mm;
+      margin:0 auto;
     }
     .intro{
       font-size:13px;
@@ -232,7 +242,7 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       letter-spacing:.22em;
       text-transform:uppercase;
       color:#6b7280;
-      margin-bottom:2mm;
+      margin-bottom:3mm;
     }
     .learner{
       font-size:30px;
@@ -240,13 +250,15 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       line-height:1.12;
       color:${primaryColor};
       margin:0 0 4mm 0;
+      max-width:210mm;
     }
     .body{
-      font-size:18px;
-      line-height:1.65;
+      font-size:17px;
+      line-height:1.68;
       color:${fontColor};
-      max-width:226mm;
-      text-align:justify;
+      max-width:194mm;
+      text-align:center;
+      margin:0 auto;
     }
     .course-label{
       margin-top:5mm;
@@ -262,31 +274,32 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       line-height:1.2;
       font-weight:900;
       color:${primaryColor};
-      max-width:226mm;
+      max-width:195mm;
+      margin-left:auto;
+      margin-right:auto;
     }
     .issue-date{
-      margin-top:5mm;
+      margin-top:4mm;
       font-size:14px;
       font-weight:800;
       color:${fontColor};
     }
     .footer{
-      display:grid;
-      grid-template-columns:1fr auto;
-      gap:10mm;
-      align-items:end;
+      margin-top:2mm;
+      gap:4mm;
     }
     .footer-note{
       font-size:11px;
       color:#6b7280;
-      margin-top:2mm;
+      margin-top:0;
+      max-width:190mm;
     }
     .footer-side{
-      text-align:right;
-      align-self:end;
+      text-align:center;
+      align-self:center;
     }
     .issuer{
-      margin-top:4mm;
+      margin-top:0;
       font-size:12px;
       font-weight:800;
       letter-spacing:.18em;
@@ -300,16 +313,19 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
       color:${primaryColor};
     }
     .cert-no{
-      margin-top:2mm;
+      margin-top:0;
       font-size:11px;
       color:#6b7280;
     }
     .signatories{
+      width:100%;
+      max-width:205mm;
       display:grid;
       grid-template-columns:repeat(${Math.max(1, Math.min(signatories.length || 1, 3))}, minmax(0, 1fr));
       gap:8mm;
-      margin-top:6mm;
+      margin-top:2mm;
     }
+    .signatory{text-align:center}
     .sign-line{
       border-top:1.4px solid ${primaryColor};
       padding-top:2.5mm;
@@ -324,7 +340,6 @@ export const buildCertificateHtml = (record, { autoPrint = false, brandName = 'B
     }
     @media print{
       body{background:#fff}
-      .page{padding:0}
       .card{box-shadow:none}
     }
   </style></head><body>
