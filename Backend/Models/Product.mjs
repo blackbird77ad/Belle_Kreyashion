@@ -1,11 +1,4 @@
 import mongoose from 'mongoose';
-import {
-  DIGITAL_DURATIONS,
-  DIGITAL_FORMATS,
-  DIGITAL_INCLUSIONS,
-  DIGITAL_SKILL_LEVELS,
-  DIGITAL_TOPICS,
-} from '../Constants/digitalProductOptions.mjs';
 
 const variantSchema = new mongoose.Schema({
   name: { type: String },
@@ -69,7 +62,7 @@ const productSchema = new mongoose.Schema({
   isDigital: { type: Boolean, default: false },
   digitalType: {
     type: String,
-    enum: ['document', 'video', 'audio', 'bundle', 'template', 'mixed', 'other', null, ''],
+    trim: true,
     default: null,
   },
   digitalAccessKind: {
@@ -79,25 +72,25 @@ const productSchema = new mongoose.Schema({
   },
   digitalSkillLevel: {
     type: String,
-    enum: [...DIGITAL_SKILL_LEVELS, null, ''],
+    trim: true,
     default: 'all-levels',
   },
   digitalFormat: {
     type: String,
-    enum: [...DIGITAL_FORMATS, null, ''],
+    trim: true,
     default: null,
   },
   digitalDuration: {
     type: String,
-    enum: [...DIGITAL_DURATIONS, null, ''],
+    trim: true,
     default: null,
   },
   digitalTopics: {
-    type: [{ type: String, enum: DIGITAL_TOPICS }],
+    type: [{ type: String, trim: true }],
     default: [],
   },
   digitalInclusions: {
-    type: [{ type: String, enum: DIGITAL_INCLUSIONS }],
+    type: [{ type: String, trim: true }],
     default: [],
   },
   freeTrialDays: { type: Number, default: 0 },

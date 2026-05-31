@@ -12,6 +12,7 @@ import {
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
 const CUSTOMER_JWT_SECRET = process.env.JWT_SECRET;
+const DIGITAL_TYPE_DEFAULTS = ['document', 'video', 'audio', 'bundle', 'template', 'mixed', 'other'];
 
 const convertDrive = (url) => {
   if (!url) return url;
@@ -69,13 +70,22 @@ const normalizeSingleOption = (value, allowed, fallback = null) => (
   allowed.includes(value) ? value : fallback
 );
 
-const normalizeOptionList = (value, allowed) => (
-  [...new Set(parseStringList(value))]
-    .filter((item) => allowed.includes(item))
+const normalizeFlexibleOption = (value, fallback = null) => {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
+};
+
+const normalizeFlexibleOptionList = (value) => (
+  [...new Set(parseStringList(value).map((item) => String(item).trim()).filter(Boolean))]
 );
 
-const parseQueryList = (value, allowed) => (
-  parseStringList(value).filter((item) => allowed.includes(item))
+const parseQueryList = (value) => normalizeFlexibleOptionList(value);
+
+const mergeDistinctOptionValues = (defaults = [], values = []) => (
+  [...new Set([
+    ...defaults.map((item) => String(item || '').trim()),
+    ...values.map((item) => String(item || '').trim()),
+  ].filter(Boolean))]
 );
 const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
 const normalizePhone = (value = '') => {
@@ -278,11 +288,13 @@ const cleanBody = (body) => {
   if (b.limitedAccessMonths !== undefined) b.limitedAccessMonths = Number(b.limitedAccessMonths) > 0 ? Number(b.limitedAccessMonths) : 6;
   if (b.supportEmail !== undefined) b.supportEmail = normalizeEmail(b.supportEmail);
   if (b.supportWhatsApp !== undefined) b.supportWhatsApp = normalizePhone(b.supportWhatsApp);
-  if (b.digitalSkillLevel !== undefined) b.digitalSkillLevel = normalizeSingleOption(b.digitalSkillLevel, DIGITAL_SKILL_LEVELS, 'all-levels');
-  if (b.digitalFormat !== undefined) b.digitalFormat = normalizeSingleOption(b.digitalFormat, DIGITAL_FORMATS);
-  if (b.digitalDuration !== undefined) b.digitalDuration = normalizeSingleOption(b.digitalDuration, DIGITAL_DURATIONS);
-  if (b.digitalTopics !== undefined) b.digitalTopics = normalizeOptionList(b.digitalTopics, DIGITAL_TOPICS);
-  if (b.digitalInclusions !== undefined) b.digitalInclusions = normalizeOptionList(b.digitalInclusions, DIGITAL_INCLUSIONS);
+  if (b.category !== undefined) b.category = String(b.category || '').trim();
+  if (b.digitalType !== undefined) b.digitalType = normalizeFlexibleOption(b.digitalType);
+  if (b.digitalSkillLevel !== undefined) b.digitalSkillLevel = normalizeFlexibleOption(b.digitalSkillLevel, 'all-levels');
+  if (b.digitalFormat !== undefined) b.digitalFormat = normalizeFlexibleOption(b.digitalFormat);
+  if (b.digitalDuration !== undefined) b.digitalDuration = normalizeFlexibleOption(b.digitalDuration);
+  if (b.digitalTopics !== undefined) b.digitalTopics = normalizeFlexibleOptionList(b.digitalTopics);
+  if (b.digitalInclusions !== undefined) b.digitalInclusions = normalizeFlexibleOptionList(b.digitalInclusions);
 
   if (b.discount) {
     b.discount = {
@@ -306,13 +318,13 @@ const cleanBody = (body) => {
     b.isPreOrder = false;
     b.preOrderType = null;
     b.depositPercent = null;
-    b.digitalType = b.digitalType || 'mixed';
+    b.digitalType = normalizeFlexibleOption(b.digitalType, 'mixed');
     b.digitalAccessKind = b.digitalAccessKind || 'paid';
-    b.digitalSkillLevel = b.digitalSkillLevel || 'all-levels';
-    b.digitalFormat = b.digitalFormat || null;
-    b.digitalDuration = b.digitalDuration || null;
-    b.digitalTopics = normalizeOptionList(b.digitalTopics, DIGITAL_TOPICS);
-    b.digitalInclusions = normalizeOptionList(b.digitalInclusions, DIGITAL_INCLUSIONS);
+    b.digitalSkillLevel = normalizeFlexibleOption(b.digitalSkillLevel, 'all-levels');
+    b.digitalFormat = normalizeFlexibleOption(b.digitalFormat);
+    b.digitalDuration = normalizeFlexibleOption(b.digitalDuration);
+    b.digitalTopics = normalizeFlexibleOptionList(b.digitalTopics);
+    b.digitalInclusions = normalizeFlexibleOptionList(b.digitalInclusions);
     b.freeTrialDays = b.digitalAccessKind === 'trial'
       ? Math.max(1, Number(b.freeTrialDays) || 7)
       : 0;
@@ -397,17 +409,21 @@ export const getPublicProducts = async (req, res) => {
     if (category && category !== 'All') query.category = category;
     if (isDigital === 'true') query.isDigital = true;
     if (isDigital === 'false') query.isDigital = { $ne: true };
-    if (digitalType && digitalType !== 'all') query.digitalType = digitalType;
-    if (digitalSkillLevel && digitalSkillLevel !== 'all') query.digitalSkillLevel = normalizeSingleOption(digitalSkillLevel, DIGITAL_SKILL_LEVELS);
-    if (digitalFormat && digitalFormat !== 'all') query.digitalFormat = normalizeSingleOption(digitalFormat, DIGITAL_FORMATS);
-    if (digitalDuration && digitalDuration !== 'all') query.digitalDuration = normalizeSingleOption(digitalDuration, DIGITAL_DURATIONS);
+    const normalizedDigitalType = normalizeFlexibleOption(digitalType);
+    const normalizedSkillLevel = normalizeFlexibleOption(digitalSkillLevel);
+    const normalizedFormat = normalizeFlexibleOption(digitalFormat);
+    const normalizedDuration = normalizeFlexibleOption(digitalDuration);
+    if (normalizedDigitalType && normalizedDigitalType !== 'all') query.digitalType = normalizedDigitalType;
+    if (normalizedSkillLevel && normalizedSkillLevel !== 'all') query.digitalSkillLevel = normalizedSkillLevel;
+    if (normalizedFormat && normalizedFormat !== 'all') query.digitalFormat = normalizedFormat;
+    if (normalizedDuration && normalizedDuration !== 'all') query.digitalDuration = normalizedDuration;
     if (priceType && priceType !== 'all') {
       const normalizedPriceType = normalizeSingleOption(priceType, ['free', 'trial', 'paid']);
       if (normalizedPriceType) query.digitalAccessKind = normalizedPriceType;
     }
-    const topicFilters = parseQueryList(digitalTopics, DIGITAL_TOPICS);
+    const topicFilters = parseQueryList(digitalTopics);
     if (topicFilters.length) query.digitalTopics = { $in: topicFilters };
-    const inclusionFilters = parseQueryList(digitalInclusions, DIGITAL_INCLUSIONS);
+    const inclusionFilters = parseQueryList(digitalInclusions);
     if (inclusionFilters.length) query.digitalInclusions = { $in: inclusionFilters };
     if (featured === 'true') query.featured = true;
     if (fastSelling === 'true') query.fastSelling = true;
@@ -474,6 +490,31 @@ export const getCategories = async (_, res) => {
   try {
     const cats = await Product.distinct('category', { available: true });
     res.json(cats);
+  } catch {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const getDigitalProductOptions = async (_, res) => {
+  try {
+    const filter = { available: true, isDigital: true };
+    const [digitalTypes, skillLevels, formats, durations, topics, inclusions] = await Promise.all([
+      Product.distinct('digitalType', filter),
+      Product.distinct('digitalSkillLevel', filter),
+      Product.distinct('digitalFormat', filter),
+      Product.distinct('digitalDuration', filter),
+      Product.distinct('digitalTopics', filter),
+      Product.distinct('digitalInclusions', filter),
+    ]);
+
+    res.json({
+      digitalTypes: mergeDistinctOptionValues(DIGITAL_TYPE_DEFAULTS, digitalTypes),
+      digitalSkillLevels: mergeDistinctOptionValues(DIGITAL_SKILL_LEVELS, skillLevels),
+      digitalFormats: mergeDistinctOptionValues(DIGITAL_FORMATS, formats),
+      digitalDurations: mergeDistinctOptionValues(DIGITAL_DURATIONS, durations),
+      digitalTopics: mergeDistinctOptionValues(DIGITAL_TOPICS, topics),
+      digitalInclusions: mergeDistinctOptionValues(DIGITAL_INCLUSIONS, inclusions),
+    });
   } catch {
     res.status(500).json({ message: 'Server error' });
   }

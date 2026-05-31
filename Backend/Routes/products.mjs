@@ -4,6 +4,7 @@ import {
   deleteProduct,
   getAllProducts,
   getCategories,
+  getDigitalProductOptions,
   getDiscountedProducts,
   getPublicProduct,
   getPublicProducts,
@@ -58,6 +59,7 @@ router.post('/digital/library/:grantId/certificate-request', protectCustomer, re
 router.get('/public', getPublicProducts);
 router.get('/discounted', getDiscountedProducts);
 router.get('/categories', getCategories);
+router.get('/digital/options', getDigitalProductOptions);
 router.get('/public/:id', getPublicProduct);
 
 router.get('/', protect, getAllProducts);
