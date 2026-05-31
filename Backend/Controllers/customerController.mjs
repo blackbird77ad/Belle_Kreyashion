@@ -22,6 +22,7 @@ const normalizePhone = (value = '') => {
 
 const hashText = (value = '') => crypto.createHash('sha256').update(String(value || '')).digest('hex');
 const createToken = () => crypto.randomBytes(24).toString('hex');
+const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const serializeCustomer = (customer) => ({
   id: String(customer._id || ''),
@@ -110,6 +111,77 @@ const buildCustomerLookupQuery = (customer) => {
     orderFilter: orderQuery.length ? { $or: orderQuery } : { _id: null },
     bookingFilter: bookingQuery.length ? { $or: bookingQuery } : { _id: null },
     digitalFilter: digitalQuery.length ? { $or: digitalQuery } : { _id: null },
+  };
+};
+
+const buildCustomerAdminSummary = async (customer) => {
+  const { orderFilter, bookingFilter, digitalFilter } = buildCustomerLookupQuery(customer);
+
+  const [orderStats, bookingStats, digitalStats] = await Promise.all([
+    Order.aggregate([
+      { $match: orderFilter },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          totalSpent: { $sum: { $ifNull: ['$total', 0] } },
+          lastOrderAt: { $max: '$createdAt' },
+        },
+      },
+    ]),
+    Booking.aggregate([
+      { $match: bookingFilter },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          totalSpent: { $sum: { $ifNull: ['$amount', 0] } },
+          lastBookingAt: { $max: '$createdAt' },
+        },
+      },
+    ]),
+    DigitalAccess.aggregate([
+      { $match: digitalFilter },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          activeCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'active'] }, 1, 0],
+            },
+          },
+          lastAccessedAt: { $max: '$lastAccessedAt' },
+          lastGrantedAt: { $max: '$createdAt' },
+        },
+      },
+    ]),
+  ]);
+
+  const orderSummary = orderStats[0] || {};
+  const bookingSummary = bookingStats[0] || {};
+  const digitalSummary = digitalStats[0] || {};
+  const lastActivityAt = [
+    orderSummary.lastOrderAt,
+    bookingSummary.lastBookingAt,
+    digitalSummary.lastAccessedAt,
+    digitalSummary.lastGrantedAt,
+    customer.lastLoginAt,
+    customer.createdAt,
+  ]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+
+  return {
+    totalSpent: Number(orderSummary.totalSpent || 0) + Number(bookingSummary.totalSpent || 0),
+    orderCount: Number(orderSummary.count || 0),
+    bookingCount: Number(bookingSummary.count || 0),
+    digitalProductCount: Number(digitalSummary.count || 0),
+    activeDigitalCount: Number(digitalSummary.activeCount || 0),
+    lastOrderAt: orderSummary.lastOrderAt || null,
+    lastBookingAt: bookingSummary.lastBookingAt || null,
+    lastDigitalAccessAt: digitalSummary.lastAccessedAt || digitalSummary.lastGrantedAt || null,
+    lastActivityAt,
   };
 };
 
@@ -354,7 +426,15 @@ export const requestCustomerPasswordReset = async (req, res) => {
 
     res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Could not send password reset email right now' });
+    console.error('Customer password reset request failed:', err);
+    const rawMessage = err.message || 'Could not send password reset email right now';
+    const isMailDeliveryError = /smtp|sender email|resend send failed|econn|enotfound|timed out|mail/i.test(rawMessage);
+
+    res.status(500).json({
+      message: isMailDeliveryError
+        ? 'We could not send the reset email right now. Please try again shortly.'
+        : rawMessage,
+    });
   }
 };
 
@@ -453,13 +533,30 @@ export const getOrderHistory = async (req, res) => {
   }
 };
 
-export const getAllCustomers = async (_, res) => {
+export const getAllCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find()
+    const search = String(req.query.search || '').trim();
+    const filter = search
+      ? {
+        $or: [
+          { customerId: { $regex: escapeRegex(search), $options: 'i' } },
+          { name: { $regex: escapeRegex(search), $options: 'i' } },
+          { email: { $regex: escapeRegex(search), $options: 'i' } },
+          { phone: { $regex: escapeRegex(search), $options: 'i' } },
+        ],
+      }
+      : {};
+
+    const customers = await Customer.find(filter)
       .select('-passwordHash -emailVerificationTokenHash -passwordResetTokenHash')
       .sort({ createdAt: -1 });
 
-    res.json(customers);
+    const items = await Promise.all(customers.map(async (customer) => ({
+      ...serializeCustomer(customer),
+      summary: await buildCustomerAdminSummary(customer),
+    })));
+
+    res.json(items);
   } catch (err) {
     res.status(500).json({ message: err.message || 'Server error' });
   }

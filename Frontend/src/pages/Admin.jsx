@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../hooks/useApi';
-import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List, Mic, Video, Square, Link2, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 import { CATEGORY_VALUES } from '../data/categories';
 import {
   DIGITAL_TYPE_OPTIONS,
@@ -20,10 +20,10 @@ import { FRONTEND_CERTIFICATE_TEMPLATE_PRESETS } from '../data/certificateTempla
 import { CertificateTemplatePreview } from '../components/CertificateTemplatePicker';
 import { generateCertificate } from '../utils/generateCertificate';
 
-const TABS = ['Analytics','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured','Invoice'];
+const TABS = ['Analytics','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Customers','Abandoned','Consultations','Blog','Featured','Invoice'];
 const PRODUCT_LIKE_TABS = new Set(['Products', 'Digital Products', 'Featured']);
 const BLOG_LIKE_TABS = new Set(['Blog']);
-const WIDE_GRID_TABS = new Set(['Certificates', 'Orders', 'Bookings']);
+const WIDE_GRID_TABS = new Set(['Certificates', 'Orders', 'Bookings', 'Customers']);
 
 const getCollectionLayoutClass = (tab, viewMode) => {
   if (viewMode === 'list') return 'flex flex-col gap-3';
@@ -160,6 +160,335 @@ const createEmptyCustomDigitalInputs = () => ({
   digitalInclusion: '',
 });
 
+const createEmptyDigitalManualPage = (pageNumber = 1) => ({
+  pageNumber,
+  title: '',
+  summary: '',
+  content: '',
+  mediaPublicId: '',
+});
+
+const getNextDigitalManualPageNumber = (pages = []) => {
+  const currentNumbers = pages
+    .map((page) => Number(page?.pageNumber))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return currentNumbers.length ? Math.max(...currentNumbers) + 1 : 1;
+};
+
+const previewableModuleFileKinds = new Set(['document', 'video', 'audio', 'image']);
+const createClientKey = (prefix = 'item') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+const isPreviewableModuleFile = (kind = 'other') => previewableModuleFileKinds.has(String(kind || '').trim());
+const getModuleUiKey = (module = {}, index = 0) => String(module.clientKey || module._id || `module-${index + 1}`);
+const getModuleItemUiKey = (item = {}, moduleKey = 'module', index = 0) => String(item.clientKey || item._id || `${moduleKey}-item-${index + 1}`);
+const buildTextLessonContentFromBlocks = (blocks = []) => (
+  (Array.isArray(blocks) ? blocks : [])
+    .filter((block) => block?.kind === 'text')
+    .map((block) => String(block?.content || '').trim())
+    .filter(Boolean)
+    .join('\n\n')
+);
+const DIGITAL_MODULE_SECTION_DEFAULTS = Object.freeze({
+  details: true,
+  textComposer: false,
+  attachmentComposer: false,
+});
+const truncatePreviewText = (value = '', maxLength = 220) => {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
+    : normalized;
+};
+const formatModuleFileKindLabel = (value = 'other') => {
+  const normalized = String(value || 'other').trim().toLowerCase();
+  if (!normalized) return 'File';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+const getDigitalModuleSummary = (module = {}) => {
+  const summary = {
+    stepCount: 0,
+    textStepCount: 0,
+    attachmentStepCount: 0,
+    textBlockCount: 0,
+    linkCount: 0,
+    inlineAttachmentCount: 0,
+  };
+
+  (Array.isArray(module.items) ? module.items : []).forEach((item) => {
+    summary.stepCount += 1;
+    if (item?.kind === 'file') {
+      summary.attachmentStepCount += 1;
+      return;
+    }
+    summary.textStepCount += 1;
+    (Array.isArray(item?.blocks) ? item.blocks : []).forEach((block) => {
+      if (block?.kind === 'file') {
+        summary.inlineAttachmentCount += 1;
+      } else if (block?.kind === 'link') {
+        summary.linkCount += 1;
+      } else {
+        summary.textBlockCount += 1;
+      }
+    });
+  });
+
+  return summary;
+};
+
+const createEmptyDigitalModule = (moduleNumber = 1) => ({
+  clientKey: createClientKey('module'),
+  moduleNumber,
+  title: '',
+  description: '',
+  items: [],
+});
+
+const createEmptyDigitalTextBlock = (order = 1) => ({
+  clientKey: createClientKey('text-block'),
+  blockId: createClientKey('block-id'),
+  kind: 'text',
+  order,
+  content: '',
+});
+
+const createEmptyDigitalLinkBlock = (order = 1) => ({
+  clientKey: createClientKey('link-block'),
+  blockId: createClientKey('block-id'),
+  kind: 'link',
+  order,
+  title: '',
+  description: '',
+  url: '',
+  openInNewTab: true,
+});
+
+const createDigitalFileBlock = (file = {}, order = 1) => ({
+  clientKey: createClientKey('file-block'),
+  blockId: file.blockId || createClientKey('block-id'),
+  _id: file._id,
+  kind: 'file',
+  order,
+  title: file.title || file.label || file.originalFilename || '',
+  description: file.description || file.stepSummary || '',
+  allowDownload: !!file.allowDownload || !isPreviewableModuleFile(file.fileKind),
+  secureUrl: file.secureUrl || '',
+  publicId: file.publicId || '',
+  originalFilename: file.originalFilename || '',
+  downloadName: file.downloadName || file.originalFilename || 'download',
+  mimeType: file.mimeType || '',
+  resourceType: file.resourceType || 'raw',
+  fileKind: file.fileKind || 'other',
+  bytes: file.bytes || 0,
+});
+
+const sortTextLessonBlocks = (blocks = []) => [...blocks].sort((a, b) => {
+  const orderDiff = Number(a?.order ?? Number.MAX_SAFE_INTEGER) - Number(b?.order ?? Number.MAX_SAFE_INTEGER);
+  if (orderDiff !== 0) return orderDiff;
+  return String(a?.title || a?.originalFilename || a?.url || '').localeCompare(String(b?.title || b?.originalFilename || b?.url || ''));
+});
+
+const reindexTextLessonBlocks = (blocks = []) => sortTextLessonBlocks(blocks).map((block, index) => ({
+  ...block,
+  order: index + 1,
+}));
+
+const normalizeTextLessonBlockForForm = (block = {}, index = 0) => {
+  if (String(block.kind || '').trim().toLowerCase() === 'file' || block.secureUrl) {
+    return {
+      ...createDigitalFileBlock(block, Number(block.order) || index + 1),
+      _id: block._id,
+      blockId: block.blockId || createClientKey('block-id'),
+      clientKey: block.clientKey || createClientKey('file-block'),
+    };
+  }
+
+  if (String(block.kind || '').trim().toLowerCase() === 'link' || block.url) {
+    return {
+      ...createEmptyDigitalLinkBlock(Number(block.order) || index + 1),
+      _id: block._id,
+      blockId: block.blockId || createClientKey('block-id'),
+      clientKey: block.clientKey || createClientKey('link-block'),
+      title: block.title || '',
+      description: block.description || '',
+      url: block.url || '',
+      openInNewTab: block.openInNewTab !== false,
+    };
+  }
+
+  return {
+    ...createEmptyDigitalTextBlock(Number(block.order) || index + 1),
+    _id: block._id,
+    blockId: block.blockId || createClientKey('block-id'),
+    clientKey: block.clientKey || createClientKey('text-block'),
+    content: block.content || '',
+  };
+};
+
+const createEmptyDigitalTextItem = (order = 1) => ({
+  clientKey: createClientKey('text'),
+  kind: 'text',
+  order,
+  title: '',
+  description: '',
+  content: '',
+  blocks: [createEmptyDigitalTextBlock(1)],
+});
+
+const createDigitalFileItem = (file = {}, order = 1) => ({
+  clientKey: createClientKey('file'),
+  _id: file._id,
+  kind: 'file',
+  order,
+  title: file.title || file.label || file.originalFilename || '',
+  description: file.description || file.stepSummary || '',
+  allowDownload: !!file.allowDownload || !isPreviewableModuleFile(file.fileKind),
+  secureUrl: file.secureUrl || '',
+  publicId: file.publicId || '',
+  originalFilename: file.originalFilename || '',
+  downloadName: file.downloadName || file.originalFilename || 'download',
+  mimeType: file.mimeType || '',
+  resourceType: file.resourceType || 'raw',
+  fileKind: file.fileKind || 'other',
+  bytes: file.bytes || 0,
+  blocks: [],
+});
+
+const sortDigitalModuleItems = (items = []) => [...items].sort((a, b) => {
+  const orderDiff = Number(a?.order ?? Number.MAX_SAFE_INTEGER) - Number(b?.order ?? Number.MAX_SAFE_INTEGER);
+  if (orderDiff !== 0) return orderDiff;
+  return String(a?.title || a?.originalFilename || '').localeCompare(String(b?.title || b?.originalFilename || ''));
+});
+
+const reindexDigitalModuleItems = (items = []) => sortDigitalModuleItems(items).map((item, index) => ({
+  ...item,
+  order: index + 1,
+  blocks: item.kind === 'text' ? reindexTextLessonBlocks(item.blocks || []) : [],
+  content: item.kind === 'text'
+    ? (buildTextLessonContentFromBlocks(reindexTextLessonBlocks(item.blocks || [])) || item.content || '')
+    : '',
+}));
+
+const sortDigitalModulesForForm = (modules = []) => [...modules].sort((a, b) => {
+  const moduleDiff = Number(a?.moduleNumber ?? Number.MAX_SAFE_INTEGER) - Number(b?.moduleNumber ?? Number.MAX_SAFE_INTEGER);
+  if (moduleDiff !== 0) return moduleDiff;
+  return String(a?.title || '').localeCompare(String(b?.title || ''));
+});
+
+const reindexDigitalModules = (modules = []) => sortDigitalModulesForForm(modules).map((module, index) => ({
+  ...module,
+  moduleNumber: index + 1,
+  items: reindexDigitalModuleItems(module.items || []),
+}));
+
+const normalizeDigitalModuleItemForForm = (item = {}, index = 0) => {
+  if (String(item.kind || '').trim().toLowerCase() === 'file' || item.secureUrl) {
+    return {
+      ...createDigitalFileItem(item, Number(item.order) || index + 1),
+      _id: item._id,
+      clientKey: item.clientKey || createClientKey('file'),
+      title: item.title || item.label || item.originalFilename || '',
+      description: item.description || item.stepSummary || '',
+    };
+  }
+
+  return {
+    ...createEmptyDigitalTextItem(Number(item.order) || index + 1),
+    _id: item._id,
+    clientKey: item.clientKey || createClientKey('text'),
+    title: item.title || '',
+    description: item.description || item.summary || '',
+    blocks: reindexTextLessonBlocks(
+      (Array.isArray(item.blocks) && item.blocks.length ? item.blocks : [{ kind: 'text', order: 1, content: item.content || '' }])
+        .map((block, blockIndex) => normalizeTextLessonBlockForForm(block, blockIndex))
+        .filter((block) => {
+          if (block.kind === 'file') return !!block.secureUrl;
+          if (block.kind === 'link') return !!String(block.url || block.title || block.description || '').trim();
+          return !!String(block.content || '').trim();
+        })
+    ),
+    content: item.content || buildTextLessonContentFromBlocks(item.blocks || []) || '',
+  };
+};
+
+const normalizeDigitalModuleForForm = (module = {}, index = 0) => ({
+  clientKey: module.clientKey || createClientKey('module'),
+  _id: module._id,
+  moduleNumber: Number(module.moduleNumber) || index + 1,
+  title: module.title || '',
+  description: module.description || '',
+  items: reindexDigitalModuleItems((module.items || []).map((item, itemIndex) => normalizeDigitalModuleItemForForm(item, itemIndex))),
+});
+
+const buildLegacyDigitalModulesForForm = (item = {}) => {
+  const files = [...(item.digitalFiles || [])]
+    .filter((file) => file?.secureUrl)
+    .sort((a, b) => {
+      const orderDiff = Number(a?.stepNumber ?? Number.MAX_SAFE_INTEGER) - Number(b?.stepNumber ?? Number.MAX_SAFE_INTEGER);
+      if (orderDiff !== 0) return orderDiff;
+      return String(a?.label || a?.originalFilename || '').localeCompare(String(b?.label || b?.originalFilename || ''));
+    });
+  const filesByPublicId = new Map(files.filter((file) => file?.publicId).map((file) => [String(file.publicId), file]));
+  const usedPublicIds = new Set();
+  const modules = [];
+
+  [...(item.digitalManualPages || [])]
+    .sort((a, b) => {
+      const orderDiff = Number(a?.pageNumber ?? Number.MAX_SAFE_INTEGER) - Number(b?.pageNumber ?? Number.MAX_SAFE_INTEGER);
+      if (orderDiff !== 0) return orderDiff;
+      return String(a?.title || '').localeCompare(String(b?.title || ''));
+    })
+    .forEach((page, index) => {
+      const linkedFile = filesByPublicId.get(String(page.mediaPublicId || '')) || null;
+      if (linkedFile?.publicId) usedPublicIds.add(String(linkedFile.publicId));
+      const module = {
+        _id: page._id,
+        clientKey: createClientKey('module'),
+        moduleNumber: Number(page.pageNumber) || modules.length + 1,
+        title: page.title || `Module ${index + 1}`,
+        description: page.summary || '',
+        items: [
+          normalizeDigitalModuleItemForForm({
+            _id: page._id,
+            kind: 'text',
+            order: 1,
+            title: page.title || '',
+            description: page.summary || '',
+            content: page.content || '',
+          }, 0),
+          ...(linkedFile ? [normalizeDigitalModuleItemForForm({
+            ...linkedFile,
+            kind: 'file',
+            order: 2,
+            title: linkedFile.stepTitle || linkedFile.label || linkedFile.originalFilename || '',
+            description: linkedFile.stepSummary || '',
+          }, 1)] : []),
+        ],
+      };
+      modules.push(module);
+    });
+
+  files
+    .filter((file) => !file?.publicId || !usedPublicIds.has(String(file.publicId)))
+    .forEach((file) => {
+      modules.push({
+        _id: file._id,
+        clientKey: createClientKey('module'),
+        moduleNumber: Number(file.stepNumber) || modules.length + 1,
+        title: file.stepTitle || file.label || file.originalFilename || `Module ${modules.length + 1}`,
+        description: file.stepSummary || '',
+        items: [normalizeDigitalModuleItemForForm({
+          ...file,
+          kind: 'file',
+          order: 1,
+          title: file.stepTitle || file.label || file.originalFilename || '',
+          description: file.stepSummary || '',
+        }, 0)],
+      });
+    });
+
+  return reindexDigitalModules(modules);
+};
+
 const collectDistinctValues = (values = []) => (
   [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
 );
@@ -289,7 +618,7 @@ const EMPTY_PROD = { name:'',desc:'',category:'',images:[],retailPrice:'',wholes
 const EMPTY_DIGITAL = {
   name:'', desc:'', category:'Digital Products', images:[], retailPrice:'', available:true, featured:false, fastSelling:false,
   hasDiscount:false, discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},
-  isDigital:true, digitalType:'mixed', accessNote:'', digitalFiles:[],
+  isDigital:true, digitalType:'mixed', accessNote:'', digitalModules:[], digitalManualPages:[], digitalFiles:[],
   supportEmail:'', supportWhatsApp:'',
   digitalSkillLevel:'all-levels', digitalFormat:'', digitalDuration:'', digitalTopics:[], digitalInclusions:[],
   digitalAccessKind:'paid', freeTrialDays:'7', isSeries:false, seriesTitle:'', seriesDescription:'',
@@ -393,6 +722,7 @@ const TAB_FORM_LABELS = {
   Delivery: 'Delivery',
   Orders: 'Order',
   Bookings: 'Booking',
+  Customers: 'Customer',
   Abandoned: 'Abandoned',
   Consultations: 'Consultation',
   Blog: 'Blog Post',
@@ -724,6 +1054,871 @@ function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxF
   );
 }
 
+function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, maxFiles = 8 }) {
+  const [recordMode, setRecordMode] = useState('audio');
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [recordedBlob, setRecordedBlob] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  const clearPreview = useCallback(() => {
+    setRecordedBlob(null);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+  }, []);
+
+  const stopTracks = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    stopTracks();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl, stopTracks]);
+
+  const pickMimeType = (mode) => {
+    if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+    const candidates = mode === 'video'
+      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      : ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+  };
+
+  const getRecordingExtension = (mimeType = '', mode = 'audio') => {
+    if (mimeType.includes('mp4')) return 'mp4';
+    if (mimeType.includes('ogg')) return 'ogg';
+    if (mimeType.includes('wav')) return 'wav';
+    if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
+    return mode === 'video' ? 'webm' : 'webm';
+  };
+
+  const startRecording = async (mode) => {
+    if (files.length >= maxFiles) {
+      setError(`Max ${maxFiles} files allowed`);
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('This browser does not support direct audio or video recording here.');
+      return;
+    }
+
+    setError('');
+    clearPreview();
+    stopTracks();
+    chunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(
+        mode === 'video'
+          ? { audio: true, video: { facingMode: 'user' } }
+          : { audio: true, video: false }
+      );
+
+      streamRef.current = stream;
+      const mimeType = pickMimeType(mode);
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recorderRef.current = recorder;
+      setRecordMode(mode);
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setError('Recording failed. Please try again.');
+        setRecording(false);
+        stopTracks();
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || (mode === 'video' ? 'video/webm' : 'audio/webm'),
+        });
+        if (blob.size > 0) {
+          setRecordedBlob(blob);
+          setPreviewUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return URL.createObjectURL(blob);
+          });
+        }
+        recorderRef.current = null;
+        setRecording(false);
+        stopTracks();
+      };
+
+      recorder.start();
+      setRecording(true);
+    } catch (recordError) {
+      stopTracks();
+      setRecording(false);
+      setError(
+        recordError?.name === 'NotAllowedError'
+          ? 'Microphone or camera access was blocked. Allow access and try again.'
+          : recordError?.message || 'Could not start recording right now.'
+      );
+    }
+  };
+
+  const stopRecording = () => {
+    if (!recorderRef.current || recorderRef.current.state === 'inactive') return;
+    recorderRef.current.stop();
+  };
+
+  const uploadRecording = async () => {
+    if (!recordedBlob) return;
+    if (files.length >= maxFiles) {
+      setError(`Max ${maxFiles} files allowed`);
+      return;
+    }
+
+    setUploading(true);
+    setError('');
+    try {
+      const extension = getRecordingExtension(recordedBlob.type, recordMode);
+      const fallbackType = recordMode === 'video' ? 'video/webm' : 'audio/webm';
+      const file = new File(
+        [recordedBlob],
+        `recorded-${recordMode}-${Date.now()}.${extension}`,
+        { type: recordedBlob.type || fallbackType }
+      );
+      const formData = new FormData();
+      formData.append('files', file);
+      const { data } = await api.post(uploadEndpoint, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      onChange([...(files || []), ...(data.files || [])]);
+      clearPreview();
+    } catch (uploadError) {
+      setError(uploadError.response?.data?.message || 'Could not upload the recorded media right now.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="sm:col-span-2 space-y-3 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Record Media</p>
+        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+          Record a quick audio lesson, voice note, walkthrough, or video clip here, then upload it straight into this digital product as a secure media file.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => startRecording('audio')}
+          disabled={recording || uploading || files.length >= maxFiles}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900 disabled:opacity-50"
+        >
+          <Mic size={14} />
+          Record Audio
+        </button>
+        <button
+          type="button"
+          onClick={() => startRecording('video')}
+          disabled={recording || uploading || files.length >= maxFiles}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
+        >
+          <Video size={14} />
+          Record Video
+        </button>
+        {recording && (
+          <button
+            type="button"
+            onClick={stopRecording}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-700 hover:border-red-300"
+          >
+            <Square size={13} />
+            Stop Recording
+          </button>
+        )}
+      </div>
+
+      {recording && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
+          Recording {recordMode === 'video' ? 'video' : 'audio'} now. Press stop when the lesson clip is ready.
+        </div>
+      )}
+
+      {previewUrl && recordedBlob && (
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold text-black">Recorded {recordMode === 'video' ? 'video' : 'audio'} ready</p>
+              <p className="mt-1 text-xs text-gray-500">Preview it first, then upload it into the secure product files below.</p>
+            </div>
+            <span className="rounded-full bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-600 border border-gray-200">
+              {formatBytes(recordedBlob.size)}
+            </span>
+          </div>
+
+          {recordMode === 'video' ? (
+            <video src={previewUrl} controls className="w-full rounded-2xl border border-gray-200 bg-black" />
+          ) : (
+            <audio src={previewUrl} controls className="w-full" />
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={uploadRecording}
+              disabled={uploading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FDC700] px-4 py-2.5 text-xs font-bold text-black hover:bg-yellow-300 disabled:opacity-50"
+            >
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              Upload Recording
+            </button>
+            <button
+              type="button"
+              onClick={clearPreview}
+              disabled={uploading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
+            >
+              <X size={14} />
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs font-bold text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUploaded, variant = 'card', buttonLabel = 'Add upload attachment' }) {
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleFiles = async (fileList) => {
+    if (!fileList?.length || disabled) return;
+    setUploading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      Array.from(fileList).forEach((file) => formData.append('files', file));
+      const { data } = await api.post(uploadEndpoint, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      onUploaded?.(data.files || []);
+      if (fileRef.current) fileRef.current.value = '';
+    } catch (uploadError) {
+      setError(uploadError.response?.data?.message || 'Could not upload module files right now.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {variant === 'inline' ? (
+        <button
+          type="button"
+          onClick={() => !disabled && !uploading && fileRef.current?.click()}
+          disabled={disabled || uploading}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
+        >
+          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          {uploading ? 'Uploading...' : buttonLabel}
+        </button>
+      ) : (
+        <div
+          onDrop={(event) => {
+            event.preventDefault();
+            handleFiles(event.dataTransfer.files);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onClick={() => !disabled && fileRef.current?.click()}
+          className={`rounded-2xl border-2 border-dashed p-4 transition-all ${
+            disabled ? 'cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300' : 'cursor-pointer border-gray-200 bg-white hover:border-black'
+          }`}
+        >
+          {uploading ? (
+            <div className="flex items-center justify-center gap-2 text-xs font-bold text-gray-500">
+              <Loader2 size={14} className="animate-spin" />
+              Uploading lesson files...
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-black">Add upload attachment</p>
+                <p className="mt-1 text-xs text-gray-500">Upload images, video, audio, PDFs, slides, workbooks, ZIPs, or other secure lesson attachments straight into this module.</p>
+              </div>
+              <Upload size={16} className="shrink-0 text-gray-400" />
+            </div>
+          )}
+        </div>
+      )}
+      {error && <p className="text-xs font-bold text-red-500">{error}</p>}
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => handleFiles(event.target.files)}
+      />
+    </div>
+  );
+}
+
+function ModuleMediaRecorder({ token, uploadEndpoint, disabled = false, onRecorded, variant = 'card' }) {
+  const [recordMode, setRecordMode] = useState('audio');
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [recordedBlob, setRecordedBlob] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [capturedName, setCapturedName] = useState('');
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const captureInputRef = useRef(null);
+
+  const clearPreview = useCallback(() => {
+    setRecordedBlob(null);
+    setCapturedName('');
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+  }, []);
+
+  const stopTracks = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    stopTracks();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl, stopTracks]);
+
+  const pickMimeType = (mode) => {
+    if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+    const candidates = mode === 'video'
+      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      : ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+  };
+
+  const getRecordingExtension = (mimeType = '', mode = 'audio') => {
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) return 'jpg';
+    if (mimeType.includes('png')) return 'png';
+    if (mimeType.includes('gif')) return 'gif';
+    if (mimeType.includes('webp')) return 'webp';
+    if (mimeType.includes('mp4')) return 'mp4';
+    if (mimeType.includes('ogg')) return 'ogg';
+    if (mimeType.includes('wav')) return 'wav';
+    if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'mp3';
+    if (mode === 'image') return 'jpg';
+    return mode === 'video' ? 'webm' : 'webm';
+  };
+
+  const startRecording = async (mode) => {
+    if (disabled) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('This browser does not support direct audio or video recording here.');
+      return;
+    }
+
+    setError('');
+    clearPreview();
+    stopTracks();
+    chunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(
+        mode === 'video'
+          ? { audio: true, video: { facingMode: 'user' } }
+          : { audio: true, video: false }
+      );
+      streamRef.current = stream;
+      const mimeType = pickMimeType(mode);
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+      recorderRef.current = recorder;
+      setRecordMode(mode);
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) chunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setError('Recording failed. Please try again.');
+        setRecording(false);
+        stopTracks();
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || (mode === 'video' ? 'video/webm' : 'audio/webm'),
+        });
+        if (blob.size > 0) {
+          setRecordedBlob(blob);
+          setPreviewUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return URL.createObjectURL(blob);
+          });
+        }
+        recorderRef.current = null;
+        setRecording(false);
+        stopTracks();
+      };
+
+      recorder.start();
+      setRecording(true);
+    } catch (recordError) {
+      stopTracks();
+      setRecording(false);
+      setError(
+        recordError?.name === 'NotAllowedError'
+          ? 'Microphone or camera access was blocked. Allow access and try again.'
+          : recordError?.message || 'Could not start recording right now.'
+      );
+    }
+  };
+
+  const handleCapturedImage = (files) => {
+    const imageFile = files?.[0];
+    if (!imageFile || disabled) return;
+    setError('');
+    setRecordMode('image');
+    setRecording(false);
+    stopTracks();
+    setRecordedBlob(imageFile);
+    setCapturedName(imageFile.name || `module-image-${Date.now()}`);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return URL.createObjectURL(imageFile);
+    });
+  };
+
+  const stopRecording = () => {
+    if (!recorderRef.current || recorderRef.current.state === 'inactive') return;
+    recorderRef.current.stop();
+  };
+
+  const uploadRecording = async () => {
+    if (!recordedBlob || disabled) return;
+    setUploading(true);
+    setError('');
+    try {
+      const extension = getRecordingExtension(recordedBlob.type, recordMode);
+      const fallbackType = recordMode === 'video'
+        ? 'video/webm'
+        : recordMode === 'image'
+          ? 'image/jpeg'
+          : 'audio/webm';
+      const file = recordedBlob instanceof File
+        ? new File(
+          [recordedBlob],
+          recordedBlob.name || capturedName || `module-${recordMode}-${Date.now()}.${extension}`,
+          { type: recordedBlob.type || fallbackType }
+        )
+        : new File(
+          [recordedBlob],
+          `module-${recordMode}-${Date.now()}.${extension}`,
+          { type: recordedBlob.type || fallbackType }
+        );
+      const formData = new FormData();
+      formData.append('files', file);
+      const { data } = await api.post(uploadEndpoint, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      onRecorded?.(data.files || []);
+      clearPreview();
+    } catch (uploadError) {
+      setError(uploadError.response?.data?.message || 'Could not upload the recorded media right now.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className={variant === 'inline' ? 'space-y-2' : 'space-y-2 rounded-2xl border border-gray-200 bg-white p-4'}>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => startRecording('audio')}
+          disabled={disabled || recording || uploading}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900 disabled:opacity-50"
+        >
+          <Mic size={14} />
+          Record Audio
+        </button>
+        <button
+          type="button"
+          onClick={() => startRecording('video')}
+          disabled={disabled || recording || uploading}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
+        >
+          <Video size={14} />
+          Record Video
+        </button>
+        <button
+          type="button"
+          onClick={() => captureInputRef.current?.click()}
+          disabled={disabled || recording || uploading}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
+        >
+          <ImagePlus size={14} />
+          Capture Picture
+        </button>
+        {recording && (
+          <button
+            type="button"
+            onClick={stopRecording}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-700 hover:border-red-300"
+          >
+            <Square size={13} />
+            Stop
+          </button>
+        )}
+      </div>
+
+      {recording && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
+          Recording {recordMode === 'video' ? 'video' : 'audio'} now. Stop when this lesson clip is ready.
+        </div>
+      )}
+
+      {previewUrl && recordedBlob && (
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold text-black">
+                {recordMode === 'image'
+                  ? 'Captured picture ready'
+                  : `Recorded ${recordMode === 'video' ? 'video' : 'audio'} ready`}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Preview it, then add it as the next secure lesson item in this module.
+              </p>
+            </div>
+            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-600">
+              {formatBytes(recordedBlob.size)}
+            </span>
+          </div>
+
+          {recordMode === 'video' ? (
+            <video src={previewUrl} controls className="w-full rounded-2xl border border-gray-200 bg-black" />
+          ) : recordMode === 'image' ? (
+            <img src={previewUrl} alt={capturedName || 'Captured attachment'} className="w-full rounded-2xl border border-gray-200 bg-white object-contain max-h-80" />
+          ) : (
+            <audio src={previewUrl} controls className="w-full" />
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={uploadRecording}
+              disabled={uploading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FDC700] px-4 py-2.5 text-xs font-bold text-black hover:bg-yellow-300 disabled:opacity-50"
+            >
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {recordMode === 'image' ? 'Add Picture' : 'Add Recording'}
+            </button>
+            <button
+              type="button"
+              onClick={clearPreview}
+              disabled={uploading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
+            >
+              <X size={14} />
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs font-bold text-red-500">{error}</p>}
+      <input
+        ref={captureInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          handleCapturedImage(event.target.files);
+          event.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+function DigitalProductCustomerPreview({
+  productName = '',
+  accessNote = '',
+  modules = [],
+  expandedModules = {},
+  onToggleModule,
+  onExpandAll,
+  onCollapseAll,
+}) {
+  const orderedModules = reindexDigitalModules(Array.isArray(modules) ? modules : []);
+
+  return (
+    <div className="rounded-[28px] border border-black/10 bg-[radial-gradient(circle_at_top,_rgba(253,199,0,0.18),_transparent_55%),linear-gradient(180deg,_#fffef8_0%,_#f6f2e8_100%)] p-4 sm:p-5 space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Customer View Preview</p>
+          <h4 className="mt-1 text-lg font-extrabold text-black">
+            {productName || 'Untitled digital product'}
+          </h4>
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-600">
+            {truncatePreviewText(
+              accessNote || 'This mirrors the module-by-module learning flow learners will see after purchase, using the current draft order from this form.',
+              240
+            )}
+          </p>
+        </div>
+        {!!orderedModules.length && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onExpandAll}
+              className="rounded-2xl border border-white/80 bg-white/90 px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+            >
+              Expand Preview
+            </button>
+            <button
+              type="button"
+              onClick={onCollapseAll}
+              className="rounded-2xl border border-white/80 bg-white/90 px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+            >
+              Collapse Preview
+            </button>
+          </div>
+        )}
+      </div>
+
+      {!orderedModules.length ? (
+        <div className="rounded-2xl border border-dashed border-white/80 bg-white/75 px-4 py-4 text-xs text-gray-500">
+          Add at least one module to see the learner preview here.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {orderedModules.map((module, moduleIndex) => {
+            const moduleKey = getModuleUiKey(module, moduleIndex);
+            const isExpanded = expandedModules[moduleKey] ?? moduleIndex === 0;
+            const moduleSummary = getDigitalModuleSummary(module);
+
+            return (
+              <div
+                key={moduleKey}
+                className="rounded-[24px] border border-white/80 bg-white/90 p-4 shadow-[0_12px_30px_rgba(17,24,39,0.06)]"
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-black px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+                      Module {module.moduleNumber || moduleIndex + 1}
+                    </div>
+                    <h5 className="mt-2 text-base font-extrabold text-black">
+                      {module.title || `Untitled Module ${module.moduleNumber || moduleIndex + 1}`}
+                    </h5>
+                    <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                      {truncatePreviewText(
+                        module.description || 'Learners will see the lesson steps you place inside this module in the same order shown here.',
+                        240
+                      )}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                      <span className="rounded-full border border-[#eadfbd] bg-[#fff8df] px-2.5 py-1">
+                        {pluralize(moduleSummary.stepCount, 'step')}
+                      </span>
+                      <span className="rounded-full border border-[#eadfbd] bg-[#fff8df] px-2.5 py-1">
+                        {pluralize(moduleSummary.textStepCount, 'text lesson')}
+                      </span>
+                      <span className="rounded-full border border-[#eadfbd] bg-[#fff8df] px-2.5 py-1">
+                        {pluralize(moduleSummary.attachmentStepCount + moduleSummary.inlineAttachmentCount, 'media attachment')}
+                      </span>
+                      {!!moduleSummary.linkCount && (
+                        <span className="rounded-full border border-[#eadfbd] bg-[#fff8df] px-2.5 py-1">
+                          {pluralize(moduleSummary.linkCount, 'link')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onToggleModule(moduleKey)}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                  >
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {isExpanded ? 'Hide Preview' : 'Open Preview'}
+                  </button>
+                </div>
+
+                {isExpanded && (
+                  <div className="mt-4 space-y-3">
+                    {(module.items || []).map((item, itemIndex) => {
+                      const itemBlocks = item.kind === 'text' ? reindexTextLessonBlocks(item.blocks || []) : [];
+                      const attachmentBlocks = itemBlocks.filter((block) => block.kind === 'file');
+                      const linkBlocks = itemBlocks.filter((block) => block.kind === 'link');
+
+                      return (
+                        <div key={item.clientKey || item._id || `${moduleKey}-${itemIndex}`} className="rounded-2xl border border-[#f0ead7] bg-[#fffdf7] p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-black px-2 text-xs font-extrabold text-white">
+                              {item.order || itemIndex + 1}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-extrabold text-black">
+                                  {item.title || (item.kind === 'file' ? item.originalFilename || `Attachment Step ${item.order || itemIndex + 1}` : `Lesson Step ${item.order || itemIndex + 1}`)}
+                                </p>
+                                <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                  {item.kind === 'file' ? `${formatModuleFileKindLabel(item.fileKind)} step` : 'Text lesson'}
+                                </span>
+                              </div>
+                              {!!item.description && (
+                                <p className="mt-1 text-xs leading-relaxed text-gray-600">{item.description}</p>
+                              )}
+
+                              {item.kind === 'file' ? (
+                                <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                                  {item.originalFilename && (
+                                    <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1">
+                                      {item.originalFilename}
+                                    </span>
+                                  )}
+                                  {item.fileKind && (
+                                    <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1">
+                                      {formatModuleFileKindLabel(item.fileKind)}
+                                    </span>
+                                  )}
+                                  {item.bytes > 0 && (
+                                    <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1">
+                                      {formatBytes(item.bytes)}
+                                    </span>
+                                  )}
+                                  <span className={`rounded-full border px-2.5 py-1 ${
+                                    item.allowDownload
+                                      ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                      : 'border-amber-100 bg-amber-50 text-amber-700'
+                                  }`}>
+                                    {item.allowDownload ? 'Download enabled' : 'View in library'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                                    <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1">
+                                      {pluralize(itemBlocks.length, 'block')}
+                                    </span>
+                                    {!!attachmentBlocks.length && (
+                                      <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1">
+                                        {pluralize(attachmentBlocks.length, 'inline attachment')}
+                                      </span>
+                                    )}
+                                    {!!linkBlocks.length && (
+                                      <span className="rounded-full border border-[#ece2c5] bg-white px-2.5 py-1">
+                                        {pluralize(linkBlocks.length, 'link')}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="mt-3 space-y-2.5">
+                                    {itemBlocks.map((block, blockIndex) => (
+                                      <div key={block.clientKey || block._id || `${moduleKey}-${itemIndex}-${blockIndex}`} className="rounded-2xl border border-[#f3ecdd] bg-white px-4 py-3">
+                                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#9a7a00]">
+                                          {block.kind === 'file' ? (
+                                            <>
+                                              {block.fileKind === 'video' ? <Video size={13} /> : block.fileKind === 'audio' ? <Mic size={13} /> : block.fileKind === 'image' ? <ImagePlus size={13} /> : <Upload size={13} />}
+                                              {formatModuleFileKindLabel(block.fileKind)} Attachment
+                                            </>
+                                          ) : block.kind === 'link' ? (
+                                            <>
+                                              <Link2 size={13} />
+                                              Link
+                                            </>
+                                          ) : (
+                                            <>
+                                              <FileText size={13} />
+                                              Writing
+                                            </>
+                                          )}
+                                        </div>
+
+                                        {block.kind === 'text' ? (
+                                          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-700">
+                                            {truncatePreviewText(block.content || 'Written instruction will appear here once text is added.', 320)}
+                                          </p>
+                                        ) : block.kind === 'link' ? (
+                                          <div className="mt-2 space-y-1">
+                                            <p className="text-sm font-bold text-black">
+                                              {block.title || 'Helpful reference link'}
+                                            </p>
+                                            {block.description && (
+                                              <p className="text-xs leading-relaxed text-gray-600">{block.description}</p>
+                                            )}
+                                            <p className="text-xs text-gray-500 break-all">{block.url || 'Link URL pending'}</p>
+                                          </div>
+                                        ) : (
+                                          <div className="mt-2 space-y-2">
+                                            <p className="text-sm font-bold text-black">
+                                              {block.title || block.originalFilename || `${formatModuleFileKindLabel(block.fileKind)} attachment`}
+                                            </p>
+                                            {block.description && (
+                                              <p className="text-xs leading-relaxed text-gray-600">{block.description}</p>
+                                            )}
+                                            <div className="flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                                              {block.originalFilename && (
+                                                <span className="rounded-full border border-[#ece2c5] bg-[#fcfbf7] px-2.5 py-1">
+                                                  {block.originalFilename}
+                                                </span>
+                                              )}
+                                              {block.bytes > 0 && (
+                                                <span className="rounded-full border border-[#ece2c5] bg-[#fcfbf7] px-2.5 py-1">
+                                                  {formatBytes(block.bytes)}
+                                                </span>
+                                              )}
+                                              <span className={`rounded-full border px-2.5 py-1 ${
+                                                block.allowDownload
+                                                  ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                                  : 'border-amber-100 bg-amber-50 text-amber-700'
+                                              }`}>
+                                                {block.allowDownload ? 'Download enabled' : 'View in library'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-white/80 bg-white/75 px-4 py-3 text-xs leading-relaxed text-gray-600">
+        This preview follows the exact draft order from the editor. Purchased learners will also get progress tracking, resume markers, and protected file access inside their digital library.
+      </div>
+    </div>
+  );
+}
+
 function InvoiceCreator({ auth }) {
   const [customerName,  setCustomerName]  = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -892,6 +2087,20 @@ export default function Admin() {
   const [form,     setForm]     = useState({});
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [viewMode, setViewMode] = useState('list');
+  const [digitalAutoSave, setDigitalAutoSave] = useState({ status: 'idle', message: '' });
+  const [expandedDigitalModules, setExpandedDigitalModules] = useState({});
+  const [expandedDigitalModuleSections, setExpandedDigitalModuleSections] = useState({});
+  const [expandedDigitalModuleItems, setExpandedDigitalModuleItems] = useState({});
+  const [showDigitalCustomerPreview, setShowDigitalCustomerPreview] = useState(false);
+  const [expandedPreviewModules, setExpandedPreviewModules] = useState({});
+  const draggedModuleRef = useRef(null);
+  const draggedModuleItemRef = useRef(null);
+  const draggedLessonBlockRef = useRef(null);
+  const digitalAutoSaveTimerRef = useRef(null);
+  const digitalDraftTimerRef = useRef(null);
+  const lastDigitalAutoSaveSnapshotRef = useRef('');
+  const pendingDigitalItemScrollRef = useRef('');
+  const DIGITAL_DRAFT_STORAGE_KEY = 'bk-admin-digital-product-draft-v2';
 
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   const visibleCertificateTemplates = mergeCertificateTemplates(certificateTemplates);
@@ -971,6 +2180,7 @@ export default function Admin() {
     Analytics: '/api/orders/analytics',
     Products: '/api/products', 'Digital Products': '/api/products', Certificates: '/api/certificates', Training: '/api/training',
     Delivery: '/api/delivery', Orders: '/api/orders',
+    Customers: '/api/customers',
     Abandoned: '/api/orders/abandoned', Consultations: '/api/consultation',
     Blog: '/api/blog', Featured: '/api/products', Bookings: '/api/training/bookings',
   };
@@ -1024,7 +2234,28 @@ export default function Admin() {
     setLoading(false);
   }, [expireSession, token]);
 
-  useEffect(() => { load(tab, ''); setSearch(''); setShowForm(false); setEditId(null); setPage(1); }, [tab]);
+  useEffect(() => {
+    load(tab, '');
+    setSearch('');
+    setShowForm(false);
+    setEditId(null);
+    setPage(1);
+    setDigitalAutoSave({ status: 'idle', message: '' });
+    setExpandedDigitalModules({});
+    setExpandedDigitalModuleSections({});
+    setExpandedDigitalModuleItems({});
+    setExpandedPreviewModules({});
+    setShowDigitalCustomerPreview(false);
+    pendingDigitalItemScrollRef.current = '';
+    if (digitalAutoSaveTimerRef.current) {
+      clearTimeout(digitalAutoSaveTimerRef.current);
+      digitalAutoSaveTimerRef.current = null;
+    }
+    if (digitalDraftTimerRef.current) {
+      clearTimeout(digitalDraftTimerRef.current);
+      digitalDraftTimerRef.current = null;
+    }
+  }, [tab]);
 
   useEffect(() => {
     setShowTabMenu(false);
@@ -1047,11 +2278,152 @@ export default function Admin() {
     setCustomCat('');
     setCustomDigitalInputs(createEmptyCustomDigitalInputs());
   };
+  const readDigitalDraft = () => {
+    try {
+      const raw = window.localStorage.getItem(DIGITAL_DRAFT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+  const clearDigitalDraft = () => {
+    try {
+      window.localStorage.removeItem(DIGITAL_DRAFT_STORAGE_KEY);
+    } catch {
+      // ignore local draft cleanup issues
+    }
+  };
+  const setDigitalModuleSectionExpanded = (moduleKey, sectionKey, value) => {
+    setExpandedDigitalModuleSections((current) => ({
+      ...current,
+      [moduleKey]: {
+        ...DIGITAL_MODULE_SECTION_DEFAULTS,
+        ...(current[moduleKey] || {}),
+        [sectionKey]: value,
+      },
+    }));
+  };
+  const toggleDigitalModuleSection = (moduleKey, sectionKey) => {
+    setExpandedDigitalModuleSections((current) => {
+      const currentModuleState = {
+        ...DIGITAL_MODULE_SECTION_DEFAULTS,
+        ...(current[moduleKey] || {}),
+      };
+      return {
+        ...current,
+        [moduleKey]: {
+          ...currentModuleState,
+          [sectionKey]: !currentModuleState[sectionKey],
+        },
+      };
+    });
+  };
+  const toggleDigitalModuleItemExpanded = (itemKey) => {
+    setExpandedDigitalModuleItems((current) => ({ ...current, [itemKey]: !current[itemKey] }));
+  };
+  const toggleDigitalModuleExpanded = (moduleKey) => {
+    setExpandedDigitalModules((current) => ({ ...current, [moduleKey]: !current[moduleKey] }));
+  };
+  const togglePreviewModuleExpanded = (moduleKey) => {
+    setExpandedPreviewModules((current) => ({ ...current, [moduleKey]: !current[moduleKey] }));
+  };
+  const expandAllDigitalModules = () => {
+    const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
+    setExpandedDigitalModules(Object.fromEntries(modules.map((module, index) => [getModuleUiKey(module, index), true])));
+  };
+  const collapseAllDigitalModules = () => {
+    const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
+    setExpandedDigitalModules(Object.fromEntries(modules.map((module, index) => [getModuleUiKey(module, index), false])));
+  };
+  const expandAllPreviewModules = () => {
+    const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
+    setExpandedPreviewModules(Object.fromEntries(modules.map((module, index) => [getModuleUiKey(module, index), true])));
+  };
+  const collapseAllPreviewModules = () => {
+    const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
+    setExpandedPreviewModules(Object.fromEntries(modules.map((module, index) => [getModuleUiKey(module, index), false])));
+  };
+
+  useEffect(() => {
+    if (tab !== 'Digital Products' || !showForm) return;
+    const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
+
+    setExpandedDigitalModules((current) => {
+      const currentKeys = Object.keys(current || {});
+      const next = {};
+      modules.forEach((module, index) => {
+        const key = getModuleUiKey(module, index);
+        next[key] = current[key] ?? (currentKeys.length === 0 ? index === 0 : false);
+      });
+      return next;
+    });
+
+    setExpandedDigitalModuleSections((current) => {
+      const next = {};
+      modules.forEach((module, index) => {
+        const key = getModuleUiKey(module, index);
+        next[key] = {
+          ...DIGITAL_MODULE_SECTION_DEFAULTS,
+          ...(current[key] || {}),
+        };
+      });
+      return next;
+    });
+
+    setExpandedDigitalModuleItems((current) => {
+      const next = {};
+      modules.forEach((module, moduleIndex) => {
+        const moduleKey = getModuleUiKey(module, moduleIndex);
+        (module.items || []).forEach((item, itemIndex) => {
+          const itemKey = getModuleItemUiKey(item, moduleKey, itemIndex);
+          next[itemKey] = current[itemKey] ?? false;
+        });
+      });
+      return next;
+    });
+
+    setExpandedPreviewModules((current) => {
+      const currentKeys = Object.keys(current || {});
+      const next = {};
+      modules.forEach((module, index) => {
+        const key = getModuleUiKey(module, index);
+        next[key] = current[key] ?? (currentKeys.length === 0 ? index === 0 : false);
+      });
+      return next;
+    });
+  }, [form.digitalModules, showForm, tab]);
+
+  useEffect(() => {
+    if (!pendingDigitalItemScrollRef.current) return undefined;
+    const targetId = pendingDigitalItemScrollRef.current;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      pendingDigitalItemScrollRef.current = '';
+    }, 160);
+    return () => window.clearTimeout(timer);
+  }, [form.digitalModules]);
 
   const openNew = () => {
-    setForm(getEmptyForm(tab));
+    const restoredDraft = tab === 'Digital Products' ? readDigitalDraft() : null;
+    setForm(restoredDraft || getEmptyForm(tab));
     setEditId(null);
     setShowForm(true);
+    setExpandedDigitalModules({});
+    setExpandedDigitalModuleSections({});
+    setExpandedDigitalModuleItems({});
+    setExpandedPreviewModules({});
+    setShowDigitalCustomerPreview(false);
+    setDigitalAutoSave({
+      status: restoredDraft ? 'saved' : 'idle',
+      message: restoredDraft ? 'Unsaved draft restored locally.' : '',
+    });
+    lastDigitalAutoSaveSnapshotRef.current = '';
+    pendingDigitalItemScrollRef.current = '';
     resetCustomInputs();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1063,6 +2435,11 @@ export default function Admin() {
 
   const openEdit = (item) => {
     resetCustomInputs();
+    setExpandedDigitalModules({});
+    setExpandedDigitalModuleSections({});
+    setExpandedDigitalModuleItems({});
+    setExpandedPreviewModules({});
+    setShowDigitalCustomerPreview(false);
     if (tab === 'Products') {
       setForm({
         ...item,
@@ -1077,7 +2454,7 @@ export default function Admin() {
         variants:        item.variants?.length ? JSON.stringify(item.variants) : '',
       });
     } else if (tab === 'Digital Products') {
-      setForm({
+      const nextForm = {
         ...item,
         category:        'Digital Products',
         images:          item.images?.length ? item.images : [],
@@ -1105,8 +2482,15 @@ export default function Admin() {
         accessNote:      item.accessNote || '',
         supportEmail:    item.supportEmail || '',
         supportWhatsApp: item.supportWhatsApp || '',
-        digitalFiles:    item.digitalFiles?.length ? item.digitalFiles.map(file => ({ ...file, allowDownload: !!file.allowDownload })) : [],
-      });
+        digitalModules:  Array.isArray(item.digitalModules) && item.digitalModules.length
+          ? reindexDigitalModules(item.digitalModules.map((module, index) => normalizeDigitalModuleForForm(module, index)))
+          : buildLegacyDigitalModulesForForm(item),
+        digitalManualPages: [],
+        digitalFiles: [],
+      };
+      setForm(nextForm);
+      lastDigitalAutoSaveSnapshotRef.current = JSON.stringify(buildDigitalBody(nextForm));
+      setDigitalAutoSave({ status: 'saved', message: 'All changes saved.' });
     } else if (tab === 'Certificates') {
       setForm(mapCertificateRecordToForm(item, getCertificateTemplateKey(visibleCertificateTemplates[0]) || ''));
     } else if (tab === 'Featured') {
@@ -1145,12 +2529,28 @@ export default function Admin() {
     }
     setEditId(item._id);
     setShowForm(true);
+    pendingDigitalItemScrollRef.current = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const closeForm = () => {
     setShowForm(false);
     setEditId(null);
+    setExpandedDigitalModules({});
+    setExpandedDigitalModuleSections({});
+    setExpandedDigitalModuleItems({});
+    setExpandedPreviewModules({});
+    setShowDigitalCustomerPreview(false);
+    setDigitalAutoSave({ status: 'idle', message: '' });
+    if (digitalAutoSaveTimerRef.current) {
+      clearTimeout(digitalAutoSaveTimerRef.current);
+      digitalAutoSaveTimerRef.current = null;
+    }
+    if (digitalDraftTimerRef.current) {
+      clearTimeout(digitalDraftTimerRef.current);
+      digitalDraftTimerRef.current = null;
+    }
+    pendingDigitalItemScrollRef.current = '';
     resetCustomInputs();
   };
   const toggleFormArrayValue = (key, value) => setForm(f => {
@@ -1186,6 +2586,262 @@ export default function Admin() {
     });
     setCustomDigitalInput(inputKey, '');
   };
+  const addDigitalModule = () => {
+    const nextModule = createEmptyDigitalModule((Array.isArray(form.digitalModules) ? form.digitalModules.length : 0) + 1);
+    const nextModuleKey = getModuleUiKey(nextModule, Array.isArray(form.digitalModules) ? form.digitalModules.length : 0);
+    setForm((current) => ({
+      ...current,
+      digitalModules: reindexDigitalModules([
+        ...(Array.isArray(current.digitalModules) ? current.digitalModules : []),
+        nextModule,
+      ]),
+    }));
+    setExpandedDigitalModules((current) => ({ ...current, [nextModuleKey]: true }));
+    setExpandedDigitalModuleSections((current) => ({
+      ...current,
+      [nextModuleKey]: { ...DIGITAL_MODULE_SECTION_DEFAULTS, details: true },
+    }));
+    setExpandedPreviewModules((current) => ({ ...current, [nextModuleKey]: true }));
+  };
+  const updateDigitalModule = (index, key, value) => setForm((current) => ({
+    ...current,
+    digitalModules: (current.digitalModules || []).map((module, moduleIndex) => (
+      moduleIndex === index ? { ...module, [key]: value } : module
+    )),
+  }));
+  const removeDigitalModule = (index) => setForm((current) => ({
+    ...current,
+    digitalModules: reindexDigitalModules((current.digitalModules || []).filter((_, moduleIndex) => moduleIndex !== index)),
+  }));
+  const moveDigitalModule = (index, direction) => setForm((current) => {
+    const modules = [...(current.digitalModules || [])];
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= modules.length) return current;
+    [modules[index], modules[targetIndex]] = [modules[targetIndex], modules[index]];
+    return { ...current, digitalModules: reindexDigitalModules(modules) };
+  });
+  const addTextLessonToModule = (moduleIndex) => {
+    const module = Array.isArray(form.digitalModules) ? form.digitalModules[moduleIndex] : null;
+    const moduleKey = getModuleUiKey(module, moduleIndex);
+    const existingItemCount = Array.isArray(module?.items) ? module.items.length : 0;
+    const nextItem = createEmptyDigitalTextItem(existingItemCount + 1);
+    const nextItemKey = getModuleItemUiKey(nextItem, moduleKey, existingItemCount);
+
+    setForm((current) => ({
+      ...current,
+      digitalModules: (current.digitalModules || []).map((currentModule, currentModuleIndex) => (
+        currentModuleIndex === moduleIndex
+          ? {
+              ...currentModule,
+              items: reindexDigitalModuleItems([
+                ...(currentModule.items || []),
+                nextItem,
+              ]),
+            }
+          : currentModule
+      )),
+    }));
+    setExpandedDigitalModules((current) => ({ ...current, [moduleKey]: true }));
+    setExpandedDigitalModuleSections((current) => ({
+      ...current,
+      [moduleKey]: {
+        ...DIGITAL_MODULE_SECTION_DEFAULTS,
+        ...(current[moduleKey] || {}),
+        details: true,
+        textComposer: false,
+        attachmentComposer: false,
+      },
+    }));
+    setExpandedDigitalModuleItems((current) => ({ ...current, [nextItemKey]: true }));
+    pendingDigitalItemScrollRef.current = `digital-module-item-${nextItemKey}`;
+  };
+  const addFileLessonsToModule = (moduleIndex, files = []) => {
+    if (!files?.length) return;
+    const module = Array.isArray(form.digitalModules) ? form.digitalModules[moduleIndex] : null;
+    const moduleKey = getModuleUiKey(module, moduleIndex);
+    const existingItemCount = Array.isArray(module?.items) ? module.items.length : 0;
+    const nextItems = files.map((file, fileIndex) => createDigitalFileItem(file, existingItemCount + fileIndex + 1));
+    const nextItemKeys = nextItems.map((item, itemIndex) => getModuleItemUiKey(item, moduleKey, existingItemCount + itemIndex));
+
+    setForm((current) => ({
+      ...current,
+      digitalModules: (current.digitalModules || []).map((module, currentModuleIndex) => (
+        currentModuleIndex === moduleIndex
+          ? {
+              ...module,
+              items: reindexDigitalModuleItems([
+                ...(module.items || []),
+                ...nextItems,
+              ]),
+            }
+          : module
+      )),
+    }));
+    setExpandedDigitalModules((current) => ({ ...current, [moduleKey]: true }));
+    setExpandedDigitalModuleSections((current) => ({
+      ...current,
+      [moduleKey]: {
+        ...DIGITAL_MODULE_SECTION_DEFAULTS,
+        ...(current[moduleKey] || {}),
+        details: true,
+        textComposer: false,
+        attachmentComposer: false,
+      },
+    }));
+    setExpandedDigitalModuleItems((current) => ({
+      ...current,
+      ...Object.fromEntries(nextItemKeys.map((itemKey) => [itemKey, true])),
+    }));
+    pendingDigitalItemScrollRef.current = nextItemKeys[0] ? `digital-module-item-${nextItemKeys[0]}` : '';
+  };
+  const updateModuleItem = (moduleIndex, itemIndex, key, value) => setForm((current) => ({
+    ...current,
+    digitalModules: (current.digitalModules || []).map((module, currentModuleIndex) => {
+      if (currentModuleIndex !== moduleIndex) return module;
+      return {
+        ...module,
+        items: (module.items || []).map((item, currentItemIndex) => (
+          currentItemIndex === itemIndex ? { ...item, [key]: value } : item
+        )),
+      };
+    }),
+  }));
+  const removeModuleItem = (moduleIndex, itemIndex) => setForm((current) => ({
+    ...current,
+    digitalModules: (current.digitalModules || []).map((module, currentModuleIndex) => {
+      if (currentModuleIndex !== moduleIndex) return module;
+      return {
+        ...module,
+        items: reindexDigitalModuleItems((module.items || []).filter((_, currentItemIndex) => currentItemIndex !== itemIndex)),
+      };
+    }),
+  }));
+  const moveModuleItem = (moduleIndex, itemIndex, direction) => setForm((current) => ({
+    ...current,
+    digitalModules: (current.digitalModules || []).map((module, currentModuleIndex) => {
+      if (currentModuleIndex !== moduleIndex) return module;
+      const items = [...(module.items || [])];
+      const targetIndex = itemIndex + direction;
+      if (targetIndex < 0 || targetIndex >= items.length) return module;
+      [items[itemIndex], items[targetIndex]] = [items[targetIndex], items[itemIndex]];
+      return { ...module, items: reindexDigitalModuleItems(items) };
+    }),
+  }));
+  const updateTextLessonBlocks = (current, moduleIndex, itemIndex, updater) => ({
+    ...current,
+    digitalModules: (current.digitalModules || []).map((module, currentModuleIndex) => {
+      if (currentModuleIndex !== moduleIndex) return module;
+      return {
+        ...module,
+        items: (module.items || []).map((item, currentItemIndex) => {
+          if (currentItemIndex !== itemIndex || item.kind !== 'text') return item;
+          const nextBlocks = reindexTextLessonBlocks(updater(item.blocks || []));
+          return {
+            ...item,
+            blocks: nextBlocks,
+            content: buildTextLessonContentFromBlocks(nextBlocks),
+          };
+        }),
+      };
+    }),
+  });
+  const addTextBlockToLesson = (moduleIndex, itemIndex) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => ([...(blocks || []), createEmptyDigitalTextBlock((blocks || []).length + 1)])
+  ));
+  const addLinkBlockToLesson = (moduleIndex, itemIndex) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => ([...(blocks || []), createEmptyDigitalLinkBlock((blocks || []).length + 1)])
+  ));
+  const addFileBlocksToTextLesson = (moduleIndex, itemIndex, files = []) => {
+    if (!files?.length) return;
+    setForm((current) => updateTextLessonBlocks(
+      current,
+      moduleIndex,
+      itemIndex,
+      (blocks) => ([
+        ...(blocks || []),
+        ...files.map((file, fileIndex) => createDigitalFileBlock(file, (blocks || []).length + fileIndex + 1)),
+      ])
+    ));
+  };
+  const updateTextLessonBlock = (moduleIndex, itemIndex, blockIndex, key, value) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => (blocks || []).map((block, currentBlockIndex) => (
+      currentBlockIndex === blockIndex ? { ...block, [key]: value } : block
+    ))
+  ));
+  const removeTextLessonBlock = (moduleIndex, itemIndex, blockIndex) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => (blocks || []).filter((_, currentBlockIndex) => currentBlockIndex !== blockIndex)
+  ));
+  const moveTextLessonBlock = (moduleIndex, itemIndex, blockIndex, direction) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => {
+      const nextBlocks = [...(blocks || [])];
+      const targetIndex = blockIndex + direction;
+      if (targetIndex < 0 || targetIndex >= nextBlocks.length) return nextBlocks;
+      [nextBlocks[blockIndex], nextBlocks[targetIndex]] = [nextBlocks[targetIndex], nextBlocks[blockIndex]];
+      return nextBlocks;
+    }
+  ));
+  const startModuleDrag = (moduleIndex) => {
+    draggedModuleRef.current = { moduleIndex };
+  };
+  const dropModuleAtIndex = (targetIndex) => setForm((current) => {
+    const dragState = draggedModuleRef.current;
+    draggedModuleRef.current = null;
+    if (!dragState) return current;
+    const modules = [...(current.digitalModules || [])];
+    if (dragState.moduleIndex === targetIndex || dragState.moduleIndex < 0 || dragState.moduleIndex >= modules.length) return current;
+    const [movedModule] = modules.splice(dragState.moduleIndex, 1);
+    modules.splice(targetIndex, 0, movedModule);
+    return { ...current, digitalModules: reindexDigitalModules(modules) };
+  });
+  const startModuleItemDrag = (moduleIndex, itemIndex) => {
+    draggedModuleItemRef.current = { moduleIndex, itemIndex };
+  };
+  const dropModuleItemAtIndex = (moduleIndex, targetIndex) => setForm((current) => {
+    const dragState = draggedModuleItemRef.current;
+    draggedModuleItemRef.current = null;
+    if (!dragState || dragState.moduleIndex !== moduleIndex) return current;
+    return {
+      ...current,
+      digitalModules: (current.digitalModules || []).map((module, currentModuleIndex) => {
+        if (currentModuleIndex !== moduleIndex) return module;
+        const items = [...(module.items || [])];
+        if (dragState.itemIndex === targetIndex || dragState.itemIndex < 0 || dragState.itemIndex >= items.length) return module;
+        const [movedItem] = items.splice(dragState.itemIndex, 1);
+        items.splice(targetIndex, 0, movedItem);
+        return { ...module, items: reindexDigitalModuleItems(items) };
+      }),
+    };
+  });
+  const startLessonBlockDrag = (moduleIndex, itemIndex, blockIndex) => {
+    draggedLessonBlockRef.current = { moduleIndex, itemIndex, blockIndex };
+  };
+  const dropLessonBlockAtIndex = (moduleIndex, itemIndex, targetIndex) => setForm((current) => {
+    const dragState = draggedLessonBlockRef.current;
+    draggedLessonBlockRef.current = null;
+    if (!dragState || dragState.moduleIndex !== moduleIndex || dragState.itemIndex !== itemIndex) return current;
+    return updateTextLessonBlocks(current, moduleIndex, itemIndex, (blocks) => {
+      const nextBlocks = [...(blocks || [])];
+      if (dragState.blockIndex === targetIndex || dragState.blockIndex < 0 || dragState.blockIndex >= nextBlocks.length) return nextBlocks;
+      const [movedBlock] = nextBlocks.splice(dragState.blockIndex, 1);
+      nextBlocks.splice(targetIndex, 0, movedBlock);
+      return nextBlocks;
+    });
+  });
 
   const buildProductBody = (f) => {
     const b = { ...f };
@@ -1234,14 +2890,116 @@ export default function Admin() {
       accessNote:   f.accessNote || '',
       supportEmail: f.supportEmail || '',
       supportWhatsApp: f.supportWhatsApp || '',
-      digitalFiles: (f.digitalFiles || []).map(file => ({
-        ...file,
-        label: file.label || file.originalFilename || 'Digital File',
-        stepNumber: file.stepNumber !== '' && file.stepNumber !== undefined && file.stepNumber !== null ? Number(file.stepNumber) : null,
-        stepTitle: file.stepTitle || '',
-        stepSummary: file.stepSummary || '',
-        allowDownload: !!file.allowDownload,
-      })),
+      digitalModules: reindexDigitalModules(f.digitalModules || []).map((module, moduleIndex) => ({
+        _id: module._id,
+        moduleNumber: module.moduleNumber || moduleIndex + 1,
+        title: module.title || '',
+        description: module.description || '',
+        items: reindexDigitalModuleItems(module.items || []).map((item, itemIndex) => (
+          item.kind === 'file'
+            ? {
+                _id: item._id,
+                kind: 'file',
+                order: item.order || itemIndex + 1,
+                title: item.title || item.originalFilename || 'Lesson file',
+                description: item.description || '',
+                allowDownload: !!item.allowDownload,
+                secureUrl: item.secureUrl || '',
+                publicId: item.publicId || '',
+                originalFilename: item.originalFilename || '',
+                downloadName: item.downloadName || item.originalFilename || 'download',
+                mimeType: item.mimeType || '',
+                resourceType: item.resourceType || 'raw',
+                fileKind: item.fileKind || 'other',
+                bytes: item.bytes || 0,
+                blocks: [],
+              }
+            : {
+                _id: item._id,
+                kind: 'text',
+                order: item.order || itemIndex + 1,
+                title: item.title || '',
+                description: item.description || '',
+                content: buildTextLessonContentFromBlocks(item.blocks || []) || item.content || '',
+                blocks: reindexTextLessonBlocks(item.blocks || []).map((block, blockIndex) => (
+                  block.kind === 'file'
+                    ? {
+                        _id: block._id,
+                        blockId: block.blockId || '',
+                        kind: 'file',
+                        order: block.order || blockIndex + 1,
+                        title: block.title || block.originalFilename || 'Inline attachment',
+                        description: block.description || '',
+                        content: '',
+                        url: '',
+                        openInNewTab: true,
+                        allowDownload: !!block.allowDownload || !isPreviewableModuleFile(block.fileKind),
+                        secureUrl: block.secureUrl || '',
+                        publicId: block.publicId || '',
+                        originalFilename: block.originalFilename || '',
+                        downloadName: block.downloadName || block.originalFilename || 'download',
+                        mimeType: block.mimeType || '',
+                        resourceType: block.resourceType || 'raw',
+                        fileKind: block.fileKind || 'other',
+                        bytes: block.bytes || 0,
+                      }
+                    : block.kind === 'link'
+                      ? {
+                          _id: block._id,
+                          blockId: block.blockId || '',
+                          kind: 'link',
+                          order: block.order || blockIndex + 1,
+                          title: block.title || '',
+                          description: block.description || '',
+                          content: '',
+                          url: block.url || '',
+                          openInNewTab: block.openInNewTab !== false,
+                          allowDownload: false,
+                          secureUrl: '',
+                          publicId: '',
+                          originalFilename: '',
+                          downloadName: '',
+                          mimeType: '',
+                          resourceType: 'raw',
+                          fileKind: 'other',
+                          bytes: 0,
+                        }
+                      : {
+                          _id: block._id,
+                          blockId: block.blockId || '',
+                          kind: 'text',
+                          order: block.order || blockIndex + 1,
+                          title: '',
+                          description: '',
+                          content: block.content || '',
+                          url: '',
+                          openInNewTab: true,
+                          allowDownload: false,
+                          secureUrl: '',
+                          publicId: '',
+                          originalFilename: '',
+                          downloadName: '',
+                          mimeType: '',
+                          resourceType: 'raw',
+                          fileKind: 'other',
+                          bytes: 0,
+                        }
+                )).filter((block) => (
+                  block.kind === 'file'
+                    ? !!block.secureUrl
+                    : block.kind === 'link'
+                      ? !!String(block.url || block.title || block.description || '').trim()
+                      : !!String(block.content || '').trim()
+                )),
+              }
+        )).filter((item) => (
+          item.kind === 'file'
+            ? !!item.secureUrl
+            : !!String(item.title || item.description || item.content || '').trim() || (item.blocks || []).length > 0
+        )),
+      })).filter((module) => module.items.length || module.title || module.description),
+      digitalManualPages: [],
+      digitalFiles: [],
     };
     if (digitalAccessKind !== 'free' && f.hasDiscount) {
       b.discount = { ...f.discount, value: Number(f.discount.value) || 0, limitCustomers: f.discount.limitCustomers ? Number(f.discount.limitCustomers) : null, startDate: f.discount.startDate || null, endDate: f.discount.endDate || null, active: true };
@@ -1332,6 +3090,63 @@ const buildTrainingBody = (f) => ({
     return b;
   };
 
+  useEffect(() => {
+    if (tab !== 'Digital Products' || !showForm) return undefined;
+
+    if (!editId) {
+      if (digitalDraftTimerRef.current) clearTimeout(digitalDraftTimerRef.current);
+      digitalDraftTimerRef.current = setTimeout(() => {
+        try {
+          window.localStorage.setItem(DIGITAL_DRAFT_STORAGE_KEY, JSON.stringify(form || {}));
+          setDigitalAutoSave({ status: 'saved', message: 'Draft autosaved locally.' });
+        } catch {
+          setDigitalAutoSave({ status: 'error', message: 'Could not store the draft on this device.' });
+        }
+      }, 900);
+
+      return () => {
+        if (digitalDraftTimerRef.current) {
+          clearTimeout(digitalDraftTimerRef.current);
+          digitalDraftTimerRef.current = null;
+        }
+      };
+    }
+
+    const body = buildDigitalBody(form);
+    const snapshot = JSON.stringify(body);
+    if (!snapshot || snapshot === lastDigitalAutoSaveSnapshotRef.current) return undefined;
+
+    if (digitalAutoSaveTimerRef.current) clearTimeout(digitalAutoSaveTimerRef.current);
+    setDigitalAutoSave({ status: 'saving', message: 'Autosave queued...' });
+    digitalAutoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        setDigitalAutoSave({ status: 'saving', message: 'Autosaving changes...' });
+        const { data: updated } = await api.put(`/api/products/${editId}`, body, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        lastDigitalAutoSaveSnapshotRef.current = snapshot;
+        clearDigitalDraft();
+        setDigitalAutoSave({
+          status: 'saved',
+          message: `Autosaved at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+        });
+        setData((current) => current.map((entry) => (entry._id === updated?._id ? updated : entry)));
+      } catch (error) {
+        setDigitalAutoSave({
+          status: 'error',
+          message: error.response?.data?.message || 'Autosave could not finish right now.',
+        });
+      }
+    }, 1200);
+
+    return () => {
+      if (digitalAutoSaveTimerRef.current) {
+        clearTimeout(digitalAutoSaveTimerRef.current);
+        digitalAutoSaveTimerRef.current = null;
+      }
+    };
+  }, [DIGITAL_DRAFT_STORAGE_KEY, editId, form, showForm, tab, token]);
+
   const save = async () => {
     // For Featured, save via products endpoint (they are products with isPartner flag)
     const ep = tab === 'Featured' || tab === 'Digital Products' ? '/api/products' : ENDPOINTS[tab];
@@ -1353,8 +3168,30 @@ const buildTrainingBody = (f) => ({
     if (tab === 'Delivery')      body = { name: form.name, fee: Number(form.fee) };
     if (tab === 'Consultations') body = { ...form, price: Number(form.price) || 0 };
     try {
-      if (editId) await api.put(`${ep}/${editId}`, body, auth);
-      else        await api.post(ep, body, auth);
+      if (digitalAutoSaveTimerRef.current) {
+        clearTimeout(digitalAutoSaveTimerRef.current);
+        digitalAutoSaveTimerRef.current = null;
+      }
+      if (digitalDraftTimerRef.current) {
+        clearTimeout(digitalDraftTimerRef.current);
+        digitalDraftTimerRef.current = null;
+      }
+      let savedRecord;
+      if (editId) {
+        const { data: updated } = await api.put(`${ep}/${editId}`, body, auth);
+        savedRecord = updated;
+      } else {
+        const { data: created } = await api.post(ep, body, auth);
+        savedRecord = created;
+      }
+      if (tab === 'Digital Products') {
+        clearDigitalDraft();
+        lastDigitalAutoSaveSnapshotRef.current = editId ? JSON.stringify(body) : '';
+        setDigitalAutoSave({ status: 'saved', message: 'All changes saved.' });
+        if (savedRecord?._id) {
+          setData((current) => current.map((entry) => (entry._id === savedRecord._id ? savedRecord : entry)));
+        }
+      }
       loadSavedCategories();
       load(tab, search);
       closeForm();
@@ -1707,7 +3544,7 @@ const buildTrainingBody = (f) => ({
   const canToggleView = !['Analytics', 'Invoice'].includes(tab);
   const collectionLayoutClass = getCollectionLayoutClass(tab, viewMode);
   const useGridCards = viewMode === 'grid';
-  const mobileActionTabs = !['Analytics', 'Orders','Abandoned','Bookings','Invoice'].includes(tab);
+  const mobileActionTabs = !['Analytics', 'Orders','Abandoned','Bookings','Customers','Invoice'].includes(tab);
   const analyticsSummary = salesAnalytics?.summary || {};
   const analyticsBreakdown = salesAnalytics?.breakdown || [];
   const analyticsPageBreakdown = salesAnalytics?.pageBreakdown || [];
@@ -1874,10 +3711,23 @@ const buildTrainingBody = (f) => ({
         </div>
 
         {/* ── FORM PANEL ─────────────────────────────────────────────────────── */}
-        {showForm && !['Analytics','Orders','Abandoned'].includes(tab) && (
+        {showForm && !['Analytics','Orders','Abandoned','Customers'].includes(tab) && (
           <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-extrabold">{editId ? `Edit ${TAB_FORM_LABELS[tab] || tab}` : `New ${TAB_FORM_LABELS[tab] || tab}`}</h3>
+              <div className="min-w-0">
+                <h3 className="font-extrabold">{editId ? `Edit ${TAB_FORM_LABELS[tab] || tab}` : `New ${TAB_FORM_LABELS[tab] || tab}`}</h3>
+                {tab === 'Digital Products' && (
+                  <p className={`mt-1 text-xs font-bold ${
+                    digitalAutoSave.status === 'error'
+                      ? 'text-red-500'
+                      : digitalAutoSave.status === 'saving'
+                        ? 'text-amber-600'
+                        : 'text-gray-500'
+                  }`}>
+                    {digitalAutoSave.message || (editId ? 'Autosave ready while you edit.' : 'Draft autosave is on for this digital product form.')}
+                  </p>
+                )}
+              </div>
               <button onClick={closeForm}><X size={18} className="text-gray-400 hover:text-black" /></button>
             </div>
 
@@ -2014,6 +3864,671 @@ const buildTrainingBody = (f) => ({
                   )}
                   <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={3} className={inp+' resize-none sm:col-span-2'} />
                   <textarea value={form.accessNote||''} onChange={e => sf('accessNote',e.target.value)} placeholder="Access note or purchase guidance (optional)" rows={2} className={inp+' resize-none sm:col-span-2'} />
+                  <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Modules / Series Flow</p>
+                        <p className="mt-1 text-xs text-gray-500 leading-relaxed max-w-3xl">
+                          Build each module as one ordered learning section. Inside a module, mix typed lessons, uploaded files, recorded audio, and recorded video in the exact sequence learners should follow.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {!!(form.digitalModules || []).length && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={expandAllDigitalModules}
+                              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                            >
+                              Expand All Modules
+                            </button>
+                            <button
+                              type="button"
+                              onClick={collapseAllDigitalModules}
+                              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                            >
+                              Collapse All Modules
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowDigitalCustomerPreview((current) => !current)}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                        >
+                          {showDigitalCustomerPreview ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {showDigitalCustomerPreview ? 'Hide Customer Preview' : 'Show Customer Preview'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={addDigitalModule}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                        >
+                          <Plus size={14} />
+                          Add Module / Series
+                        </button>
+                      </div>
+                    </div>
+
+                    {!(form.digitalModules || []).length && (
+                      <div className="rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] px-4 py-4 text-xs text-gray-500">
+                        No modules yet. Add a module, give it a title and description, then start stacking the typed lesson parts, uploads, and recordings in the order the learner should consume them.
+                      </div>
+                    )}
+
+                    {showDigitalCustomerPreview && (
+                      <DigitalProductCustomerPreview
+                        productName={form.name}
+                        accessNote={form.accessNote}
+                        modules={form.digitalModules || []}
+                        expandedModules={expandedPreviewModules}
+                        onToggleModule={togglePreviewModuleExpanded}
+                        onExpandAll={expandAllPreviewModules}
+                        onCollapseAll={collapseAllPreviewModules}
+                      />
+                    )}
+
+                    {(form.digitalModules || []).map((module, moduleIndex) => {
+                      const moduleKey = getModuleUiKey(module, moduleIndex);
+                      const isModuleExpanded = expandedDigitalModules[moduleKey] ?? moduleIndex === 0;
+                      const moduleSummary = getDigitalModuleSummary(module);
+                      const moduleSectionState = {
+                        ...DIGITAL_MODULE_SECTION_DEFAULTS,
+                        ...(expandedDigitalModuleSections[moduleKey] || {}),
+                      };
+                      return (
+                      <div
+                        key={moduleKey}
+                        draggable
+                        onDragStart={() => startModuleDrag(moduleIndex)}
+                        onDragEnd={() => { draggedModuleRef.current = null; }}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => dropModuleAtIndex(moduleIndex)}
+                        className="rounded-[26px] border border-gray-200 bg-[#fcfbf7] p-4 space-y-4"
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-black px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+                              <GripVertical size={12} />
+                              Module {module.moduleNumber || moduleIndex + 1}
+                            </div>
+                            <p className="mt-2 text-sm font-extrabold text-black">
+                              {module.title || `Untitled Module ${module.moduleNumber || moduleIndex + 1}`}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                              <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                {pluralize(moduleSummary.stepCount, 'step')}
+                              </span>
+                              <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                {pluralize(moduleSummary.textStepCount, 'text lesson')}
+                              </span>
+                              <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                {pluralize(moduleSummary.attachmentStepCount + moduleSummary.inlineAttachmentCount, 'attachment')}
+                              </span>
+                              {!!moduleSummary.linkCount && (
+                                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                  {pluralize(moduleSummary.linkCount, 'link')}
+                                </span>
+                              )}
+                            </div>
+                            {!isModuleExpanded && (
+                              <p className="mt-3 max-w-3xl text-xs leading-relaxed text-gray-500">
+                                {truncatePreviewText(
+                                  module.description || 'Open this module to edit its title, description, ordered lesson steps, inline writing blocks, uploads, and recordings.',
+                                  220
+                                )}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleDigitalModuleExpanded(moduleKey)}
+                              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                            >
+                              {isModuleExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              {isModuleExpanded ? 'Close Module' : 'Open Module'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveDigitalModule(moduleIndex, -1)}
+                              disabled={moduleIndex === 0}
+                              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
+                            >
+                              Move Up
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveDigitalModule(moduleIndex, 1)}
+                              disabled={moduleIndex === (form.digitalModules || []).length - 1}
+                              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
+                            >
+                              Move Down
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeDigitalModule(moduleIndex)}
+                              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 hover:border-red-300"
+                            >
+                              <Trash2 size={13} />
+                              Remove Module
+                            </button>
+                          </div>
+                        </div>
+
+                        {isModuleExpanded && (
+                          <>
+
+                        <div className="space-y-3">
+                          <div className="rounded-2xl border border-gray-200 bg-white">
+                            <button
+                              type="button"
+                              onClick={() => toggleDigitalModuleSection(moduleKey, 'details')}
+                              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                            >
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Module Details</p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  Title, number, and the short overview learners see for this module.
+                                </p>
+                              </div>
+                              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-[#fcfbf7] text-gray-600">
+                                {moduleSectionState.details ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                              </span>
+                            </button>
+                            {moduleSectionState.details && (
+                              <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
+                                <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+                                  <input
+                                    value={module.moduleNumber ?? moduleIndex + 1}
+                                    readOnly
+                                    className={inp + ' bg-gray-50 text-gray-400'}
+                                  />
+                                  <input
+                                    value={module.title || ''}
+                                    onChange={e => updateDigitalModule(moduleIndex, 'title', e.target.value)}
+                                    placeholder="Module title"
+                                    className={inp}
+                                  />
+                                </div>
+
+                                <textarea
+                                  value={module.description || ''}
+                                  onChange={e => updateDigitalModule(moduleIndex, 'description', e.target.value)}
+                                  placeholder="What this module covers, what outcome the learner should reach, or how this module fits into the full series"
+                                  rows={2}
+                                  className={inp + ' resize-none'}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                            <div className="rounded-2xl border border-gray-200 bg-white">
+                              <button
+                                type="button"
+                                onClick={() => toggleDigitalModuleSection(moduleKey, 'textComposer')}
+                                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                              >
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Add Lesson Step</p>
+                                  <p className="mt-1 text-xs text-gray-500">Open to add one new text lesson step without leaving this module card.</p>
+                                </div>
+                                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-[#fcfbf7] text-gray-600">
+                                  {moduleSectionState.textComposer ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                                </span>
+                              </button>
+                              {moduleSectionState.textComposer && (
+                                <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
+                                  <p className="text-xs text-gray-500">
+                                    Create a written lesson step first when you want text, pronunciation help, images, links, audio, or video to live together inside one teaching step.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => addTextLessonToModule(moduleIndex)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                  >
+                                    <FileText size={14} />
+                                    Add Text Lesson
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-2xl border border-gray-200 bg-white">
+                              <button
+                                type="button"
+                                onClick={() => toggleDigitalModuleSection(moduleKey, 'attachmentComposer')}
+                                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                              >
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Add Standalone Attachment Step</p>
+                                  <p className="mt-1 text-xs text-gray-500">Open to upload or record the next secure attachment step for this module.</p>
+                                </div>
+                                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-[#fcfbf7] text-gray-600">
+                                  {moduleSectionState.attachmentComposer ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                                </span>
+                              </button>
+                              {moduleSectionState.attachmentComposer && (
+                                <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-3">
+                                  <p className="text-xs text-gray-500">
+                                    Use this when the whole next step should be a document, audio, video, image, workbook, or other secure attachment on its own.
+                                  </p>
+                                  <ModuleAssetUploader
+                                    token={token}
+                                    uploadEndpoint="/api/products/upload-digital"
+                                    onUploaded={(files) => addFileLessonsToModule(moduleIndex, files)}
+                                  />
+                                  <ModuleMediaRecorder
+                                    token={token}
+                                    uploadEndpoint="/api/products/upload-digital"
+                                    onRecorded={(files) => addFileLessonsToModule(moduleIndex, files)}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {!(module.items || []).length && (
+                          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-4 text-xs text-gray-500">
+                            No lesson items in this module yet. Add a text lesson, upload an attachment, or record audio, video, or a picture to begin the module flow.
+                          </div>
+                        )}
+
+                        <div className="space-y-3">
+                          {(module.items || []).map((item, itemIndex) => {
+                            const itemKey = getModuleItemUiKey(item, moduleKey, itemIndex);
+                            const isItemExpanded = expandedDigitalModuleItems[itemKey] ?? false;
+                            const itemBlocks = Array.isArray(item.blocks) ? item.blocks : [];
+                            const itemLinkCount = itemBlocks.filter((block) => block.kind === 'link').length;
+                            const itemAttachmentCount = itemBlocks.filter((block) => block.kind === 'file').length;
+                            return (
+                            <div
+                              id={`digital-module-item-${itemKey}`}
+                              key={itemKey}
+                              draggable
+                              onDragStart={() => startModuleItemDrag(moduleIndex, itemIndex)}
+                              onDragEnd={() => { draggedModuleItemRef.current = null; }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={() => dropModuleItemAtIndex(moduleIndex, itemIndex)}
+                              className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3"
+                            >
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="flex items-start gap-3 min-w-0">
+                                  <div className="inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-black px-2 text-xs font-extrabold text-white">
+                                    {item.order || itemIndex + 1}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                                        <GripVertical size={12} />
+                                        Module {module.moduleNumber || moduleIndex + 1} / Step {item.order || itemIndex + 1}
+                                      </span>
+                                      <p className="text-sm font-extrabold text-black">
+                                        {item.title || (item.kind === 'file' ? item.originalFilename || 'Attachment step' : `Lesson Step ${item.order || itemIndex + 1}`)}
+                                      </p>
+                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                        {item.kind === 'file' ? `${item.fileKind || 'file'} item` : 'text item'}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      {item.kind === 'file'
+                                        ? 'Standalone secure attachment step'
+                                        : `${(item.blocks || []).length} inline block${(item.blocks || []).length === 1 ? '' : 's'} inside this lesson step`}
+                                    </p>
+                                    {!isItemExpanded && (
+                                      <>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                                          {item.kind === 'text' && (
+                                            <>
+                                              <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                                {pluralize(itemBlocks.length, 'block')}
+                                              </span>
+                                              {!!itemAttachmentCount && (
+                                                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                                  {pluralize(itemAttachmentCount, 'attachment')}
+                                                </span>
+                                              )}
+                                              {!!itemLinkCount && (
+                                                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                                  {pluralize(itemLinkCount, 'link')}
+                                                </span>
+                                              )}
+                                            </>
+                                          )}
+                                          {item.kind === 'file' && item.bytes > 0 && (
+                                            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                              {formatBytes(item.bytes)}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {!!(item.description || item.content) && (
+                                          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-gray-500">
+                                            {truncatePreviewText(item.description || item.content, 180)}
+                                          </p>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDigitalModuleItemExpanded(itemKey)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                                  >
+                                    {isItemExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    {isItemExpanded ? 'Close Step' : 'Open Step'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveModuleItem(moduleIndex, itemIndex, -1)}
+                                    disabled={itemIndex === 0}
+                                    className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
+                                  >
+                                    Move Up
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveModuleItem(moduleIndex, itemIndex, 1)}
+                                    disabled={itemIndex === (module.items || []).length - 1}
+                                    className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
+                                  >
+                                    Move Down
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeModuleItem(moduleIndex, itemIndex)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 hover:border-red-300"
+                                  >
+                                    <Trash2 size={13} />
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+
+                              {isItemExpanded && (
+                                <>
+                              <input
+                                value={item.title || ''}
+                                onChange={e => updateModuleItem(moduleIndex, itemIndex, 'title', e.target.value)}
+                                placeholder={item.kind === 'file' ? 'Lesson file title' : 'Text lesson title'}
+                                className={inp}
+                              />
+
+                              <textarea
+                                value={item.description || ''}
+                                onChange={e => updateModuleItem(moduleIndex, itemIndex, 'description', e.target.value)}
+                                placeholder="Short learner-facing description for this step"
+                                rows={2}
+                                className={inp + ' resize-none'}
+                              />
+
+                              {item.kind === 'text' ? (
+                                <div className="space-y-4">
+                                  <div className="rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4 space-y-3">
+                                    <div>
+                                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Inline Lesson Blocks</p>
+                                      <p className="mt-1 text-xs text-gray-500">Build this one lesson step with writing, links, uploaded files, recorded audio, recorded video, or captured pictures in the exact order the learner should follow.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => addTextBlockToLesson(moduleIndex, itemIndex)}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                      >
+                                        <FileText size={14} />
+                                        Write
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => addLinkBlockToLesson(moduleIndex, itemIndex)}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                      >
+                                        <Link2 size={14} />
+                                        Add Link
+                                      </button>
+                                      <ModuleAssetUploader
+                                        token={token}
+                                        uploadEndpoint="/api/products/upload-digital"
+                                        variant="inline"
+                                        buttonLabel="Upload Attachment"
+                                        onUploaded={(files) => addFileBlocksToTextLesson(moduleIndex, itemIndex, files)}
+                                      />
+                                    </div>
+                                    <ModuleMediaRecorder
+                                      token={token}
+                                      uploadEndpoint="/api/products/upload-digital"
+                                      variant="inline"
+                                      onRecorded={(files) => addFileBlocksToTextLesson(moduleIndex, itemIndex, files)}
+                                    />
+                                  </div>
+
+                                  {!(item.blocks || []).length && (
+                                    <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-4 text-xs text-gray-500">
+                                      No inline blocks in this lesson yet. Add writing, a link, an upload, recorded audio, recorded video, or a picture.
+                                    </div>
+                                  )}
+
+                                  <div className="space-y-3">
+                                    {(item.blocks || []).map((block, blockIndex) => (
+                                      <div
+                                        key={block.clientKey || block._id || `${moduleIndex}-${itemIndex}-${blockIndex}`}
+                                        draggable
+                                        onDragStart={() => startLessonBlockDrag(moduleIndex, itemIndex, blockIndex)}
+                                        onDragEnd={() => { draggedLessonBlockRef.current = null; }}
+                                        onDragOver={(event) => event.preventDefault()}
+                                        onDrop={() => dropLessonBlockAtIndex(moduleIndex, itemIndex, blockIndex)}
+                                        className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3"
+                                      >
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                          <div className="flex items-start gap-3 min-w-0">
+                                            <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-1.5 text-[11px] font-extrabold text-white">
+                                              {block.order || blockIndex + 1}
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                                                  <GripVertical size={12} />
+                                                  Block {block.order || blockIndex + 1}
+                                                </span>
+                                                <p className="text-sm font-extrabold text-black">
+                                                  {block.kind === 'text'
+                                                    ? `Writing Block ${block.order || blockIndex + 1}`
+                                                    : block.kind === 'link'
+                                                      ? (block.title || `Link Block ${block.order || blockIndex + 1}`)
+                                                      : (block.title || block.originalFilename || `Attachment Block ${block.order || blockIndex + 1}`)}
+                                                </p>
+                                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                                  {block.kind === 'file' ? `${block.fileKind || 'file'} attachment` : block.kind}
+                                                </span>
+                                              </div>
+                                              <p className="mt-1 text-xs text-gray-500">
+                                                {block.kind === 'text'
+                                                  ? 'Type the written explanation, notes, or instructions for this part.'
+                                                  : block.kind === 'link'
+                                                    ? 'Share a helpful reference link, practice page, or outside resource.'
+                                                    : 'Inline secure attachment for this same lesson step.'}
+                                              </p>
+                                            </div>
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => moveTextLessonBlock(moduleIndex, itemIndex, blockIndex, -1)}
+                                              disabled={blockIndex === 0}
+                                              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
+                                            >
+                                              Move Up
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => moveTextLessonBlock(moduleIndex, itemIndex, blockIndex, 1)}
+                                              disabled={blockIndex === (item.blocks || []).length - 1}
+                                              className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
+                                            >
+                                              Move Down
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => removeTextLessonBlock(moduleIndex, itemIndex, blockIndex)}
+                                              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 hover:border-red-300"
+                                            >
+                                              <Trash2 size={13} />
+                                              Remove
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {block.kind === 'text' ? (
+                                          <textarea
+                                            value={block.content || ''}
+                                            onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'content', e.target.value)}
+                                            placeholder={'Type the lesson text for this block.\nUse blank lines for paragraphs.\nUse separate blocks when you want the learner to stop and watch, listen, or open something between written parts.'}
+                                            rows={6}
+                                            className={inp + ' resize-y'}
+                                          />
+                                        ) : block.kind === 'link' ? (
+                                          <div className="space-y-3">
+                                            <input
+                                              value={block.title || ''}
+                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', e.target.value)}
+                                              placeholder="Link title"
+                                              className={inp}
+                                            />
+                                            <input
+                                              value={block.url || ''}
+                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'url', e.target.value)}
+                                              placeholder="https://example.com"
+                                              className={inp}
+                                            />
+                                            <textarea
+                                              value={block.description || ''}
+                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'description', e.target.value)}
+                                              placeholder="Optional note telling the learner why this link matters here"
+                                              rows={2}
+                                              className={inp + ' resize-none'}
+                                            />
+                                            <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+                                              <input
+                                                type="checkbox"
+                                                checked={block.openInNewTab !== false}
+                                                onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'openInNewTab', e.target.checked)}
+                                                className="h-4 w-4 accent-black"
+                                              />
+                                              Open in a new tab
+                                            </label>
+                                          </div>
+                                        ) : (
+                                          <div className="space-y-3">
+                                            <input
+                                              value={block.title || ''}
+                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', e.target.value)}
+                                              placeholder="Inline attachment title"
+                                              className={inp}
+                                            />
+                                            <textarea
+                                              value={block.description || ''}
+                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'description', e.target.value)}
+                                              placeholder="Optional note telling the learner what to do with this attachment"
+                                              rows={2}
+                                              className={inp + ' resize-none'}
+                                            />
+                                            <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+                                              <input
+                                                type="checkbox"
+                                                checked={!!block.allowDownload}
+                                                onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'allowDownload', e.target.checked)}
+                                                disabled={!isPreviewableModuleFile(block.fileKind)}
+                                                className="h-4 w-4 accent-black"
+                                              />
+                                              {isPreviewableModuleFile(block.fileKind) ? 'Allow learner download' : 'Download required for this file type'}
+                                            </label>
+                                            <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                                              {block.originalFilename && (
+                                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                  {block.originalFilename}
+                                                </span>
+                                              )}
+                                              {block.fileKind && (
+                                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 capitalize">
+                                                  {block.fileKind}
+                                                </span>
+                                              )}
+                                              {block.bytes > 0 && (
+                                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                  {formatBytes(block.bytes)}
+                                                </span>
+                                              )}
+                                              <span className={`rounded-full border px-2.5 py-1 ${
+                                                block.allowDownload
+                                                  ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                                  : 'border-amber-100 bg-amber-50 text-amber-700'
+                                              }`}>
+                                                {block.allowDownload ? 'Download enabled' : 'View only'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!item.allowDownload}
+                                      onChange={e => updateModuleItem(moduleIndex, itemIndex, 'allowDownload', e.target.checked)}
+                                      disabled={!isPreviewableModuleFile(item.fileKind)}
+                                      className="h-4 w-4 accent-black"
+                                    />
+                                    {isPreviewableModuleFile(item.fileKind) ? 'Allow learner download' : 'Download required for this file type'}
+                                  </label>
+                                  <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                                    {item.originalFilename && (
+                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                        {item.originalFilename}
+                                      </span>
+                                    )}
+                                    {item.fileKind && (
+                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 capitalize">
+                                        {item.fileKind}
+                                      </span>
+                                    )}
+                                    {item.bytes > 0 && (
+                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                        {formatBytes(item.bytes)}
+                                      </span>
+                                    )}
+                                    <span className={`rounded-full border px-2.5 py-1 ${
+                                      item.allowDownload
+                                        ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                        : 'border-amber-100 bg-amber-50 text-amber-700'
+                                    }`}>
+                                      {item.allowDownload ? 'Download enabled' : 'View only'}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                                </>
+                              )}
+                            </div>
+                            );
+                          })}
+                        </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                    })}
+
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                      Learners will see these module cards one by one in the digital library. Step numbering restarts inside each module, the order you drag or move here becomes the exact learning progression, and learners can resume from the last lesson item and sentence marker they saved.
+                    </div>
+                  </div>
                   <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4 space-y-4">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Learning Filters</p>
@@ -2204,17 +4719,6 @@ const buildTrainingBody = (f) => ({
                     token={token}
                     maxImages={3}
                   />
-
-                  <DigitalFileUploader
-                    files={form.digitalFiles || []}
-                    onChange={nextFiles => sf('digitalFiles', nextFiles)}
-                    uploadEndpoint="/api/products/upload-digital"
-                    token={token}
-                    maxFiles={8}
-                  />
-                  <p className="sm:col-span-2 text-xs text-gray-500 leading-relaxed">
-                    Downloads are off by default. Leave a file as view-only to keep it inside the learner library and only turn downloads on for files you intentionally want customers to keep offline.
-                  </p>
                 </div>
 
                 <div className="flex flex-wrap gap-4 p-3 bg-gray-50 rounded-xl">
@@ -2239,7 +4743,7 @@ const buildTrainingBody = (f) => ({
 
                 {form.isSeries && (
                   <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-3 text-xs text-purple-800">
-                    Each uploaded file can act as the next module, lesson, day, or bundle part. Use the module number and module title fields on every file to control the learning order clearly.
+                    Each module can hold multiple ordered lesson items. Use module titles plus the item order inside each module to control exactly how learners move from text to audio, video, or downloadable resources.
                   </div>
                 )}
 
@@ -3341,7 +5845,9 @@ const buildTrainingBody = (f) => ({
               </div>
             ))}
 
-            {tab === 'Digital Products' && pagedData.map(item => (
+            {tab === 'Digital Products' && pagedData
+              .filter(item => !(showForm && editId && item._id === editId))
+              .map(item => (
               <div key={item._id} className={`bg-white rounded-2xl border border-gray-100 ${useGridCards ? 'p-4 flex flex-col h-full' : 'p-3 flex gap-3'}`}>
                 <div className={`${useGridCards ? 'w-full aspect-[4/3] mb-3' : 'w-16 h-16 shrink-0'} rounded-xl overflow-hidden bg-gray-100`}>
                   {item.images?.[0] && <img src={item.images[0]} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display='none'; }} />}
@@ -3356,7 +5862,12 @@ const buildTrainingBody = (f) => ({
                         ? `${item.freeTrialDays || 7}-day trial then GHS ${item.retailPrice?.toLocaleString()}`
                         : `GHS ${item.retailPrice?.toLocaleString()}`}
                   </p>
-                  <p className="text-xs text-gray-400">{item.digitalFiles?.length || 0} secure file{item.digitalFiles?.length === 1 ? '' : 's'}</p>
+                  <p className="text-xs text-gray-400">
+                    {item.digitalModules?.length || 0} module{item.digitalModules?.length === 1 ? '' : 's'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {(item.digitalModules || []).reduce((sum, module) => sum + (module.items?.length || 0), 0)} lesson item{(item.digitalModules || []).reduce((sum, module) => sum + (module.items?.length || 0), 0) === 1 ? '' : 's'}
+                  </p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {item.digitalSkillLevel && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(digitalSkillLevelOptions, item.digitalSkillLevel, 'All Levels')}</span>}
                     {item.digitalFormat && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(digitalFormatOptions, item.digitalFormat)}</span>}
@@ -3769,6 +6280,116 @@ const buildTrainingBody = (f) => ({
                 )}
               </div>
             )})}
+
+            {/* CUSTOMERS */}
+            {tab === 'Customers' && pagedData.map(item => {
+              const customerWhatsappLink = buildWhatsAppAdminLink(
+                item.phone || '',
+                `Hi ${item.name || 'there'}! This is Belle Kreyashon support reaching out about your customer account.`
+              );
+              const customerSummary = item.summary || {};
+              const customerStatusTone = item.hasPassword ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100';
+              const verificationTone = item.emailVerified ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-gray-100 text-gray-600 border border-gray-200';
+
+              return (
+                <div key={item.id || item.customerId} className="bg-white rounded-2xl p-4 border border-gray-100">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        {item.customerId && (
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#fcfbf7] text-[#9a7a00] border border-[#FDC700]/30">
+                            {item.customerId}
+                          </span>
+                        )}
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${verificationTone}`}>
+                          {item.emailVerified ? 'Email Verified' : 'Email Not Verified'}
+                        </span>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${customerStatusTone}`}>
+                          {item.hasPassword ? 'Account Ready' : 'No Password Yet'}
+                        </span>
+                      </div>
+
+                      <p className="font-extrabold text-sm text-black">{item.name || 'Unnamed customer'}</p>
+                      <p className="mt-1 text-xs text-gray-400 break-words">
+                        {[item.email, item.phone].filter(Boolean).join(' • ') || 'No customer contact saved yet'}
+                      </p>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Joined {formatAdminDate(item.createdAt) || 'N/A'}
+                        {item.lastLoginAt ? ` • Last login ${formatAdminDate(item.lastLoginAt)}` : ' • Has not signed in yet'}
+                      </p>
+                      {customerSummary.lastActivityAt && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Latest activity {formatAdminDate(customerSummary.lastActivityAt)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="shrink-0 sm:text-right">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Lifetime Value</p>
+                      <p className="text-xl font-extrabold text-black">{formatMoney(customerSummary.totalSpent || 0)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="rounded-2xl bg-[#fcfbf7] px-3 py-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Orders</p>
+                      <p className="mt-1 text-lg font-extrabold text-black">{customerSummary.orderCount || 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-[#fcfbf7] px-3 py-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Bookings</p>
+                      <p className="mt-1 text-lg font-extrabold text-black">{customerSummary.bookingCount || 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-[#fcfbf7] px-3 py-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Library</p>
+                      <p className="mt-1 text-lg font-extrabold text-black">{customerSummary.digitalProductCount || 0}</p>
+                    </div>
+                    <div className="rounded-2xl bg-[#fcfbf7] px-3 py-3">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Active</p>
+                      <p className="mt-1 text-lg font-extrabold text-black">{customerSummary.activeDigitalCount || 0}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span>Last order: {formatAdminDate(customerSummary.lastOrderAt) || 'None yet'}</span>
+                    <span>•</span>
+                    <span>Last booking: {formatAdminDate(customerSummary.lastBookingAt) || 'None yet'}</span>
+                    <span>•</span>
+                    <span>Last library activity: {formatAdminDate(customerSummary.lastDigitalAccessAt) || 'None yet'}</span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {item.email ? (
+                      <a
+                        href={`mailto:${item.email}`}
+                        className="inline-flex items-center gap-1 rounded-full bg-black px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-900"
+                      >
+                        <Mail size={13} />
+                        Email
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1.5 text-[11px] font-bold text-gray-400">
+                        No email saved
+                      </span>
+                    )}
+                    {customerWhatsappLink ? (
+                      <a
+                        href={customerWhatsappLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-full bg-green-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-600"
+                      >
+                        <MessageCircle size={13} />
+                        WhatsApp
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1.5 text-[11px] font-bold text-gray-400">
+                        No WhatsApp number
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
 
             {/* INVOICE */}
             {tab === 'Invoice' && <InvoiceCreator auth={auth} />}

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const accessFileSchema = new mongoose.Schema({
   assetId: { type: String, required: true },
+  publicId: { type: String, default: '' },
   label: { type: String, default: '' },
   stepNumber: { type: Number, default: null },
   stepTitle: { type: String, default: '' },
@@ -20,6 +21,77 @@ const accessFileSchema = new mongoose.Schema({
   bytes: { type: Number, default: 0 },
 }, { _id: false });
 
+const manualPageSchema = new mongoose.Schema({
+  pageId: { type: String, required: true },
+  pageNumber: { type: Number, default: null },
+  title: { type: String, default: '' },
+  summary: { type: String, default: '' },
+  content: { type: String, default: '' },
+  mediaPublicId: { type: String, default: '' },
+}, { _id: false });
+
+const textMarkerSchema = new mongoose.Schema({
+  itemId: { type: String, default: '' },
+  sentenceIndex: { type: Number, default: null },
+  sentenceText: { type: String, default: '' },
+  updatedAt: { type: Date, default: null },
+}, { _id: false });
+
+const moduleItemBlockSchema = new mongoose.Schema({
+  blockId: { type: String, default: '' },
+  order: { type: Number, default: null },
+  kind: { type: String, enum: ['text', 'file', 'link'], default: 'text' },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+  content: { type: String, default: '' },
+  url: { type: String, default: '' },
+  openInNewTab: { type: Boolean, default: true },
+  allowDownload: { type: Boolean, default: false },
+  secureUrl: { type: String, default: '' },
+  publicId: { type: String, default: '' },
+  originalFilename: { type: String, default: '' },
+  downloadName: { type: String, default: '' },
+  mimeType: { type: String, default: '' },
+  resourceType: { type: String, enum: ['image', 'video', 'raw'], default: 'raw' },
+  fileKind: {
+    type: String,
+    enum: ['document', 'video', 'audio', 'archive', 'image', 'other'],
+    default: 'other',
+  },
+  bytes: { type: Number, default: 0 },
+}, { _id: false });
+
+const moduleItemSchema = new mongoose.Schema({
+  itemId: { type: String, required: true },
+  order: { type: Number, default: null },
+  kind: { type: String, enum: ['text', 'file'], default: 'text' },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+  content: { type: String, default: '' },
+  blocks: { type: [moduleItemBlockSchema], default: [] },
+  allowDownload: { type: Boolean, default: false },
+  secureUrl: { type: String, default: '' },
+  publicId: { type: String, default: '' },
+  originalFilename: { type: String, default: '' },
+  downloadName: { type: String, default: '' },
+  mimeType: { type: String, default: '' },
+  resourceType: { type: String, enum: ['image', 'video', 'raw'], default: 'raw' },
+  fileKind: {
+    type: String,
+    enum: ['document', 'video', 'audio', 'archive', 'image', 'other'],
+    default: 'other',
+  },
+  bytes: { type: Number, default: 0 },
+}, { _id: false });
+
+const moduleSchema = new mongoose.Schema({
+  moduleId: { type: String, required: true },
+  moduleNumber: { type: Number, default: null },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+  items: { type: [moduleItemSchema], default: [] },
+}, { _id: false });
+
 const accessLogSchema = new mongoose.Schema({
   assetId: { type: String, required: true },
   mode: { type: String, enum: ['inline', 'download'], default: 'inline' },
@@ -36,11 +108,18 @@ const approvedDeviceSchema = new mongoose.Schema({
 }, { _id: false });
 
 const moduleProgressSchema = new mongoose.Schema({
-  assetId: { type: String, required: true },
+  moduleId: { type: String, default: '' },
+  assetId: { type: String, default: '' },
   label: { type: String, default: '' },
   stepNumber: { type: Number, default: null },
+  moduleNumber: { type: Number, default: null },
   openedAt: { type: Date, default: null },
   completedAt: { type: Date, default: null },
+  lastItemId: { type: String, default: '' },
+  lastItemType: { type: String, enum: ['', 'text', 'file'], default: '' },
+  lastItemTitle: { type: String, default: '' },
+  lastPositionUpdatedAt: { type: Date, default: null },
+  textMarker: { type: textMarkerSchema, default: null },
 }, { _id: false });
 
 const billingAuthorizationSchema = new mongoose.Schema({
@@ -110,7 +189,9 @@ const digitalAccessSchema = new mongoose.Schema({
   certificateRequestedAt: { type: Date, default: null },
   certificateGeneratedAt: { type: Date, default: null },
   certificateRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'CertificateRecord', default: null },
+  modules: { type: [moduleSchema], default: [] },
   files: { type: [accessFileSchema], default: [] },
+  manualPages: { type: [manualPageSchema], default: [] },
   moduleProgress: { type: [moduleProgressSchema], default: [] },
   maxDevices: { type: Number, default: 2 },
   approvedDevices: { type: [approvedDeviceSchema], default: [] },

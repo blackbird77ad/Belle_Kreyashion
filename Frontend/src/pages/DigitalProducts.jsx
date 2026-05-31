@@ -956,6 +956,11 @@ export default function DigitalProducts() {
                             : 'Files stay view-only inside the digital library unless the admin allows download.'}
                         </p>
                       )}
+                      {product.digitalModuleCount > 0 && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Includes {product.digitalModuleCount} module{product.digitalModuleCount === 1 ? '' : 's'} with {product.digitalModuleItemCount || 0} ordered lesson item{product.digitalModuleItemCount === 1 ? '' : 's'} in the secure library.
+                        </p>
+                      )}
 
                       <div className="mt-4 flex items-end justify-between gap-3">
                         <div>

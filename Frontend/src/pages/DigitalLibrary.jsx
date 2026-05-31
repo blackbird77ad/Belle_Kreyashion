@@ -113,6 +113,144 @@ const buildSupportWhatsAppLink = (phone = '', productName = '') => {
   return `https://wa.me/${normalized}?text=${text}`;
 };
 
+const splitLessonTextIntoSentences = (content = '') => {
+  const source = String(content || '').trim();
+  if (!source) return [];
+  let sentenceIndex = 0;
+  return source
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => {
+      const rawSentences = paragraph.match(/[^.!?\n]+(?:[.!?]+|$)/g) || [paragraph];
+      return rawSentences
+        .map((sentence) => sentence.trim())
+        .filter(Boolean)
+        .map((sentence) => ({
+          text: sentence,
+          sentenceIndex: sentenceIndex++,
+        }));
+    });
+};
+
+const buildTextLessonReaderBlocks = (blocks = [], fallbackContent = '') => {
+  const sourceBlocks = Array.isArray(blocks) && blocks.length
+    ? blocks
+    : [{ kind: 'text', order: 1, content: fallbackContent }];
+  let sentenceIndex = 0;
+
+  return sourceBlocks.map((block, blockIndex) => {
+    if (block.kind === 'file') {
+      return {
+        blockId: block.blockId || `block-${blockIndex + 1}`,
+        order: block.order ?? blockIndex + 1,
+        kind: 'file',
+        title: block.title || block.label || 'Attachment',
+        description: block.description || '',
+        assetId: block.assetId || '',
+        allowDownload: !!block.allowDownload,
+        fileKind: block.fileKind || 'other',
+        canPreview: !!block.canPreview,
+        bytes: block.bytes || 0,
+      };
+    }
+
+    if (block.kind === 'link') {
+      return {
+        blockId: block.blockId || `block-${blockIndex + 1}`,
+        order: block.order ?? blockIndex + 1,
+        kind: 'link',
+        title: block.title || 'Reference link',
+        description: block.description || '',
+        url: block.url || '',
+        openInNewTab: block.openInNewTab !== false,
+      };
+    }
+
+    const paragraphGroups = splitLessonTextIntoSentences(block.content || '');
+    const paragraphs = paragraphGroups.map((paragraph) => paragraph.map((sentence) => ({
+      ...sentence,
+      sentenceIndex: sentenceIndex++,
+    })));
+    return {
+      blockId: block.blockId || `block-${blockIndex + 1}`,
+      order: block.order ?? blockIndex + 1,
+      kind: 'text',
+      paragraphs,
+      content: block.content || '',
+    };
+  });
+};
+
+const sortModuleItems = (items = []) => [...items].sort((a, b) => {
+  const orderDiff = Number(a?.order ?? Number.MAX_SAFE_INTEGER) - Number(b?.order ?? Number.MAX_SAFE_INTEGER);
+  if (orderDiff !== 0) return orderDiff;
+  return String(a?.title || a?.label || '').localeCompare(String(b?.title || b?.label || ''));
+});
+
+const findLibraryModule = (libraryItem = {}, moduleId = '') => (
+  (libraryItem.modules || []).find((module) => module.moduleId === moduleId) || null
+);
+
+const findLibraryModuleItem = (module = {}, itemId = '') => (
+  (module.items || []).find((item) => item.itemId === itemId || item.assetId === itemId) || null
+);
+
+const buildTextReaderState = ({ libraryItem = {}, module = {}, lessonItem = {} } = {}) => ({
+  readerType: 'module-text',
+  grantId: libraryItem._id,
+  productId: libraryItem.productId,
+  productName: libraryItem.productName,
+  supportEmail: libraryItem.supportEmail || '',
+  supportWhatsApp: libraryItem.supportWhatsApp || '',
+  moduleId: module.moduleId,
+  moduleNumber: module.moduleNumber,
+  moduleTitle: module.title || '',
+  moduleDescription: module.description || '',
+  itemId: lessonItem.itemId,
+  title: lessonItem.title || '',
+  summary: lessonItem.description || '',
+  content: lessonItem.content || '',
+  blocks: buildTextLessonReaderBlocks(lessonItem.blocks || [], lessonItem.content || ''),
+  savedSentenceIndex: lessonItem.savedSentenceIndex ?? null,
+  savedSentenceText: lessonItem.savedSentenceText || '',
+  lastPositionUpdatedAt: module.lastPositionUpdatedAt || null,
+});
+
+const applyModuleProgressUpdateToLibrary = (library = [], grantId = '', payload = {}) => library.map((entry) => {
+  if (entry._id !== grantId) return entry;
+  const nextModuleProgress = payload.moduleProgress || null;
+  const nextModuleId = payload.moduleId || nextModuleProgress?.moduleId || '';
+  return {
+    ...entry,
+    progress: payload.progress || entry.progress,
+    certificateStatus: payload.certificateStatus || entry.certificateStatus,
+    modules: (entry.modules || []).map((module) => {
+      if (!nextModuleId || module.moduleId !== nextModuleId) return module;
+      return {
+        ...module,
+        openedAt: nextModuleProgress?.openedAt ?? module.openedAt,
+        completedAt: nextModuleProgress?.completedAt ?? payload.completedAt ?? module.completedAt,
+        lastItemId: nextModuleProgress?.lastItemId ?? module.lastItemId,
+        lastItemType: nextModuleProgress?.lastItemType ?? module.lastItemType,
+        lastItemTitle: nextModuleProgress?.lastItemTitle ?? module.lastItemTitle,
+        lastPositionUpdatedAt: nextModuleProgress?.lastPositionUpdatedAt ?? module.lastPositionUpdatedAt,
+        textMarker: nextModuleProgress?.textMarker ?? module.textMarker,
+        items: (module.items || []).map((item) => ({
+          ...item,
+          isResumeTarget: (nextModuleProgress?.lastItemId ?? module.lastItemId) === item.itemId,
+          savedSentenceIndex: (nextModuleProgress?.textMarker?.itemId ?? module.textMarker?.itemId) === item.itemId
+            ? nextModuleProgress?.textMarker?.sentenceIndex ?? module.textMarker?.sentenceIndex ?? null
+            : item.savedSentenceIndex,
+          savedSentenceText: (nextModuleProgress?.textMarker?.itemId ?? module.textMarker?.itemId) === item.itemId
+            ? nextModuleProgress?.textMarker?.sentenceText ?? module.textMarker?.sentenceText ?? ''
+            : item.savedSentenceText,
+        })),
+      };
+    }),
+  };
+});
+
 export default function DigitalLibrary() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { customer } = useCustomer();
@@ -127,6 +265,7 @@ export default function DigitalLibrary() {
   const [libraryFilter, setLibraryFilter] = useState('all');
   const [libraryPage, setLibraryPage] = useState(1);
   const [viewer, setViewer] = useState(null);
+  const [manualReader, setManualReader] = useState(null);
   const [certificateTarget, setCertificateTarget] = useState(null);
   const [certificateForm, setCertificateForm] = useState({
     learnerName: '',
@@ -170,12 +309,17 @@ export default function DigitalLibrary() {
 
   const filteredLibrary = library.filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
-    const matchesSearch = !normalizedSearch || [
-      item.productName,
-      item.productDesc,
-      item.seriesTitle,
-      ...(item.files || []).map((file) => `${file.label || ''} ${file.stepTitle || ''} ${file.stepSummary || ''}`),
-    ]
+      const matchesSearch = !normalizedSearch || [
+        item.productName,
+        item.productDesc,
+        item.seriesTitle,
+        ...(item.modules || []).map((module) => `${module.title || ''} ${module.description || ''}`),
+        ...(item.modules || []).flatMap((module) => (module.items || []).map((lessonItem) => (
+          `${lessonItem.title || ''} ${lessonItem.description || ''} ${lessonItem.content || ''} ${lessonItem.fileKind || ''} ${(lessonItem.blocks || []).map((block) => `${block.title || ''} ${block.description || ''} ${block.content || ''} ${block.url || ''} ${block.fileKind || ''}`).join(' ')}`
+        ))),
+        ...(item.manualPages || []).map((page) => `${page.title || ''} ${page.summary || ''} ${page.content || ''}`),
+        ...(item.files || []).map((file) => `${file.label || ''} ${file.stepTitle || ''} ${file.stepSummary || ''}`),
+      ]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
@@ -225,7 +369,8 @@ export default function DigitalLibrary() {
 
       if (mode === 'inline') {
         const libraryItem = library.find((item) => item._id === grantId);
-        const file = libraryItem?.files?.find((entry) => entry.assetId === assetId);
+        const file = libraryItem?.files?.find((entry) => entry.assetId === assetId)
+          || libraryItem?.modules?.flatMap((module) => module.items || []).find((entry) => entry.kind === 'file' && entry.itemId === assetId);
         if (file) {
           setViewer({
             grantId,
@@ -252,41 +397,110 @@ export default function DigitalLibrary() {
     }
   };
 
-  const markModuleComplete = async (grantId, assetId) => {
+  const markModuleComplete = async (grantId, moduleId) => {
     if (!customer?.accessToken) {
       setShowCustomerModal(true);
       return;
     }
 
-    const actionKey = `${grantId}-${assetId}-complete`;
+    const actionKey = `${grantId}-${moduleId}-complete`;
     setActioning(actionKey);
     setError('');
 
     try {
       const { data } = await api.post(
-        `/api/products/digital/library/${grantId}/assets/${assetId}/complete`,
+        `/api/products/digital/library/${grantId}/modules/${moduleId}/complete`,
         {},
         { headers: { 'x-customer-token': customer.accessToken } }
       );
-
-      setLibrary((current) => current.map((item) => {
-        if (item._id !== grantId) return item;
-        return {
-          ...item,
-          certificateStatus: data.certificateStatus || item.certificateStatus,
-          progress: data.progress || item.progress,
-          files: (item.files || []).map((file) => (
-            file.assetId === assetId
-              ? { ...file, isCompleted: true }
-              : file
-          )),
-        };
+      setLibrary((current) => applyModuleProgressUpdateToLibrary(current, grantId, {
+        ...data,
+        completedAt: new Date().toISOString(),
       }));
     } catch (err) {
       setError(err.response?.data?.message || 'Could not mark this module as complete right now.');
     } finally {
       setActioning('');
     }
+  };
+
+  const openTextLesson = async (grantId, moduleId, itemId) => {
+    if (!customer?.accessToken) {
+      setShowCustomerModal(true);
+      return;
+    }
+
+    const actionKey = `${grantId}-${itemId}-text`;
+    setActioning(actionKey);
+    setError('');
+
+    try {
+      const { data } = await api.post(
+        `/api/products/digital/library/${grantId}/modules/${moduleId}/items/${itemId}/progress`,
+        {},
+        { headers: { 'x-customer-token': customer.accessToken } }
+      );
+      const nextLibrary = applyModuleProgressUpdateToLibrary(library, grantId, data);
+      setLibrary(nextLibrary);
+      const libraryItem = nextLibrary.find((entry) => entry._id === grantId);
+      const module = findLibraryModule(libraryItem, moduleId);
+      const lessonItem = findLibraryModuleItem(module, itemId);
+      if (libraryItem && module && lessonItem) {
+        setManualReader(buildTextReaderState({ libraryItem, module, lessonItem }));
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not open this lesson right now.');
+    } finally {
+      setActioning('');
+    }
+  };
+
+  const saveTextMarker = async (grantId, moduleId, itemId, sentenceIndex, sentenceText) => {
+    if (!customer?.accessToken) {
+      setShowCustomerModal(true);
+      return;
+    }
+
+    const actionKey = `${grantId}-${itemId}-marker-${sentenceIndex}`;
+    setActioning(actionKey);
+    setError('');
+
+    try {
+      const { data } = await api.post(
+        `/api/products/digital/library/${grantId}/modules/${moduleId}/items/${itemId}/progress`,
+        { sentenceIndex, sentenceText },
+        { headers: { 'x-customer-token': customer.accessToken } }
+      );
+      const nextLibrary = applyModuleProgressUpdateToLibrary(library, grantId, data);
+      setLibrary(nextLibrary);
+      const libraryItem = nextLibrary.find((entry) => entry._id === grantId);
+      const module = findLibraryModule(libraryItem, moduleId);
+      const lessonItem = findLibraryModuleItem(module, itemId);
+      if (libraryItem && module && lessonItem) {
+        setManualReader(buildTextReaderState({ libraryItem, module, lessonItem }));
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save your place in this lesson right now.');
+    } finally {
+      setActioning('');
+    }
+  };
+
+  const continueModule = (libraryItem, module) => {
+    const moduleItems = sortModuleItems(module?.items || []);
+    const resumeItem = findLibraryModuleItem(module, module?.lastItemId) || moduleItems[0] || null;
+    if (!resumeItem) return;
+
+    if (resumeItem.kind === 'text') {
+      openTextLesson(libraryItem._id, module.moduleId, resumeItem.itemId);
+      return;
+    }
+
+    openAsset(
+      libraryItem._id,
+      resumeItem.assetId || resumeItem.itemId,
+      resumeItem.canPreview ? 'inline' : (resumeItem.allowDownload ? 'download' : 'inline')
+    );
   };
 
   const openCertificateRequest = (item) => {
@@ -535,6 +749,11 @@ export default function DigitalLibrary() {
               const isFocusedProduct = focusedProductId && String(item.productId) === focusedProductId;
               const supportEmailLink = buildSupportEmailLink(item.supportEmail || '', item.productName || '');
               const supportWhatsAppLink = buildSupportWhatsAppLink(item.supportWhatsApp || '', item.productName || '');
+              const moduleCount = item.modules?.length || 0;
+              const lessonItemCount = (item.modules || []).reduce((sum, module) => sum + (module.items?.length || 0), 0);
+              const manualPageCount = item.manualPages?.length || 0;
+              const fileCount = item.files?.length || 0;
+              const hasModuleFlow = moduleCount > 0;
 
               return (
               <div key={item._id} className={`bg-white rounded-3xl border overflow-hidden ${
@@ -609,7 +828,11 @@ export default function DigitalLibrary() {
                         )}
                       </div>
                       <div className="text-sm text-gray-500">
-                        <p className="font-bold text-gray-700">{item.files.length} file{item.files.length !== 1 ? 's' : ''}</p>
+                        <p className="font-bold text-gray-700">
+                          {hasModuleFlow
+                            ? `${moduleCount} module${moduleCount === 1 ? '' : 's'} | ${lessonItemCount} lesson item${lessonItemCount === 1 ? '' : 's'}`
+                            : `${fileCount} file${fileCount !== 1 ? 's' : ''}${manualPageCount ? ` | ${manualPageCount} page${manualPageCount === 1 ? '' : 's'}` : ''}`}
+                        </p>
                         <p>Order {item.orderId}</p>
                       </div>
                     </div>
@@ -619,16 +842,26 @@ export default function DigitalLibrary() {
                         <div className="min-w-0">
                           <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400 mb-1">Learning Progress</p>
                           <p className="text-sm font-extrabold text-gray-800">
-                            {item.progress?.completedModules || 0} of {item.progress?.totalModules || item.files.length} module{(item.progress?.totalModules || item.files.length) === 1 ? '' : 's'} completed
+                            {hasModuleFlow
+                              ? `${item.progress?.completedModules || 0} of ${item.progress?.totalModules || moduleCount} module${(item.progress?.totalModules || moduleCount) === 1 ? '' : 's'} completed`
+                              : `${manualPageCount} written page${manualPageCount === 1 ? '' : 's'} ready to read`}
                           </p>
-                          <div className="mt-3 h-2 rounded-full bg-white border border-gray-200 overflow-hidden max-w-xl">
-                            <div
-                              className="h-full bg-black transition-all"
-                              style={{ width: `${item.progress?.percent || 0}%` }}
-                            />
-                          </div>
+                          {hasModuleFlow ? (
+                            <div className="mt-3 h-2 rounded-full bg-white border border-gray-200 overflow-hidden max-w-xl">
+                              <div
+                                className="h-full bg-black transition-all"
+                                style={{ width: `${item.progress?.percent || 0}%` }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="mt-3 inline-flex rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-bold text-gray-500">
+                              Written lesson flow
+                            </div>
+                          )}
                           <p className="text-xs text-gray-500 mt-2">
-                            Open each module first, then mark it complete here so your certificate progress can move forward correctly.
+                            {hasModuleFlow
+                              ? 'Open lessons in order, continue from where you stopped, and mark each module complete after you finish it.'
+                              : 'This product uses typed lesson pages in the library. Open the pages below whenever you want to read through the material.'}
                           </p>
                         </div>
 
@@ -726,11 +959,285 @@ export default function DigitalLibrary() {
                       </div>
                     )}
 
+                    {hasModuleFlow && (
+                      <div className="rounded-2xl border border-gray-100 bg-white p-4 mb-4">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00] mb-1">Modules / Series Flow</p>
+                            <p className="text-sm font-extrabold text-black">Learn in the order set by the admin</p>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                              Read the text lessons, open the media attachments, continue from where you stopped, and mark each module complete when you finish it.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[#fcfbf7] px-3 py-1.5 text-xs font-bold text-gray-600 border border-gray-200">
+                            {moduleCount} module{moduleCount === 1 ? '' : 's'} | {lessonItemCount} lesson item{lessonItemCount === 1 ? '' : 's'}
+                          </span>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          {(item.modules || []).map((module, moduleIndex) => {
+                            const orderedItems = sortModuleItems(module.items || []);
+                            const resumeItem = findLibraryModuleItem(module, module.lastItemId) || orderedItems[0] || null;
+                            const completeKey = `${item._id}-${module.moduleId}-complete`;
+
+                            return (
+                              <div key={module.moduleId || `module-${moduleIndex}`} className="rounded-[26px] border border-gray-100 bg-[#fcfbf7] p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-black px-2 text-xs font-extrabold text-white shrink-0">
+                                    {module.moduleNumber || moduleIndex + 1}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-base font-extrabold text-black">{module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}</p>
+                                      {module.completedAt && (
+                                        <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                          Completed
+                                        </span>
+                                      )}
+                                      {!module.completedAt && module.openedAt && (
+                                        <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
+                                          In progress
+                                        </span>
+                                      )}
+                                    </div>
+                                    {module.description && (
+                                      <p className="mt-2 text-xs leading-relaxed text-gray-500">{module.description}</p>
+                                    )}
+                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
+                                      <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                        {orderedItems.length} item{orderedItems.length === 1 ? '' : 's'}
+                                      </span>
+                                      {module.lastItemTitle && (
+                                        <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-amber-700">
+                                          Last stop: {module.lastItemTitle}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 space-y-3">
+                                  {orderedItems.map((lessonItem, lessonIndex) => {
+                                    const inlineKey = `${item._id}-${lessonItem.assetId || lessonItem.itemId}-inline`;
+                                    const downloadKey = `${item._id}-${lessonItem.assetId || lessonItem.itemId}-download`;
+                                    const textKey = `${item._id}-${lessonItem.itemId}-text`;
+
+                                    return (
+                                      <div key={lessonItem.itemId || `${module.moduleId}-${lessonIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
+                                        <div className="flex items-start gap-3">
+                                          <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-1.5 text-xs font-extrabold text-white shrink-0">
+                                            {lessonItem.order || lessonIndex + 1}
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <p className="text-sm font-extrabold text-black">
+                                                {lessonItem.title || (lessonItem.kind === 'file' ? lessonItem.label || 'Attachment' : `Text Lesson ${lessonIndex + 1}`)}
+                                              </p>
+                                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                                {lessonItem.kind === 'file' ? `${lessonItem.fileKind || 'file'} attachment` : 'text lesson'}
+                                              </span>
+                                              {lessonItem.isResumeTarget && (
+                                                <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                                                  Continue here
+                                                </span>
+                                              )}
+                                            </div>
+                                            {lessonItem.description && (
+                                              <p className="mt-2 text-xs leading-relaxed text-gray-500">{lessonItem.description}</p>
+                                            )}
+                                            {lessonItem.kind === 'text' && !!lessonItem.blocks?.length && (
+                                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                  {lessonItem.blocks.length} block{lessonItem.blocks.length === 1 ? '' : 's'}
+                                                </span>
+                                                {!!lessonItem.blocks.filter((block) => block.kind === 'file').length && (
+                                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                    {lessonItem.blocks.filter((block) => block.kind === 'file').length} attachment{lessonItem.blocks.filter((block) => block.kind === 'file').length === 1 ? '' : 's'}
+                                                  </span>
+                                                )}
+                                                {!!lessonItem.blocks.filter((block) => block.kind === 'link').length && (
+                                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                    {lessonItem.blocks.filter((block) => block.kind === 'link').length} link{lessonItem.blocks.filter((block) => block.kind === 'link').length === 1 ? '' : 's'}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            )}
+                                            {lessonItem.kind === 'text' && lessonItem.savedSentenceText && (
+                                              <p className="mt-2 text-xs font-bold text-amber-700">
+                                                Saved marker: "{lessonItem.savedSentenceText}"
+                                              </p>
+                                            )}
+                                            {lessonItem.kind === 'file' && (
+                                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                                                {lessonItem.bytes > 0 && (
+                                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                    {formatBytes(lessonItem.bytes)}
+                                                  </span>
+                                                )}
+                                                <span className={`rounded-full border px-2.5 py-1 ${
+                                                  lessonItem.allowDownload
+                                                    ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                                    : 'border-amber-100 bg-amber-50 text-amber-700'
+                                                }`}>
+                                                  {lessonItem.allowDownload ? 'Download allowed' : 'View only'}
+                                                </span>
+                                              </div>
+                                            )}
+
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                              {lessonItem.kind === 'text' ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => openTextLesson(item._id, module.moduleId, lessonItem.itemId)}
+                                                  disabled={actioning === textKey}
+                                                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900 disabled:opacity-60"
+                                                >
+                                                  {actioning === textKey ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
+                                                  {lessonItem.savedSentenceText ? 'Resume Reading' : 'Open Text Lesson'}
+                                                </button>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => openAsset(
+                                                      item._id,
+                                                      lessonItem.assetId || lessonItem.itemId,
+                                                      lessonItem.canPreview ? 'inline' : (lessonItem.allowDownload ? 'download' : 'inline')
+                                                    )}
+                                                    disabled={opening === inlineKey || opening === downloadKey}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900 disabled:opacity-60"
+                                                  >
+                                                    {(opening === inlineKey || opening === downloadKey) ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+                                                    {lessonItem.canPreview ? 'Open Attachment' : (lessonItem.allowDownload ? 'Download Attachment' : 'Open Securely')}
+                                                  </button>
+                                                  {lessonItem.allowDownload && lessonItem.canPreview && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => openAsset(item._id, lessonItem.assetId || lessonItem.itemId, 'download')}
+                                                      disabled={opening === downloadKey}
+                                                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-60"
+                                                    >
+                                                      {opening === downloadKey ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                                      Download
+                                                    </button>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  {resumeItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() => continueModule(item, module)}
+                                      disabled={
+                                        actioning === `${item._id}-${resumeItem.itemId}-text`
+                                        || opening === `${item._id}-${resumeItem.assetId || resumeItem.itemId}-inline`
+                                        || opening === `${item._id}-${resumeItem.assetId || resumeItem.itemId}-download`
+                                      }
+                                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-60"
+                                    >
+                                      <PlayCircle size={14} />
+                                      {module.lastItemId ? 'Continue Module' : 'Start Module'}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => markModuleComplete(item._id, module.moduleId)}
+                                    disabled={!module.openedAt || !!module.completedAt || actioning === completeKey}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {actioning === completeKey ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                    {module.completedAt ? 'Completed' : 'Mark Module Complete'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {!hasModuleFlow && !!item.manualPages?.length && (
+                      <div className="rounded-2xl border border-gray-100 bg-white p-4 mb-4">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00] mb-1">Written Lesson Pages</p>
+                            <p className="text-sm font-extrabold text-black">Structured course notes and typed guidance</p>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                              Open each page to read the typed lesson content, workbook notes, or guided steps that came with this digital product.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[#fcfbf7] px-3 py-1.5 text-xs font-bold text-gray-600 border border-gray-200">
+                            {item.manualPages.length} page{item.manualPages.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {item.manualPages.map((page, index) => (
+                            <div key={page.pageId || `${page.title}-${index}`} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-4">
+                              <div className="flex items-start gap-3">
+                                <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-1.5 text-xs font-extrabold text-white shrink-0">
+                                  {page.pageNumber || index + 1}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-bold text-sm text-black">{page.title || `Page ${page.pageNumber || index + 1}`}</p>
+                                    {page.attachedMedia && (
+                                      <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-600 capitalize">
+                                        {page.attachedMedia.fileKind} attached
+                                      </span>
+                                    )}
+                                  </div>
+                                  {page.summary && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{page.summary}</p>}
+                                  {!page.summary && page.content && (
+                                    <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-3">{page.content}</p>
+                                  )}
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setManualReader({
+                                        ...page,
+                                        productId: item.productId,
+                                        grantId: item._id,
+                                        productName: item.productName,
+                                        supportEmail: item.supportEmail || '',
+                                        supportWhatsApp: item.supportWhatsApp || '',
+                                      })}
+                                      className="inline-flex items-center justify-center rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                    >
+                                      Open Page
+                                    </button>
+                                    {page.attachedMedia && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openAsset(item._id, page.attachedMedia.assetId, 'inline')}
+                                        className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                      >
+                                        Open Attached {page.attachedMedia.fileKind}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!hasModuleFlow && (
                     <div className="grid gap-3">
                       {item.files.map((file) => {
                         const previewKey = `${item._id}-${file.assetId}-inline`;
                         const downloadKey = `${item._id}-${file.assetId}-download`;
-                        const completeKey = `${item._id}-${file.assetId}-complete`;
+                        const completeKey = `${item._id}-${file.moduleId || file.assetId}-complete`;
 
                         return (
                           <div key={file.assetId} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-4">
@@ -802,7 +1309,7 @@ export default function DigitalLibrary() {
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => markModuleComplete(item._id, file.assetId)}
+                                  onClick={() => markModuleComplete(item._id, file.moduleId || file.assetId)}
                                   disabled={!file.openedAt || file.isCompleted || actioning === completeKey}
                                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -815,6 +1322,7 @@ export default function DigitalLibrary() {
                         );
                       })}
                     </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -851,6 +1359,255 @@ export default function DigitalLibrary() {
           </div>
         )}
       </div>
+
+      {manualReader && (
+        <div
+          className="fixed inset-0 z-[92] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setManualReader(null)}
+        >
+          {(() => {
+            const manualSupportEmailLink = buildSupportEmailLink(manualReader.supportEmail || '', manualReader.productName || '');
+            const manualSupportWhatsAppLink = buildSupportWhatsAppLink(manualReader.supportWhatsApp || '', manualReader.productName || '');
+            const isModuleTextReader = manualReader.readerType === 'module-text';
+            return (
+              <div
+                className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-[30px] border border-gray-100 bg-white shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-100 bg-white/95 px-5 py-4 backdrop-blur">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7a00]">
+                      {isModuleTextReader ? 'Text Lesson' : 'Lesson Page'}
+                    </p>
+                    <h3 className="mt-1 text-xl font-extrabold text-black">{manualReader.title || manualReader.productName}</h3>
+                    <p className="mt-2 text-sm text-gray-500">
+                      {manualReader.productName}
+                      {isModuleTextReader && manualReader.moduleTitle ? ` | ${manualReader.moduleTitle}` : ''}
+                      {!isModuleTextReader && manualReader.pageNumber ? ` | Page ${manualReader.pageNumber}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setManualReader(null)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-black hover:text-black"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="px-5 py-5 space-y-5">
+                  {manualReader.summary && (
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900 leading-relaxed">
+                      {manualReader.summary}
+                    </div>
+                  )}
+
+                  {isModuleTextReader && (
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
+                      <p className="text-sm font-extrabold text-blue-950">Keep your place as you learn</p>
+                      <p className="mt-2 text-xs leading-relaxed text-blue-900/80">
+                        Tap the sentence where you want to stop. That sentence will stay highlighted so you can continue from that exact point next time.
+                      </p>
+                      {manualReader.savedSentenceText && (
+                        <p className="mt-3 text-xs font-bold text-blue-900">
+                          Current marker: "{manualReader.savedSentenceText}"
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="rounded-3xl border border-gray-100 bg-[#fcfbf7] px-5 py-5">
+                    {isModuleTextReader ? (
+                      <div className="space-y-4">
+                        {manualReader.blocks?.length ? manualReader.blocks.map((block, blockIndex) => {
+                          if (block.kind === 'file') {
+                            return (
+                              <div key={block.blockId || `file-block-${blockIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-extrabold text-black">{block.title || `Attachment ${block.order || blockIndex + 1}`}</p>
+                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                        {block.fileKind}
+                                      </span>
+                                      {block.bytes > 0 && (
+                                        <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                                          {formatBytes(block.bytes)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {block.description && <p className="mt-2 text-xs leading-relaxed text-gray-500">{block.description}</p>}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openAsset(manualReader.grantId, block.assetId, block.canPreview ? 'inline' : 'download')}
+                                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                    >
+                                      <PlayCircle size={14} />
+                                      {block.canPreview ? 'Open Attachment' : 'Download Attachment'}
+                                    </button>
+                                    {block.allowDownload && block.canPreview && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openAsset(manualReader.grantId, block.assetId, 'download')}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                      >
+                                        <Download size={14} />
+                                        Download
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (block.kind === 'link') {
+                            return (
+                              <div key={block.blockId || `link-block-${blockIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
+                                <p className="text-sm font-extrabold text-black">{block.title || `Link ${block.order || blockIndex + 1}`}</p>
+                                {block.description && <p className="mt-2 text-xs leading-relaxed text-gray-500">{block.description}</p>}
+                                {block.url && (
+                                  <a
+                                    href={block.url}
+                                    target={block.openInNewTab ? '_blank' : undefined}
+                                    rel={block.openInNewTab ? 'noreferrer' : undefined}
+                                    className="mt-3 inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                  >
+                                    Open Link
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={block.blockId || `text-block-${blockIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
+                              {block.paragraphs?.length ? block.paragraphs.map((paragraph, paragraphIndex) => (
+                                <div key={`${block.blockId || blockIndex}-paragraph-${paragraphIndex}`} className="leading-8 text-gray-700">
+                                  {paragraph.map((sentence) => {
+                                    const markerKey = `${manualReader.grantId}-${manualReader.itemId}-marker-${sentence.sentenceIndex}`;
+                                    const isSavedSentence = manualReader.savedSentenceIndex === sentence.sentenceIndex;
+                                    return (
+                                      <span key={`${manualReader.itemId}-${sentence.sentenceIndex}`} className="mr-2 mb-2 inline-block align-top">
+                                        <button
+                                          type="button"
+                                          onClick={() => saveTextMarker(
+                                            manualReader.grantId,
+                                            manualReader.moduleId,
+                                            manualReader.itemId,
+                                            sentence.sentenceIndex,
+                                            sentence.text
+                                          )}
+                                          disabled={actioning === markerKey}
+                                          className={`rounded-2xl px-3 py-2 text-left text-sm leading-7 transition-all ${
+                                            isSavedSentence
+                                              ? 'bg-[#FDC700] font-bold text-black shadow-sm'
+                                              : 'bg-[#fcfbf7] text-gray-700 hover:bg-amber-50'
+                                          } ${actioning === markerKey ? 'opacity-60' : ''}`}
+                                        >
+                                          <span className="inline-flex items-start gap-2">
+                                            {actioning === markerKey ? (
+                                              <Loader2 size={14} className="mt-1 animate-spin shrink-0" />
+                                            ) : isSavedSentence ? (
+                                              <CheckCircle2 size={14} className="mt-1 shrink-0" />
+                                            ) : (
+                                              <Circle size={14} className="mt-1 shrink-0 text-gray-300" />
+                                            )}
+                                            <span>{sentence.text}</span>
+                                          </span>
+                                        </button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )) : (
+                                <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                                  {block.content || 'No written content was added to this block yet.'}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }) : (
+                          <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                            {manualReader.content || 'No written content was added to this lesson yet.'}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                        {manualReader.content || 'No written content was added to this page yet.'}
+                      </div>
+                    )}
+                  </div>
+
+                  {!isModuleTextReader && manualReader.attachedMedia && (
+                    <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400 mb-1">Attached Media</p>
+                      <p className="text-sm font-extrabold text-black">{manualReader.attachedMedia.label}</p>
+                      <p className="text-xs text-gray-500 mt-1 capitalize">{manualReader.attachedMedia.fileKind}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openAsset(manualReader.grantId, manualReader.attachedMedia.assetId, 'inline')}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-900"
+                        >
+                          <PlayCircle size={15} />
+                          Open Attached {manualReader.attachedMedia.fileKind}
+                        </button>
+                        {manualReader.attachedMedia.allowDownload && (
+                          <button
+                            type="button"
+                            onClick={() => openAsset(manualReader.grantId, manualReader.attachedMedia.assetId, 'download')}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+                          >
+                            <Download size={15} />
+                            Download
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {(manualSupportEmailLink || manualSupportWhatsAppLink) && (
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
+                      <p className="text-sm font-extrabold text-blue-950">
+                        {isModuleTextReader ? 'Need clarification on this lesson?' : 'Need clarification on this page?'}
+                      </p>
+                      <p className="text-xs text-blue-900/80 leading-relaxed mt-2">
+                        Contact the trainer or tutor if you need help with this lesson or its attached media.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {manualSupportEmailLink && (
+                          <a
+                            href={manualSupportEmailLink}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-sm font-extrabold text-white hover:bg-gray-900"
+                          >
+                            <Mail size={15} />
+                            Email Trainer
+                          </a>
+                        )}
+                        {manualSupportWhatsAppLink && (
+                          <a
+                            href={manualSupportWhatsAppLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-bold text-blue-900 hover:border-blue-400"
+                          >
+                            <Phone size={15} />
+                            WhatsApp Trainer
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {viewer && (
         <div

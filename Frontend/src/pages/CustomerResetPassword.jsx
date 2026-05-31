@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Lock, Loader2 } from 'lucide-react';
 import SEO from '../components/SEO';
 import { useCustomer } from '../context/CustomerContext';
-import { api } from '../hooks/useApi';
+import { api, getApiErrorMessage } from '../hooks/useApi';
 
 export default function CustomerResetPassword() {
   const [searchParams] = useSearchParams();
@@ -49,7 +49,7 @@ export default function CustomerResetPassword() {
       });
       setSuccess('Your password has been updated and you are now signed in.');
     } catch (submitError) {
-      setError(submitError.response?.data?.message || 'Could not reset your password right now.');
+      setError(getApiErrorMessage(submitError, 'Could not reset your password right now.'));
     } finally {
       setLoading(false);
     }

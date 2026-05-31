@@ -78,7 +78,7 @@ export default function Product() {
   const isTrialDigital = isDigital && digitalAccessKind === 'trial';
   const isCertifiedDigital = isDigital && !!product?.isCertified;
   const freeTrialDays = product?.freeTrialDays || 7;
-  const digitalOutline = product?.digitalOutline || [];
+  const digitalModulesOutline = product?.digitalModulesOutline || [];
   const customerHasAccess = !!product?.customerHasAccess;
   const supportEmail = product?.supportEmail || '';
   const supportWhatsApp = product?.supportWhatsApp || '';
@@ -299,6 +299,16 @@ export default function Product() {
                         Includes {product.digitalFileCount} secure file{product.digitalFileCount !== 1 ? 's' : ''}
                       </p>
                     )}
+                    {product.digitalManualPageCount > 0 && (
+                      <p className="text-xs font-bold text-[#9a7a00] mt-2">
+                        Includes {product.digitalManualPageCount} written lesson page{product.digitalManualPageCount === 1 ? '' : 's'}
+                      </p>
+                    )}
+                    {product.digitalModuleCount > 0 && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Arranged into {product.digitalModuleCount} module{product.digitalModuleCount === 1 ? '' : 's'} so learners can move through the lessons in sequence.
+                      </p>
+                    )}
                     {product.digitalFileCount > 0 && (
                       <p className="text-xs text-gray-500 mt-2">
                         {product.downloadableDigitalFileCount > 0
@@ -377,22 +387,77 @@ export default function Product() {
 
             {product.desc && <p className="text-gray-600 text-sm leading-relaxed mb-6">{product.desc}</p>}
 
-            {isDigital && product.isSeries && digitalOutline.length > 0 && (
+            {isDigital && digitalModulesOutline.length > 0 && (
               <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400 mb-1">Series Outline</p>
-                  <p className="font-extrabold text-sm">{product.seriesTitle || 'Step-by-step content'}</p>
-                  {product.seriesDescription && <p className="text-xs text-gray-500 mt-1">{product.seriesDescription}</p>}
+                <div className="px-4 py-3 border-b border-gray-100 bg-[#fcfbf7]">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00] mb-1">Module Preview</p>
+                  <p className="font-extrabold text-sm">Standalone module cards and ordered lesson flow</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {customerHasAccess
+                      ? 'You already own this product. Full module cards, text lessons, and secure media are waiting in your library.'
+                      : 'This is the learning structure preview. Full modules unlock in the secure library after purchase.'}
+                  </p>
                 </div>
-                <div className="p-4 space-y-3">
-                  {digitalOutline.map((step, index) => (
-                    <div key={`${step.assetId || step.label}-${index}`} className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-xs font-extrabold shrink-0">
-                        {step.stepNumber || index + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-sm">{step.stepTitle || step.label}</p>
-                        {step.stepSummary && <p className="text-xs text-gray-500 mt-0.5">{step.stepSummary}</p>}
+                <div className="grid gap-4 p-4 lg:grid-cols-2">
+                  {digitalModulesOutline.map((module, moduleIndex) => (
+                    <div key={module.moduleId || `${module.title}-${moduleIndex}`} className="rounded-[24px] border border-gray-100 bg-[#fcfbf7] p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center text-xs font-extrabold shrink-0">
+                          {module.moduleNumber || moduleIndex + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-bold text-sm text-black">{module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}</p>
+                            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                              {module.itemCount || 0} step{module.itemCount === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                          {module.description && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{module.description}</p>}
+                          <div className="mt-3 space-y-2">
+                            {(module.items || []).map((lessonItem, lessonIndex) => (
+                              <div key={lessonItem.itemId || `${moduleIndex}-${lessonIndex}`} className="rounded-2xl border border-gray-100 bg-white px-3 py-3">
+                                <div className="flex items-start gap-3">
+                                  <div className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-black px-1.5 text-[10px] font-extrabold text-white shrink-0">
+                                    {lessonItem.order || lessonIndex + 1}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-bold text-black">
+                                        {lessonItem.title || (lessonItem.kind === 'file' ? 'Secure lesson file' : `Lesson ${lessonItem.order || lessonIndex + 1}`)}
+                                      </p>
+                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 text-[10px] font-bold capitalize text-gray-600">
+                                        {lessonItem.kind === 'file' ? lessonItem.fileKind || 'file' : 'text'}
+                                      </span>
+                                    </div>
+                                    {lessonItem.description && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{lessonItem.description}</p>}
+                                    {!lessonItem.description && lessonItem.kind === 'text' && lessonItem.hasContent && (
+                                      <p className="text-xs text-gray-500 mt-1">Written lesson content is included for this step.</p>
+                                    )}
+                                    {lessonItem.kind === 'text' && (lessonItem.blockCount > 0 || lessonItem.inlineAttachmentCount > 0 || lessonItem.linkCount > 0) && (
+                                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-gray-500">
+                                        {lessonItem.blockCount > 0 && (
+                                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 font-bold">
+                                            {lessonItem.blockCount} block{lessonItem.blockCount === 1 ? '' : 's'}
+                                          </span>
+                                        )}
+                                        {lessonItem.inlineAttachmentCount > 0 && (
+                                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 font-bold">
+                                            {lessonItem.inlineAttachmentCount} inline attachment{lessonItem.inlineAttachmentCount === 1 ? '' : 's'}
+                                          </span>
+                                        )}
+                                        {lessonItem.linkCount > 0 && (
+                                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 font-bold">
+                                            {lessonItem.linkCount} link{lessonItem.linkCount === 1 ? '' : 's'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}

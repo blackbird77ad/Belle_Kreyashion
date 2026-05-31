@@ -17,6 +17,7 @@ import {
   markDigitalModuleComplete,
   requestDigitalCertificate,
   serveDigitalAsset,
+  updateDigitalModuleProgress,
 } from '../Controllers/digitalAccessController.mjs';
 import { protect, protectCustomer } from '../Middlewares/auth.mjs';
 import {
@@ -53,6 +54,8 @@ router.post('/upload-digital', protect, (req, res) => {
 router.get('/digital/library', protectCustomer, getCustomerDigitalLibrary);
 router.post('/digital/library/:grantId/assets/:assetId', protectCustomer, createDigitalAssetAccessUrl);
 router.get('/digital/library/:grantId/assets/:assetId/serve', serveDigitalAsset);
+router.post('/digital/library/:grantId/modules/:moduleId/items/:itemId/progress', protectCustomer, updateDigitalModuleProgress);
+router.post('/digital/library/:grantId/modules/:moduleId/complete', protectCustomer, markDigitalModuleComplete);
 router.post('/digital/library/:grantId/assets/:assetId/complete', protectCustomer, markDigitalModuleComplete);
 router.post('/digital/library/:grantId/certificate-request', protectCustomer, requestDigitalCertificate);
 

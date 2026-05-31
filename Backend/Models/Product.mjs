@@ -1,4 +1,8 @@
 import mongoose from 'mongoose';
+import {
+  isPreviewableDigitalFile,
+  normalizeDigitalModules,
+} from '../Utils/digitalModules.mjs';
 
 const variantSchema = new mongoose.Schema({
   name: { type: String },
@@ -34,6 +38,67 @@ const digitalFileSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+});
+
+const digitalManualPageSchema = new mongoose.Schema({
+  pageNumber: { type: Number, default: null },
+  title: { type: String, trim: true, default: '' },
+  summary: { type: String, trim: true, default: '' },
+  content: { type: String, default: '' },
+  mediaPublicId: { type: String, default: '' },
+});
+
+const digitalLessonBlockSchema = new mongoose.Schema({
+  blockId: { type: String, default: '' },
+  kind: { type: String, enum: ['text', 'file', 'link'], default: 'text' },
+  order: { type: Number, default: null },
+  title: { type: String, trim: true, default: '' },
+  description: { type: String, trim: true, default: '' },
+  content: { type: String, default: '' },
+  url: { type: String, default: '' },
+  openInNewTab: { type: Boolean, default: true },
+  allowDownload: { type: Boolean, default: false },
+  secureUrl: { type: String, default: '' },
+  publicId: { type: String, default: '' },
+  originalFilename: { type: String, default: '' },
+  downloadName: { type: String, default: '' },
+  mimeType: { type: String, default: '' },
+  resourceType: { type: String, enum: ['image', 'video', 'raw'], default: 'raw' },
+  fileKind: {
+    type: String,
+    enum: ['document', 'video', 'audio', 'archive', 'image', 'other'],
+    default: 'other',
+  },
+  bytes: { type: Number, default: 0 },
+});
+
+const digitalModuleItemSchema = new mongoose.Schema({
+  kind: { type: String, enum: ['text', 'file'], default: 'text' },
+  order: { type: Number, default: null },
+  title: { type: String, trim: true, default: '' },
+  description: { type: String, trim: true, default: '' },
+  content: { type: String, default: '' },
+  blocks: { type: [digitalLessonBlockSchema], default: [] },
+  allowDownload: { type: Boolean, default: false },
+  secureUrl: { type: String, default: '' },
+  publicId: { type: String, default: '' },
+  originalFilename: { type: String, default: '' },
+  downloadName: { type: String, default: '' },
+  mimeType: { type: String, default: '' },
+  resourceType: { type: String, enum: ['image', 'video', 'raw'], default: 'raw' },
+  fileKind: {
+    type: String,
+    enum: ['document', 'video', 'audio', 'archive', 'image', 'other'],
+    default: 'other',
+  },
+  bytes: { type: Number, default: 0 },
+});
+
+const digitalModuleSchema = new mongoose.Schema({
+  moduleNumber: { type: Number, default: null },
+  title: { type: String, trim: true, default: '' },
+  description: { type: String, trim: true, default: '' },
+  items: { type: [digitalModuleItemSchema], default: [] },
 });
 
 const productSchema = new mongoose.Schema({
@@ -109,6 +174,8 @@ const productSchema = new mongoose.Schema({
   accessNote: { type: String, default: '' },
   supportEmail: { type: String, default: '' },
   supportWhatsApp: { type: String, default: '' },
+  digitalModules: { type: [digitalModuleSchema], default: [] },
+  digitalManualPages: { type: [digitalManualPageSchema], default: [] },
   digitalFiles: { type: [digitalFileSchema], default: [] },
 }, { timestamps: true });
 
@@ -157,6 +224,43 @@ productSchema.pre('save', function () {
     }
     this.supportEmail = String(this.supportEmail || '').trim().toLowerCase();
     this.supportWhatsApp = String(this.supportWhatsApp || '').trim();
+    this.digitalModules = normalizeDigitalModules(Array.isArray(this.digitalModules) ? this.digitalModules : []);
+    this.digitalFiles = (Array.isArray(this.digitalFiles) ? this.digitalFiles : [])
+      .map((file, index) => ({
+        ...file,
+        label: String(file.label || file.originalFilename || `Digital File ${index + 1}`).trim(),
+        stepNumber: file.stepNumber !== '' && file.stepNumber !== undefined && file.stepNumber !== null
+          ? Number(file.stepNumber)
+          : null,
+        stepTitle: String(file.stepTitle || '').trim(),
+        stepSummary: String(file.stepSummary || '').trim(),
+        allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
+      }))
+      .filter((file) => file.secureUrl)
+      .sort((a, b) => {
+        const aStep = a.stepNumber ?? Number.MAX_SAFE_INTEGER;
+        const bStep = b.stepNumber ?? Number.MAX_SAFE_INTEGER;
+        if (aStep !== bStep) return aStep - bStep;
+        return String(a.label || '').localeCompare(String(b.label || ''));
+      });
+    this.digitalManualPages = (Array.isArray(this.digitalManualPages) ? this.digitalManualPages : [])
+      .map((page) => ({
+        ...page,
+        pageNumber: page.pageNumber !== '' && page.pageNumber !== undefined && page.pageNumber !== null
+          ? Number(page.pageNumber)
+          : null,
+        title: String(page.title || '').trim(),
+        summary: String(page.summary || '').trim(),
+        content: String(page.content || '').trim(),
+        mediaPublicId: String(page.mediaPublicId || '').trim(),
+      }))
+      .filter((page) => page.title || page.summary || page.content || page.mediaPublicId)
+      .sort((a, b) => {
+        const aPage = a.pageNumber ?? Number.MAX_SAFE_INTEGER;
+        const bPage = b.pageNumber ?? Number.MAX_SAFE_INTEGER;
+        if (aPage !== bPage) return aPage - bPage;
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      });
   } else {
     this.digitalAccessKind = 'paid';
     this.digitalSkillLevel = 'all-levels';
@@ -176,6 +280,8 @@ productSchema.pre('save', function () {
     this.accessNote = '';
     this.supportEmail = '';
     this.supportWhatsApp = '';
+    this.digitalModules = [];
+    this.digitalManualPages = [];
     this.digitalFiles = [];
   }
 });

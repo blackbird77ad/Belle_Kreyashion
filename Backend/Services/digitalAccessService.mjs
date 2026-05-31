@@ -2,45 +2,167 @@ import axios from 'axios';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Order from '../Models/Order.mjs';
 import Product from '../Models/Product.mjs';
+import {
+  buildModuleBlockAssetId,
+  buildLegacyDigitalModulesFromCollections,
+  flattenTextBlocksToContent,
+  isPreviewableDigitalFile,
+  normalizeDigitalModules,
+  sortDigitalLessonBlocks,
+} from '../Utils/digitalModules.mjs';
 
 const PAYSTACK_KEY = process.env.PAYSTACK_SECRET_KEY;
 const DEFAULT_DEVICE_LIMIT = 2;
 const DEFAULT_TRIAL_DAYS = 7;
 const TRIAL_WORKER_INTERVAL_MS = Number(process.env.DIGITAL_TRIAL_WORKER_INTERVAL_MS) || (60 * 60 * 1000);
-const PREVIEWABLE_FILE_KINDS = new Set(['document', 'video', 'audio', 'image']);
-
 let workerStarted = false;
 let workerRunning = false;
 
-const snapshotFiles = (product) => [...(product.digitalFiles || [])]
+const resolveProductModules = (product = {}) => {
+  const normalizedModules = normalizeDigitalModules(product.digitalModules || []);
+  if (normalizedModules.length) return normalizedModules;
+  return buildLegacyDigitalModulesFromCollections({
+    digitalManualPages: product.digitalManualPages || [],
+    digitalFiles: product.digitalFiles || [],
+  });
+};
+
+const snapshotModules = (product) => resolveProductModules(product).map((module, moduleIndex) => {
+  const moduleId = String(module._id || module.moduleId || `module-${moduleIndex + 1}`);
+  return {
+    moduleId,
+    moduleNumber: module.moduleNumber ?? moduleIndex + 1,
+    title: module.title || '',
+    description: module.description || '',
+    items: [...(module.items || [])]
+      .sort((a, b) => {
+        const orderDiff = (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+        if (orderDiff !== 0) return orderDiff;
+        return String(a.title || a.originalFilename || '').localeCompare(String(b.title || b.originalFilename || ''));
+      })
+      .map((item, itemIndex) => ({
+        itemId: String(item._id || item.itemId || `${moduleId}-item-${itemIndex + 1}`),
+        order: item.order ?? itemIndex + 1,
+        kind: item.kind || 'text',
+        title: item.title || item.originalFilename || '',
+        description: item.description || '',
+        content: item.kind === 'text' ? String(item.content || flattenTextBlocksToContent(item.blocks || []) || '') : '',
+        blocks: item.kind === 'text'
+          ? sortDigitalLessonBlocks(item.blocks || []).map((block, blockIndex) => ({
+              blockId: String(block._id || block.blockId || `${moduleId}-item-${itemIndex + 1}-block-${blockIndex + 1}`),
+              order: block.order ?? blockIndex + 1,
+              kind: block.kind || 'text',
+              title: block.title || block.originalFilename || '',
+              description: block.description || '',
+              content: block.kind === 'text' ? String(block.content || '') : '',
+              url: block.kind === 'link' ? String(block.url || '') : '',
+              openInNewTab: block.kind === 'link' ? block.openInNewTab !== false : true,
+              allowDownload: block.kind === 'file' ? (!!block.allowDownload || !isPreviewableDigitalFile(block)) : false,
+              secureUrl: block.kind === 'file' ? block.secureUrl || '' : '',
+              publicId: block.kind === 'file' ? block.publicId || '' : '',
+              originalFilename: block.kind === 'file' ? block.originalFilename || '' : '',
+              downloadName: block.kind === 'file' ? (block.downloadName || block.originalFilename || 'download') : '',
+              mimeType: block.kind === 'file' ? block.mimeType || '' : '',
+              resourceType: block.kind === 'file' ? (block.resourceType || 'raw') : 'raw',
+              fileKind: block.kind === 'file' ? (block.fileKind || 'other') : 'other',
+              bytes: block.kind === 'file' ? (block.bytes || 0) : 0,
+            }))
+          : [],
+        allowDownload: item.kind === 'file' ? (!!item.allowDownload || !isPreviewableDigitalFile(item)) : false,
+        secureUrl: item.kind === 'file' ? item.secureUrl || '' : '',
+        publicId: item.kind === 'file' ? item.publicId || '' : '',
+        originalFilename: item.kind === 'file' ? item.originalFilename || '' : '',
+        downloadName: item.kind === 'file' ? (item.downloadName || item.originalFilename || 'download') : '',
+        mimeType: item.kind === 'file' ? item.mimeType || '' : '',
+        resourceType: item.kind === 'file' ? (item.resourceType || 'raw') : 'raw',
+        fileKind: item.kind === 'file' ? (item.fileKind || 'other') : 'other',
+        bytes: item.kind === 'file' ? (item.bytes || 0) : 0,
+      })),
+  };
+});
+
+const snapshotFiles = (product) => snapshotModules(product)
+  .flatMap((module) => (
+    (module.items || []).flatMap((item) => {
+      if (item.kind === 'file' && item.secureUrl) {
+        return [{
+          assetId: item.itemId,
+          publicId: item.publicId || '',
+          label: item.title || item.originalFilename || 'Digital File',
+          stepNumber: item.order ?? null,
+          stepTitle: item.title || module.title || '',
+          stepSummary: item.description || module.description || '',
+          allowDownload: !!item.allowDownload || !isPreviewableDigitalFile(item),
+          secureUrl: item.secureUrl,
+          originalFilename: item.originalFilename || '',
+          downloadName: item.downloadName || item.originalFilename || 'download',
+          mimeType: item.mimeType || '',
+          resourceType: item.resourceType || 'raw',
+          fileKind: item.fileKind || 'other',
+          bytes: item.bytes || 0,
+        }];
+      }
+
+      return (item.blocks || [])
+        .filter((block) => block.kind === 'file' && block.secureUrl)
+        .map((block) => ({
+          assetId: buildModuleBlockAssetId(item.itemId, block.blockId),
+          publicId: block.publicId || '',
+          label: block.title || block.originalFilename || 'Digital Attachment',
+          stepNumber: item.order ?? null,
+          stepTitle: item.title || module.title || '',
+          stepSummary: block.description || item.description || module.description || '',
+          allowDownload: !!block.allowDownload || !isPreviewableDigitalFile(block),
+          secureUrl: block.secureUrl,
+          originalFilename: block.originalFilename || '',
+          downloadName: block.downloadName || block.originalFilename || 'download',
+          mimeType: block.mimeType || '',
+          resourceType: block.resourceType || 'raw',
+          fileKind: block.fileKind || 'other',
+          bytes: block.bytes || 0,
+        }));
+    })
+  ))
   .sort((a, b) => {
     const aStep = a.stepNumber ?? Number.MAX_SAFE_INTEGER;
     const bStep = b.stepNumber ?? Number.MAX_SAFE_INTEGER;
     if (aStep !== bStep) return aStep - bStep;
     return String(a.label || '').localeCompare(String(b.label || ''));
-  })
-  .map((file) => ({
-  assetId: String(file._id),
-  label: file.label || file.originalFilename || 'Digital File',
-  stepNumber: file.stepNumber ?? null,
-  stepTitle: file.stepTitle || '',
-  stepSummary: file.stepSummary || '',
-  allowDownload: !!file.allowDownload || !PREVIEWABLE_FILE_KINDS.has(file.fileKind || 'other'),
-  secureUrl: file.secureUrl,
-  originalFilename: file.originalFilename || '',
-  downloadName: file.downloadName || file.originalFilename || 'download',
-  mimeType: file.mimeType || '',
-  resourceType: file.resourceType || 'raw',
-  fileKind: file.fileKind || 'other',
-  bytes: file.bytes || 0,
-}));
+  });
 
-const buildModuleProgress = (product) => snapshotFiles(product).map((file) => ({
-  assetId: file.assetId,
-  label: file.label,
-  stepNumber: file.stepNumber ?? null,
+const snapshotManualPages = (product) => snapshotModules(product)
+  .flatMap((module) => (
+    (module.items || [])
+      .filter((item) => item.kind === 'text' && String(item.title || item.description || item.content || '').trim())
+      .map((item) => ({
+        pageId: item.itemId,
+        pageNumber: item.order ?? null,
+        title: item.title || `Lesson ${item.order || 1}`,
+        summary: item.description || module.description || '',
+        content: item.content || flattenTextBlocksToContent(item.blocks || []) || '',
+        mediaPublicId: '',
+      }))
+  ))
+  .sort((a, b) => {
+    const aPage = a.pageNumber ?? Number.MAX_SAFE_INTEGER;
+    const bPage = b.pageNumber ?? Number.MAX_SAFE_INTEGER;
+    if (aPage !== bPage) return aPage - bPage;
+    return String(a.title || '').localeCompare(String(b.title || ''));
+  });
+
+const buildModuleProgress = (product) => snapshotModules(product).map((module) => ({
+  moduleId: module.moduleId,
+  assetId: (module.items || []).find((item) => item.kind === 'file')?.itemId || '',
+  label: module.title || `Module ${module.moduleNumber || 1}`,
+  stepNumber: module.moduleNumber ?? null,
+  moduleNumber: module.moduleNumber ?? null,
   openedAt: null,
   completedAt: null,
+  lastItemId: '',
+  lastItemType: '',
+  lastItemTitle: '',
+  lastPositionUpdatedAt: null,
+  textMarker: null,
 }));
 
 const resolveExpiry = ({ accessType, accessMonths, baseDate = new Date() }) => {
@@ -92,7 +214,8 @@ export const grantDigitalAccessForOrder = async (order, context = {}) => {
 
   for (const item of digitalItems) {
     const product = productsById.get(String(item.productId));
-    if (!product || !product.digitalFiles?.length) continue;
+    const productModules = product ? snapshotModules(product) : [];
+    if (!product || !productModules.length) continue;
 
     const digitalAccessKind = item.digitalAccessKind || product.digitalAccessKind || 'paid';
     const configuredAccessType = item.accessType
@@ -157,7 +280,9 @@ export const grantDigitalAccessForOrder = async (order, context = {}) => {
         customerName: order.customer?.name || '',
         quantity: item.qty || 1,
         status: expiresAt && expiresAt <= new Date() ? 'expired' : 'active',
+        modules: productModules,
         files: snapshotFiles(product),
+        manualPages: snapshotManualPages(product),
         maxDevices: DEFAULT_DEVICE_LIMIT,
         billingEvents: [{
           reference: context.paymentRef || order.paymentRef || '',

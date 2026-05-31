@@ -9,6 +9,13 @@ import {
   DIGITAL_SKILL_LEVELS,
   DIGITAL_TOPICS,
 } from '../Constants/digitalProductOptions.mjs';
+import {
+  buildLegacyDigitalModulesFromCollections,
+  flattenTextBlocksToContent,
+  isPreviewableDigitalFile,
+  normalizeDigitalModules,
+  sortDigitalLessonBlocks,
+} from '../Utils/digitalModules.mjs';
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
 const CUSTOMER_JWT_SECRET = process.env.JWT_SECRET;
@@ -44,6 +51,36 @@ const parseDigitalFiles = (digitalFiles) => {
     try {
       const parsed = JSON.parse(digitalFiles);
       return Array.isArray(parsed) ? parsed.filter((file) => file?.secureUrl) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const parseDigitalManualPages = (digitalManualPages) => {
+  if (!digitalManualPages) return [];
+  if (Array.isArray(digitalManualPages)) return digitalManualPages;
+  if (typeof digitalManualPages === 'string') {
+    if (!digitalManualPages.trim()) return [];
+    try {
+      const parsed = JSON.parse(digitalManualPages);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const parseDigitalModules = (digitalModules) => {
+  if (!digitalModules) return [];
+  if (Array.isArray(digitalModules)) return digitalModules;
+  if (typeof digitalModules === 'string') {
+    if (!digitalModules.trim()) return [];
+    try {
+      const parsed = JSON.parse(digitalModules);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
@@ -96,7 +133,17 @@ const normalizePhone = (value = '') => {
 
 const roundMoney = (value) => Math.round(Number(value) || 0);
 const stepRank = (file = {}) => (file.stepNumber ?? Number.MAX_SAFE_INTEGER);
-const isPreviewableDigitalFile = (file = {}) => ['document', 'video', 'audio', 'image'].includes(file.fileKind);
+const manualPageRank = (page = {}) => (page.pageNumber ?? Number.MAX_SAFE_INTEGER);
+const moduleRank = (module = {}) => (module.moduleNumber ?? Number.MAX_SAFE_INTEGER);
+
+const resolveProductModules = (product = {}) => {
+  const normalizedModules = normalizeDigitalModules(product.digitalModules || []);
+  if (normalizedModules.length) return normalizedModules;
+  return buildLegacyDigitalModulesFromCollections({
+    digitalManualPages: product.digitalManualPages || [],
+    digitalFiles: product.digitalFiles || [],
+  });
+};
 
 const isDiscountLive = (product) => {
   const discount = product?.discount;
@@ -211,24 +258,74 @@ const toPublicProduct = (doc) => {
     const accessMode = product.accessMode || 'customer_choice';
     const limitedAccessMonths = Number(product.limitedAccessMonths) || 6;
     const pricing = buildDigitalPricing(product);
-    const outline = Array.isArray(product.digitalFiles)
-      ? [...product.digitalFiles]
-        .map((file) => ({
-          assetId: String(file._id || file.assetId || ''),
-          label: file.label || file.originalFilename || 'Digital File',
-          fileKind: file.fileKind || 'other',
-          stepNumber: file.stepNumber ?? null,
-          stepTitle: file.stepTitle || '',
-          stepSummary: file.stepSummary || '',
-          allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
-        }))
-        .sort((a, b) => {
-          const aStep = a.stepNumber ?? Number.MAX_SAFE_INTEGER;
-          const bStep = b.stepNumber ?? Number.MAX_SAFE_INTEGER;
-          if (aStep !== bStep) return aStep - bStep;
-          return a.label.localeCompare(b.label);
-        })
-      : [];
+    const modules = resolveProductModules(product);
+    const fileItems = modules.flatMap((module) => (
+      (module.items || []).flatMap((item) => {
+        if (item.kind === 'file') {
+          return [{
+            ...item,
+            moduleNumber: module.moduleNumber ?? null,
+            moduleTitle: module.title || '',
+          }];
+        }
+
+        return sortDigitalLessonBlocks(item.blocks || [])
+          .filter((block) => block.kind === 'file')
+          .map((block) => ({
+            ...block,
+            moduleNumber: module.moduleNumber ?? null,
+            moduleTitle: module.title || '',
+          }));
+      })
+    ));
+    const textItems = modules.flatMap((module) => (
+      (module.items || []).filter((item) => item.kind === 'text').map((item) => ({
+        ...item,
+        content: item.content || flattenTextBlocksToContent(item.blocks || []) || '',
+        moduleNumber: module.moduleNumber ?? null,
+        moduleTitle: module.title || '',
+      }))
+    ));
+    const modulesOutline = modules
+      .map((module, moduleIndex) => ({
+        moduleId: String(module._id || module.moduleId || `module-${moduleIndex + 1}`),
+        moduleNumber: module.moduleNumber ?? moduleIndex + 1,
+        title: module.title || '',
+        description: module.description || '',
+        itemCount: (module.items || []).length,
+        textItemCount: (module.items || []).filter((item) => item.kind === 'text').length,
+        fileItemCount: (module.items || []).filter((item) => item.kind === 'file').length,
+        items: [...(module.items || [])]
+          .sort((a, b) => {
+            const diff = (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+            if (diff !== 0) return diff;
+            return String(a.title || a.originalFilename || '').localeCompare(String(b.title || b.originalFilename || ''));
+          })
+          .map((item, itemIndex) => ({
+            itemId: String(item._id || item.itemId || `item-${itemIndex + 1}`),
+            order: item.order ?? itemIndex + 1,
+            kind: item.kind || 'text',
+            title: item.title || item.originalFilename || '',
+            description: item.description || '',
+            hasContent: item.kind === 'text' ? !!String(item.content || flattenTextBlocksToContent(item.blocks || []) || '').trim() : false,
+            blockCount: item.kind === 'text' ? sortDigitalLessonBlocks(item.blocks || []).length : 0,
+            inlineAttachmentCount: item.kind === 'text'
+              ? sortDigitalLessonBlocks(item.blocks || []).filter((block) => block.kind === 'file').length
+              : 0,
+            linkCount: item.kind === 'text'
+              ? sortDigitalLessonBlocks(item.blocks || []).filter((block) => block.kind === 'link').length
+              : 0,
+            fileKind: item.kind === 'file' ? (item.fileKind || 'other') : '',
+            allowDownload: item.kind === 'file'
+              ? (!!item.allowDownload || !isPreviewableDigitalFile(item))
+              : false,
+          })),
+      }))
+      .sort((a, b) => {
+        const diff = moduleRank(a) - moduleRank(b);
+        if (diff !== 0) return diff;
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      });
 
     product.accessMode = accessMode;
     product.limitedAccessMonths = limitedAccessMonths;
@@ -249,14 +346,15 @@ const toPublicProduct = (doc) => {
     product.certificateDescription = product.certificateDescription || '';
     product.supportEmail = normalizeEmail(product.supportEmail || '');
     product.supportWhatsApp = normalizePhone(product.supportWhatsApp || '');
-    product.digitalFileCount = Array.isArray(product.digitalFiles) ? product.digitalFiles.length : 0;
-    product.downloadableDigitalFileCount = Array.isArray(product.digitalFiles)
-      ? product.digitalFiles.filter((file) => !!file.allowDownload || !isPreviewableDigitalFile(file)).length
-      : 0;
-    product.hasPreviewableDigitalFiles = Array.isArray(product.digitalFiles)
-      ? product.digitalFiles.some((file) => ['document', 'video', 'audio', 'image'].includes(file.fileKind))
-      : false;
-    product.digitalOutline = outline;
+    product.digitalModuleCount = modulesOutline.length;
+    product.digitalModuleItemCount = modulesOutline.reduce((sum, module) => sum + (module.itemCount || 0), 0);
+    product.digitalFileCount = fileItems.length;
+    product.downloadableDigitalFileCount = fileItems.filter((file) => !!file.allowDownload || !isPreviewableDigitalFile(file)).length;
+    product.hasPreviewableDigitalFiles = fileItems.some((file) => ['document', 'video', 'audio', 'image'].includes(file.fileKind));
+    product.digitalModulesOutline = modulesOutline;
+    product.digitalManualPageCount = textItems.length;
+    product.hasDigitalManualPages = textItems.length > 0;
+    product.hasDigitalModules = modulesOutline.length > 0;
     product.digitalPricing = {
       limitedPrice: pricing.limitedPrice,
       limitedBasePrice: pricing.limitedBasePrice,
@@ -266,6 +364,8 @@ const toPublicProduct = (doc) => {
     };
   }
 
+  delete product.digitalModules;
+  delete product.digitalManualPages;
   delete product.digitalFiles;
   return product;
 };
@@ -275,7 +375,9 @@ const cleanBody = (body) => {
 
   if (b.images) b.images = processImages(Array.isArray(b.images) ? b.images : [b.images]);
   b.variants = parseVariants(b.variants);
+  b.digitalModules = parseDigitalModules(b.digitalModules);
   b.digitalFiles = parseDigitalFiles(b.digitalFiles);
+  b.digitalManualPages = parseDigitalManualPages(b.digitalManualPages);
 
   if (b.retailPrice !== undefined) b.retailPrice = Number(b.retailPrice) || 0;
   if (b.wholesalePrice !== undefined) b.wholesalePrice = b.wholesalePrice ? Number(b.wholesalePrice) : null;
@@ -340,18 +442,37 @@ const cleanBody = (body) => {
     b.certificateDescription = b.isCertified ? (b.certificateDescription || '') : '';
     b.supportEmail = normalizeEmail(b.supportEmail || '');
     b.supportWhatsApp = normalizePhone(b.supportWhatsApp || '');
-    b.digitalFiles = (b.digitalFiles || []).map((file, index) => ({
-      ...file,
-      label: file.label || file.originalFilename || `Digital File ${index + 1}`,
-      stepNumber: file.stepNumber !== '' && file.stepNumber !== undefined && file.stepNumber !== null ? Number(file.stepNumber) : null,
-      stepTitle: file.stepTitle || '',
-      stepSummary: file.stepSummary || '',
-      allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
-    })).sort((a, bFile) => {
-      const diff = stepRank(a) - stepRank(bFile);
-      if (diff !== 0) return diff;
-      return String(a.label || '').localeCompare(String(bFile.label || ''));
-    });
+    b.digitalModules = normalizeDigitalModules(b.digitalModules || []);
+    if (b.digitalModules.length) {
+      b.digitalManualPages = [];
+      b.digitalFiles = [];
+    } else {
+      b.digitalManualPages = (b.digitalManualPages || []).map((page) => ({
+        ...page,
+        pageNumber: page.pageNumber !== '' && page.pageNumber !== undefined && page.pageNumber !== null ? Number(page.pageNumber) : null,
+        title: String(page.title || '').trim(),
+        summary: String(page.summary || '').trim(),
+        content: String(page.content || '').trim(),
+        mediaPublicId: String(page.mediaPublicId || '').trim(),
+      })).filter((page) => page.title || page.summary || page.content || page.mediaPublicId)
+        .sort((a, bPage) => {
+          const diff = manualPageRank(a) - manualPageRank(bPage);
+          if (diff !== 0) return diff;
+          return String(a.title || '').localeCompare(String(bPage.title || ''));
+        });
+      b.digitalFiles = (b.digitalFiles || []).map((file, index) => ({
+        ...file,
+        label: file.label || file.originalFilename || `Digital File ${index + 1}`,
+        stepNumber: file.stepNumber !== '' && file.stepNumber !== undefined && file.stepNumber !== null ? Number(file.stepNumber) : null,
+        stepTitle: file.stepTitle || '',
+        stepSummary: file.stepSummary || '',
+        allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
+      })).sort((a, bFile) => {
+        const diff = stepRank(a) - stepRank(bFile);
+        if (diff !== 0) return diff;
+        return String(a.label || '').localeCompare(String(bFile.label || ''));
+      });
+    }
     b.accessMode = b.accessMode || 'customer_choice';
     b.limitedAccessMonths = Number(b.limitedAccessMonths) > 0 ? Number(b.limitedAccessMonths) : 6;
     b.accessNote = b.accessNote || '';
@@ -375,6 +496,8 @@ const cleanBody = (body) => {
     b.accessNote = '';
     b.supportEmail = '';
     b.supportWhatsApp = '';
+    b.digitalModules = [];
+    b.digitalManualPages = [];
     b.digitalFiles = [];
   }
 
@@ -450,6 +573,18 @@ export const getPublicProducts = async (req, res) => {
         { digitalTopics: { $elemMatch: { $regex: search, $options: 'i' } } },
         { digitalInclusions: { $elemMatch: { $regex: search, $options: 'i' } } },
         { accessNote: { $regex: search, $options: 'i' } },
+        { 'digitalModules.title': { $regex: search, $options: 'i' } },
+        { 'digitalModules.description': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.title': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.description': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.content': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.title': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.description': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.content': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.url': { $regex: search, $options: 'i' } },
+        { 'digitalManualPages.title': { $regex: search, $options: 'i' } },
+        { 'digitalManualPages.summary': { $regex: search, $options: 'i' } },
+        { 'digitalManualPages.content': { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -556,6 +691,18 @@ export const getAllProducts = async (req, res) => {
         { digitalInclusions: { $elemMatch: { $regex: search, $options: 'i' } } },
         { seriesTitle: { $regex: search, $options: 'i' } },
         { accessMode: { $regex: search, $options: 'i' } },
+        { 'digitalModules.title': { $regex: search, $options: 'i' } },
+        { 'digitalModules.description': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.title': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.description': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.content': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.title': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.description': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.content': { $regex: search, $options: 'i' } },
+        { 'digitalModules.items.blocks.url': { $regex: search, $options: 'i' } },
+        { 'digitalManualPages.title': { $regex: search, $options: 'i' } },
+        { 'digitalManualPages.summary': { $regex: search, $options: 'i' } },
+        { 'digitalManualPages.content': { $regex: search, $options: 'i' } },
       ];
     }
 

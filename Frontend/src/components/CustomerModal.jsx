@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, User, Phone, Mail, Lock } from 'lucide-react';
-import { api } from '../hooks/useApi';
+import { api, getApiErrorMessage } from '../hooks/useApi';
 import { useCustomer } from '../context/CustomerContext';
 
 function validatePhone(raw) {
@@ -165,7 +165,7 @@ export default function CustomerModal({ onClose, onSuccess }) {
       if (mode === 'login') await handleLogin();
       if (mode === 'forgot') await handleForgotPassword();
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+      setError(getApiErrorMessage(err, 'Something went wrong. Please try again.'));
     } finally {
       setLoading(false);
     }
