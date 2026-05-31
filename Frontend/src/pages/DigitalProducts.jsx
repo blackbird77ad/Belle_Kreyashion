@@ -28,6 +28,7 @@ import {
   DIGITAL_TOPIC_OPTIONS,
   DIGITAL_TYPE_OPTIONS,
   getDigitalOptionLabel,
+  mergeDigitalOptions,
 } from '../data/digitalProductOptions';
 
 const SORT_OPTIONS = [
@@ -112,21 +113,73 @@ export default function DigitalProducts() {
   const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [optionCatalog, setOptionCatalog] = useState({
+    digitalTypes: [],
+    digitalSkillLevels: [],
+    digitalFormats: [],
+    digitalDurations: [],
+    digitalTopics: [],
+    digitalInclusions: [],
+  });
   const PAGE_SIZE = 12;
 
+  const digitalTypeOptions = mergeDigitalOptions(
+    DIGITAL_TYPE_OPTIONS,
+    [...optionCatalog.digitalTypes, digitalType].filter(Boolean)
+  );
+  const skillLevelOptions = mergeDigitalOptions(
+    DIGITAL_SKILL_LEVEL_OPTIONS,
+    [...optionCatalog.digitalSkillLevels, skillLevel].filter(Boolean)
+  );
+  const formatOptions = mergeDigitalOptions(
+    DIGITAL_FORMAT_OPTIONS,
+    [...optionCatalog.digitalFormats, formatFilter].filter(Boolean)
+  );
+  const durationOptions = mergeDigitalOptions(
+    DIGITAL_DURATION_OPTIONS,
+    [...optionCatalog.digitalDurations, durationFilter].filter(Boolean)
+  );
+  const topicOptions = mergeDigitalOptions(
+    DIGITAL_TOPIC_OPTIONS,
+    [...optionCatalog.digitalTopics, ...topics].filter(Boolean)
+  );
+  const inclusionOptions = mergeDigitalOptions(
+    DIGITAL_INCLUSION_OPTIONS,
+    [...optionCatalog.digitalInclusions, ...inclusions].filter(Boolean)
+  );
+
   useEffect(() => {
-    setSearch(searchParams.get('search') || '');
-    setDigitalType(searchParams.get('digitalType') || 'all');
-    setSkillLevel(searchParams.get('skillLevel') || 'all');
-    setFormatFilter(searchParams.get('format') || 'all');
-    setDurationFilter(searchParams.get('duration') || 'all');
-    setPriceType(searchParams.get('priceType') || 'all');
-    setTopics(parseListParam(searchParams.get('topics')));
-    setInclusions(parseListParam(searchParams.get('inclusions')));
-    setSort(searchParams.get('sort') || 'newest');
-    setSpecial(searchParams.get('filter') || '');
-    setMinPrice(searchParams.get('minPrice') || '');
-    setMaxPrice(searchParams.get('maxPrice') || '');
+    api.get('/api/products/digital/options')
+      .then((response) => {
+        setOptionCatalog({
+          digitalTypes: Array.isArray(response.data?.digitalTypes) ? response.data.digitalTypes : [],
+          digitalSkillLevels: Array.isArray(response.data?.digitalSkillLevels) ? response.data.digitalSkillLevels : [],
+          digitalFormats: Array.isArray(response.data?.digitalFormats) ? response.data.digitalFormats : [],
+          digitalDurations: Array.isArray(response.data?.digitalDurations) ? response.data.digitalDurations : [],
+          digitalTopics: Array.isArray(response.data?.digitalTopics) ? response.data.digitalTopics : [],
+          digitalInclusions: Array.isArray(response.data?.digitalInclusions) ? response.data.digitalInclusions : [],
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const syncFiltersFromQuery = () => {
+      setSearch(searchParams.get('search') || '');
+      setDigitalType(searchParams.get('digitalType') || 'all');
+      setSkillLevel(searchParams.get('skillLevel') || 'all');
+      setFormatFilter(searchParams.get('format') || 'all');
+      setDurationFilter(searchParams.get('duration') || 'all');
+      setPriceType(searchParams.get('priceType') || 'all');
+      setTopics(parseListParam(searchParams.get('topics')));
+      setInclusions(parseListParam(searchParams.get('inclusions')));
+      setSort(searchParams.get('sort') || 'newest');
+      setSpecial(searchParams.get('filter') || '');
+      setMinPrice(searchParams.get('minPrice') || '');
+      setMaxPrice(searchParams.get('maxPrice') || '');
+    };
+
+    syncFiltersFromQuery();
   }, [searchParams]);
 
   useEffect(() => {
@@ -165,37 +218,49 @@ export default function DigitalProducts() {
   ]);
 
   useEffect(() => {
-    setLoading(true);
-    setPage(1);
+    let cancelled = false;
 
-    const params = new URLSearchParams({
-      category: 'Digital Products',
-      isDigital: 'true',
-    });
+    const loadProducts = async () => {
+      setLoading(true);
+      setPage(1);
 
-    if (search.trim()) params.set('search', search.trim());
-    if (digitalType !== 'all') params.set('digitalType', digitalType);
-    if (skillLevel !== 'all') params.set('digitalSkillLevel', skillLevel);
-    if (formatFilter !== 'all') params.set('digitalFormat', formatFilter);
-    if (durationFilter !== 'all') params.set('digitalDuration', durationFilter);
-    if (priceType !== 'all') params.set('priceType', priceType);
-    if (topics.length) params.set('digitalTopics', joinListParam(topics));
-    if (inclusions.length) params.set('digitalInclusions', joinListParam(inclusions));
-    if (sort) params.set('sort', sort);
-    if (special === 'featured') params.set('featured', 'true');
-    if (special === 'fastSelling') params.set('fastSelling', 'true');
-    if (special === 'discounted') params.set('discounted', 'true');
-    if (minPrice) params.set('minPrice', minPrice);
-    if (maxPrice) params.set('maxPrice', maxPrice);
+      const params = new URLSearchParams({
+        category: 'Digital Products',
+        isDigital: 'true',
+      });
 
-    api.get(`/api/products/public?${params.toString()}`, customer?.accessToken
-      ? { headers: { 'x-customer-token': customer.accessToken } }
-      : undefined)
-      .then((response) => {
-        setProducts(response.data || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      if (search.trim()) params.set('search', search.trim());
+      if (digitalType !== 'all') params.set('digitalType', digitalType);
+      if (skillLevel !== 'all') params.set('digitalSkillLevel', skillLevel);
+      if (formatFilter !== 'all') params.set('digitalFormat', formatFilter);
+      if (durationFilter !== 'all') params.set('digitalDuration', durationFilter);
+      if (priceType !== 'all') params.set('priceType', priceType);
+      if (topics.length) params.set('digitalTopics', joinListParam(topics));
+      if (inclusions.length) params.set('digitalInclusions', joinListParam(inclusions));
+      if (sort) params.set('sort', sort);
+      if (special === 'featured') params.set('featured', 'true');
+      if (special === 'fastSelling') params.set('fastSelling', 'true');
+      if (special === 'discounted') params.set('discounted', 'true');
+      if (minPrice) params.set('minPrice', minPrice);
+      if (maxPrice) params.set('maxPrice', maxPrice);
+
+      try {
+        const response = await api.get(`/api/products/public?${params.toString()}`, customer?.accessToken
+          ? { headers: { 'x-customer-token': customer.accessToken } }
+          : undefined);
+        if (!cancelled) setProducts(response.data || []);
+      } catch {
+        if (!cancelled) setProducts([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadProducts();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     digitalType,
     durationFilter,
@@ -219,7 +284,7 @@ export default function DigitalProducts() {
 
     if (!ownedProductIds.length) return;
     removeOwnedDigitalItems(ownedProductIds);
-  }, [products]);
+  }, [products, removeOwnedDigitalItems]);
 
   const clearAll = () => {
     setSearch('');
@@ -258,9 +323,9 @@ export default function DigitalProducts() {
   const seoTitle = search.trim()
     ? `${search.trim()} Digital Products`
     : digitalType !== 'all'
-      ? `${formatType(digitalType)} Digital Products`
-      : skillLevel !== 'all'
-        ? `${getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, skillLevel)} Digital Products`
+        ? `${formatType(digitalType)} Digital Products`
+        : skillLevel !== 'all'
+        ? `${getDigitalOptionLabel(skillLevelOptions, skillLevel)} Digital Products`
         : 'Digital Products';
   const seoDescription = search.trim()
     ? `Browse Belle Kreyashon digital products for ${search.trim()} with secure access, guided learning, and Ghana-friendly checkout.`
@@ -272,7 +337,7 @@ export default function DigitalProducts() {
     'secure digital library',
     'Belle Kreyashon academy',
     digitalType !== 'all' ? formatType(digitalType) : '',
-    skillLevel !== 'all' ? getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, skillLevel) : '',
+    skillLevel !== 'all' ? getDigitalOptionLabel(skillLevelOptions, skillLevel) : '',
     search.trim(),
     activeSpecialLabel,
   ].filter(Boolean).join(', ');
@@ -442,7 +507,7 @@ export default function DigitalProducts() {
                     onChange={(event) => setDigitalType(event.target.value)}
                     className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
                   >
-                    {DIGITAL_TYPE_OPTIONS.map((option) => (
+                    {digitalTypeOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -455,7 +520,7 @@ export default function DigitalProducts() {
                     onChange={(event) => setSkillLevel(event.target.value)}
                     className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
                   >
-                    {DIGITAL_SKILL_LEVEL_OPTIONS.map((option) => (
+                    {skillLevelOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -468,7 +533,7 @@ export default function DigitalProducts() {
                     onChange={(event) => setFormatFilter(event.target.value)}
                     className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
                   >
-                    {DIGITAL_FORMAT_OPTIONS.map((option) => (
+                    {formatOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -483,7 +548,7 @@ export default function DigitalProducts() {
                     onChange={(event) => setDurationFilter(event.target.value)}
                     className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
                   >
-                    {DIGITAL_DURATION_OPTIONS.map((option) => (
+                    {durationOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -567,14 +632,14 @@ export default function DigitalProducts() {
 
               <FilterChipGroup
                 title="Topic / Subject"
-                options={DIGITAL_TOPIC_OPTIONS}
+                options={topicOptions}
                 values={topics}
                 onToggle={(value) => setTopics((current) => toggleListValue(current, value))}
               />
 
               <FilterChipGroup
                 title="Inclusions"
-                options={DIGITAL_INCLUSION_OPTIONS}
+                options={inclusionOptions}
                 values={inclusions}
                 onToggle={(value) => setInclusions((current) => toggleListValue(current, value))}
               />
@@ -586,12 +651,12 @@ export default function DigitalProducts() {
           <div className="mb-4 flex flex-wrap items-center gap-2">
             {search.trim() && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Search: {search.trim()}</span>}
             {digitalType !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Type: {formatType(digitalType)}</span>}
-            {skillLevel !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Skill: {getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, skillLevel)}</span>}
-            {formatFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Format: {getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, formatFilter)}</span>}
-            {durationFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Duration: {getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, durationFilter)}</span>}
+            {skillLevel !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Skill: {getDigitalOptionLabel(skillLevelOptions, skillLevel)}</span>}
+            {formatFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Format: {getDigitalOptionLabel(formatOptions, formatFilter)}</span>}
+            {durationFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Duration: {getDigitalOptionLabel(durationOptions, durationFilter)}</span>}
             {priceType !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Price Type: {getDigitalOptionLabel(DIGITAL_PRICE_TYPE_OPTIONS, priceType)}</span>}
-            {topics.map((topic) => <span key={topic} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Topic: {getDigitalOptionLabel(DIGITAL_TOPIC_OPTIONS, topic)}</span>)}
-            {inclusions.map((inclusion) => <span key={inclusion} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Inclusion: {getDigitalOptionLabel(DIGITAL_INCLUSION_OPTIONS, inclusion)}</span>)}
+            {topics.map((topic) => <span key={topic} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Topic: {getDigitalOptionLabel(topicOptions, topic)}</span>)}
+            {inclusions.map((inclusion) => <span key={inclusion} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Inclusion: {getDigitalOptionLabel(inclusionOptions, inclusion)}</span>)}
             {special && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Filter: {SPECIAL_FILTERS.find((item) => item.key === special)?.label}</span>}
             {sort !== 'newest' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Sort: {SORT_OPTIONS.find((item) => item.value === sort)?.label}</span>}
             {minPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Min: GHS {Number(minPrice).toLocaleString()}</span>}
@@ -682,7 +747,7 @@ export default function DigitalProducts() {
                         </span>
                         {product.digitalFormat && (
                           <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-gray-700">
-                            {getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, product.digitalFormat)}
+                            {getDigitalOptionLabel(formatOptions, product.digitalFormat)}
                           </span>
                         )}
                         {product.isCertified && (
@@ -717,17 +782,17 @@ export default function DigitalProducts() {
                       <div className="flex flex-wrap gap-2 mb-3">
                         {product.digitalSkillLevel && (
                           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
-                            {getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, product.digitalSkillLevel)}
+                            {getDigitalOptionLabel(skillLevelOptions, product.digitalSkillLevel)}
                           </span>
                         )}
                         {product.digitalDuration && (
                           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
-                            {getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, product.digitalDuration)}
+                            {getDigitalOptionLabel(durationOptions, product.digitalDuration)}
                           </span>
                         )}
                         {(product.digitalTopics || []).slice(0, 2).map((topic) => (
                           <span key={topic} className="rounded-full bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-[#9a7a00] border border-[#FDC700]/25">
-                            {getDigitalOptionLabel(DIGITAL_TOPIC_OPTIONS, topic)}
+                            {getDigitalOptionLabel(topicOptions, topic)}
                           </span>
                         ))}
                       </div>
@@ -739,7 +804,7 @@ export default function DigitalProducts() {
                         <div className="mt-3 flex flex-wrap gap-2">
                           {product.digitalInclusions.slice(0, 3).map((inclusion) => (
                             <span key={inclusion} className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-bold text-gray-500">
-                              {getDigitalOptionLabel(DIGITAL_INCLUSION_OPTIONS, inclusion)}
+                              {getDigitalOptionLabel(inclusionOptions, inclusion)}
                             </span>
                           ))}
                         </div>

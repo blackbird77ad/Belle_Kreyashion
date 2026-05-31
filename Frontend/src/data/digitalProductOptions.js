@@ -57,6 +57,38 @@ export const DIGITAL_PRICE_TYPE_OPTIONS = [
   { value: 'paid', label: 'Paid' },
 ];
 
+export const humanizeDigitalOptionValue = (value = '', fallback = '') => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return fallback;
+  return normalized
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
+export const mergeDigitalOptions = (baseOptions = [], extraValues = [], allLabel = '') => {
+  const leadingAllOption = allLabel
+    ? [{ value: 'all', label: allLabel }]
+    : (baseOptions[0]?.value === 'all' ? [baseOptions[0]] : []);
+  const baseWithoutAll = baseOptions.filter((option) => option.value !== 'all');
+  const seen = new Set();
+  const merged = [];
+
+  [...baseWithoutAll, ...extraValues.map((value) => ({
+    value,
+    label: humanizeDigitalOptionValue(value),
+  }))].forEach((option) => {
+    const value = String(option?.value || '').trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    merged.push({
+      value,
+      label: option?.label || humanizeDigitalOptionValue(value),
+    });
+  });
+
+  return [...leadingAllOption, ...merged];
+};
+
 export const getDigitalOptionLabel = (options, value, fallback = '') => (
-  options.find((option) => option.value === value)?.label || fallback
+  options.find((option) => option.value === value)?.label || humanizeDigitalOptionValue(value, fallback)
 );

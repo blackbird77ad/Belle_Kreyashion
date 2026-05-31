@@ -25,7 +25,7 @@ export default function Navbar({ onCartOpen }) {
   const { cartCount } = useCart();
   const { customer, logout }  = useCustomer();
   const accountMenuRef = useRef(null);
-  const isSignedIn = Boolean(customer?.phone);
+  const isSignedIn = Boolean(customer?.accessToken);
   const customerLabel = customer?.name?.trim() || 'My Account';
 
   useEffect(() => {

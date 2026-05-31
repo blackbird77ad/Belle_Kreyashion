@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../hooks/useApi';
 import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List } from 'lucide-react';
-import { CATEGORIES, CATEGORY_VALUES } from '../data/categories';
+import { CATEGORY_VALUES } from '../data/categories';
 import {
+  DIGITAL_TYPE_OPTIONS,
   DIGITAL_DURATION_OPTIONS,
   DIGITAL_FORMAT_OPTIONS,
   DIGITAL_INCLUSION_OPTIONS,
   DIGITAL_SKILL_LEVEL_OPTIONS,
   DIGITAL_TOPIC_OPTIONS,
   getDigitalOptionLabel,
+  mergeDigitalOptions,
 } from '../data/digitalProductOptions';
 import {
   CERTIFICATE_LAYOUT_OPTIONS,
@@ -148,6 +150,27 @@ const buildWhatsAppAdminLink = (phone = '', message = '') => {
   if (!normalized) return '';
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 };
+
+const createEmptyCustomDigitalInputs = () => ({
+  digitalType: '',
+  digitalSkillLevel: '',
+  digitalFormat: '',
+  digitalDuration: '',
+  digitalTopic: '',
+  digitalInclusion: '',
+});
+
+const collectDistinctValues = (values = []) => (
+  [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))]
+);
+
+const collectDistinctFieldValues = (items = [], key = '') => (
+  collectDistinctValues(items.map((item) => item?.[key]))
+);
+
+const collectDistinctListValues = (items = [], key = '') => (
+  collectDistinctValues(items.flatMap((item) => Array.isArray(item?.[key]) ? item[key] : []))
+);
 
 const CertificateTemplateDropdown = ({
   templates = [],
@@ -729,7 +752,7 @@ function InvoiceCreator({ auth }) {
     if (!customerName.trim()) return alert('Please enter customer name');
     if (items.some(i => !i.desc.trim() || !i.price)) return alert('Please fill all item details');
     const date  = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-    const refId = 'INV-' + Date.now().toString().slice(-6);
+    const refId = 'INV-' + new Date().getTime().toString().slice(-6);
     const itemsHtml = items.map(item => `
       <tr>
         <td style="padding:10px 8px;border-bottom:1px solid #f0f0f0;font-size:13px">${item.desc}</td>
@@ -851,6 +874,8 @@ export default function Admin() {
   const [tab,     setTab]     = useState('Products');
   const [search,  setSearch]  = useState('');
   const [customCat, setCustomCat] = useState('');
+  const [savedCategories, setSavedCategories] = useState([]);
+  const [customDigitalInputs, setCustomDigitalInputs] = useState(createEmptyCustomDigitalInputs());
 
   const [data,    setData]    = useState([]);
   const [salesAnalytics, setSalesAnalytics] = useState(null);
@@ -893,6 +918,19 @@ export default function Admin() {
   useEffect(() => {
     api.get('/api/auth/status').then(r => setSetup(r.data.setup)).catch(() => {});
   }, []);
+
+  const loadSavedCategories = useCallback(async () => {
+    try {
+      const { data: categories } = await api.get('/api/products/categories');
+      setSavedCategories(Array.isArray(categories) ? categories : []);
+    } catch {
+      setSavedCategories([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSavedCategories();
+  }, [loadSavedCategories]);
 
   const expireSession = useCallback((message = 'Your admin session expired. Please log in again.') => {
     localStorage.removeItem('bk_admin');
@@ -1005,10 +1043,16 @@ export default function Admin() {
     return { ...(map[t] || {}) };
   };
 
+  const resetCustomInputs = () => {
+    setCustomCat('');
+    setCustomDigitalInputs(createEmptyCustomDigitalInputs());
+  };
+
   const openNew = () => {
     setForm(getEmptyForm(tab));
     setEditId(null);
     setShowForm(true);
+    resetCustomInputs();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1018,6 +1062,7 @@ export default function Admin() {
   };
 
   const openEdit = (item) => {
+    resetCustomInputs();
     if (tab === 'Products') {
       setForm({
         ...item,
@@ -1103,7 +1148,11 @@ export default function Admin() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const closeForm = () => { setShowForm(false); setEditId(null); };
+  const closeForm = () => {
+    setShowForm(false);
+    setEditId(null);
+    resetCustomInputs();
+  };
   const toggleFormArrayValue = (key, value) => setForm(f => {
     const current = Array.isArray(f[key]) ? f[key] : [];
     return {
@@ -1111,8 +1160,32 @@ export default function Admin() {
       [key]: current.includes(value)
         ? current.filter((entry) => entry !== value)
         : [...current, value],
-    };
+      };
   });
+  const applyCustomCategory = () => {
+    const nextCategory = String(customCat || '').trim();
+    if (!nextCategory) return;
+    sf('category', nextCategory);
+    setCustomCat('');
+  };
+  const setCustomDigitalInput = (key, value) => setCustomDigitalInputs((current) => ({ ...current, [key]: value }));
+  const applyCustomDigitalSingleValue = (fieldKey, inputKey = fieldKey) => {
+    const nextValue = String(customDigitalInputs[inputKey] || '').trim();
+    if (!nextValue) return;
+    sf(fieldKey, nextValue);
+    setCustomDigitalInput(inputKey, '');
+  };
+  const addCustomDigitalArrayValue = (fieldKey, inputKey) => {
+    const nextValue = String(customDigitalInputs[inputKey] || '').trim();
+    if (!nextValue) return;
+    setForm((current) => {
+      const currentValues = Array.isArray(current[fieldKey]) ? current[fieldKey] : [];
+      return currentValues.includes(nextValue)
+        ? current
+        : { ...current, [fieldKey]: [...currentValues, nextValue] };
+    });
+    setCustomDigitalInput(inputKey, '');
+  };
 
   const buildProductBody = (f) => {
     const b = { ...f };
@@ -1282,6 +1355,7 @@ const buildTrainingBody = (f) => ({
     try {
       if (editId) await api.put(`${ep}/${editId}`, body, auth);
       else        await api.post(ep, body, auth);
+      loadSavedCategories();
       load(tab, search);
       closeForm();
     } catch (e) { alert(e.response?.data?.message || 'Error saving. Check all required fields.'); }
@@ -1292,6 +1366,7 @@ const buildTrainingBody = (f) => ({
     const ep = tab === 'Featured' || tab === 'Digital Products' ? '/api/products' : ENDPOINTS[tab];
     await api.delete(`${ep}/${id}`, auth);
     setData(d => d.filter(x => x._id !== id));
+    loadSavedCategories();
   };
 
   const toggle = async (id, ep) => {
@@ -1413,26 +1488,6 @@ const buildTrainingBody = (f) => ({
     };
     generateCertificate(buildCertificateBody(previewForm), { autoPrint: false });
   }, [form]);
-
-  const previewSelectedCertificateTemplate = () => {
-    const templateId = form.templateCandidateId || form.templateId;
-    const template = findCertificateTemplate(visibleCertificateTemplates, templateId);
-    if (!template) {
-      alert('Select a saved certificate template first.');
-      return;
-    }
-    previewCertificateTemplateRecord(template);
-  };
-
-  const useSelectedCertificateTemplate = async () => {
-    const templateId = form.templateCandidateId || form.templateId;
-    if (!templateId) {
-      alert('Select a saved certificate template first.');
-      return;
-    }
-    const template = findCertificateTemplate(visibleCertificateTemplates, templateId);
-    await applyCertificateTemplateFromPicker(template, { markChosen: true, keepPickerOpen: false });
-  };
 
   const resetCertificateGenerationChoice = () => {
     setForm((current) => ({
@@ -1578,8 +1633,39 @@ const buildTrainingBody = (f) => ({
     }
   };
 
-  const allCats = [...new Set([...CATEGORY_VALUES.filter(v => v !== 'All'), customCat].filter(Boolean))];
+  const adminDigitalProducts = data.filter((item) => item?.isDigital || item?.category === 'Digital Products');
+  const allCats = collectDistinctValues([
+    ...CATEGORY_VALUES.filter(v => v !== 'All'),
+    ...savedCategories,
+    ...data.map((item) => item?.category),
+    form?.category,
+    customCat,
+  ]);
   const physicalCats = allCats.filter(c => c !== 'Digital Products');
+  const digitalTypeOptions = mergeDigitalOptions(
+    DIGITAL_TYPE_OPTIONS.filter((option) => option.value !== 'all'),
+    [...collectDistinctFieldValues(adminDigitalProducts, 'digitalType'), form?.digitalType, customDigitalInputs.digitalType]
+  );
+  const digitalSkillLevelOptions = mergeDigitalOptions(
+    DIGITAL_SKILL_LEVEL_OPTIONS.filter((option) => option.value !== 'all'),
+    [...collectDistinctFieldValues(adminDigitalProducts, 'digitalSkillLevel'), form?.digitalSkillLevel, customDigitalInputs.digitalSkillLevel]
+  );
+  const digitalFormatOptions = mergeDigitalOptions(
+    DIGITAL_FORMAT_OPTIONS.filter((option) => option.value !== 'all'),
+    [...collectDistinctFieldValues(adminDigitalProducts, 'digitalFormat'), form?.digitalFormat, customDigitalInputs.digitalFormat]
+  );
+  const digitalDurationOptions = mergeDigitalOptions(
+    DIGITAL_DURATION_OPTIONS.filter((option) => option.value !== 'all'),
+    [...collectDistinctFieldValues(adminDigitalProducts, 'digitalDuration'), form?.digitalDuration, customDigitalInputs.digitalDuration]
+  );
+  const digitalTopicOptions = mergeDigitalOptions(
+    DIGITAL_TOPIC_OPTIONS,
+    [...collectDistinctListValues(adminDigitalProducts, 'digitalTopics'), ...(Array.isArray(form?.digitalTopics) ? form.digitalTopics : []), customDigitalInputs.digitalTopic]
+  );
+  const digitalInclusionOptions = mergeDigitalOptions(
+    DIGITAL_INCLUSION_OPTIONS,
+    [...collectDistinctListValues(adminDigitalProducts, 'digitalInclusions'), ...(Array.isArray(form?.digitalInclusions) ? form.digitalInclusions : []), customDigitalInputs.digitalInclusion]
+  );
 
   // ── Login screen ─────────────────────────────────────────────────────────────
   if (!token) return (
@@ -1808,7 +1894,7 @@ const buildTrainingBody = (f) => ({
                   </div>
                   <div className="sm:col-span-2 flex gap-2">
                     <input value={customCat} onChange={e => setCustomCat(e.target.value)} placeholder="Or type a new category..." className={inp+' flex-1'} />
-                    {customCat && <button onClick={() => sf('category',customCat)} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">Use</button>}
+                    {customCat && <button type="button" onClick={applyCustomCategory} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">Use</button>}
                   </div>
                   <input value={form.retailPrice||''}    onChange={e => sf('retailPrice',e.target.value)}    placeholder="Retail price (GHS) *"          type="number" className={inp} />
                   <input value={form.wholesalePrice||''}  onChange={e => sf('wholesalePrice',e.target.value)}  placeholder="Wholesale price (optional)"     type="number" className={inp} />
@@ -1883,15 +1969,26 @@ const buildTrainingBody = (f) => ({
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <input value={form.name||''} onChange={e => sf('name',e.target.value)} placeholder="Digital product name *" className={inp} />
-                  <select value={form.digitalType||'mixed'} onChange={e => sf('digitalType',e.target.value)} className={inp}>
-                    <option value="mixed">Mixed digital bundle</option>
-                    <option value="document">Document / Ebook</option>
-                    <option value="video">Video</option>
-                    <option value="audio">Audio</option>
-                    <option value="template">Template / Toolkit</option>
-                    <option value="bundle">Bundle</option>
-                    <option value="other">Other</option>
-                  </select>
+                  <div className="space-y-2">
+                    <select value={form.digitalType||'mixed'} onChange={e => sf('digitalType',e.target.value)} className={inp}>
+                      {digitalTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <input
+                        value={customDigitalInputs.digitalType}
+                        onChange={e => setCustomDigitalInput('digitalType', e.target.value)}
+                        placeholder="Or add a new digital type"
+                        className={inp + ' flex-1'}
+                      />
+                      {customDigitalInputs.digitalType.trim() && (
+                        <button type="button" onClick={() => applyCustomDigitalSingleValue('digitalType')} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">
+                          Use
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <select value={form.digitalAccessKind||'paid'} onChange={e => sf('digitalAccessKind',e.target.value)} className={inp}>
                     <option value="paid">Paid digital product</option>
                     <option value="free">Free digital product</option>
@@ -1922,29 +2019,74 @@ const buildTrainingBody = (f) => ({
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Learning Filters</p>
                       <p className="mt-1 text-xs text-gray-500">These settings feed the public digital-product filters so learners can find the right course, guide or bundle quickly.</p>
                     </div>
-                    <div className="grid sm:grid-cols-3 gap-3">
-                      <select value={form.digitalSkillLevel||'all-levels'} onChange={e => sf('digitalSkillLevel', e.target.value)} className={inp}>
-                        {DIGITAL_SKILL_LEVEL_OPTIONS.filter(option => option.value !== 'all').map(option => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <select value={form.digitalFormat||''} onChange={e => sf('digitalFormat', e.target.value)} className={inp}>
-                        <option value="">Choose format</option>
-                        {DIGITAL_FORMAT_OPTIONS.filter(option => option.value !== 'all').map(option => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <select value={form.digitalDuration||''} onChange={e => sf('digitalDuration', e.target.value)} className={inp}>
-                        <option value="">Choose duration</option>
-                        {DIGITAL_DURATION_OPTIONS.filter(option => option.value !== 'all').map(option => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
+                    <div className="grid gap-3 xl:grid-cols-3">
+                      <div className="space-y-2">
+                        <select value={form.digitalSkillLevel||'all-levels'} onChange={e => sf('digitalSkillLevel', e.target.value)} className={inp}>
+                          {digitalSkillLevelOptions.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <div className="flex gap-2">
+                          <input
+                            value={customDigitalInputs.digitalSkillLevel}
+                            onChange={e => setCustomDigitalInput('digitalSkillLevel', e.target.value)}
+                            placeholder="Add a new skill level"
+                            className={inp + ' flex-1'}
+                          />
+                          {customDigitalInputs.digitalSkillLevel.trim() && (
+                            <button type="button" onClick={() => applyCustomDigitalSingleValue('digitalSkillLevel')} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">
+                              Use
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <select value={form.digitalFormat||''} onChange={e => sf('digitalFormat', e.target.value)} className={inp}>
+                          <option value="">Choose format</option>
+                          {digitalFormatOptions.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <div className="flex gap-2">
+                          <input
+                            value={customDigitalInputs.digitalFormat}
+                            onChange={e => setCustomDigitalInput('digitalFormat', e.target.value)}
+                            placeholder="Add a new format"
+                            className={inp + ' flex-1'}
+                          />
+                          {customDigitalInputs.digitalFormat.trim() && (
+                            <button type="button" onClick={() => applyCustomDigitalSingleValue('digitalFormat')} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">
+                              Use
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <select value={form.digitalDuration||''} onChange={e => sf('digitalDuration', e.target.value)} className={inp}>
+                          <option value="">Choose duration</option>
+                          {digitalDurationOptions.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <div className="flex gap-2">
+                          <input
+                            value={customDigitalInputs.digitalDuration}
+                            onChange={e => setCustomDigitalInput('digitalDuration', e.target.value)}
+                            placeholder="Add a new duration"
+                            className={inp + ' flex-1'}
+                          />
+                          {customDigitalInputs.digitalDuration.trim() && (
+                            <button type="button" onClick={() => applyCustomDigitalSingleValue('digitalDuration')} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">
+                              Use
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Topic / Subject</p>
                       <div className="flex flex-wrap gap-2">
-                        {DIGITAL_TOPIC_OPTIONS.map(option => (
+                        {digitalTopicOptions.map(option => (
                           <button
                             key={option.value}
                             type="button"
@@ -1959,11 +2101,24 @@ const buildTrainingBody = (f) => ({
                           </button>
                         ))}
                       </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={customDigitalInputs.digitalTopic}
+                          onChange={e => setCustomDigitalInput('digitalTopic', e.target.value)}
+                          placeholder="Add a new topic"
+                          className={inp + ' flex-1'}
+                        />
+                        {customDigitalInputs.digitalTopic.trim() && (
+                          <button type="button" onClick={() => addCustomDigitalArrayValue('digitalTopics', 'digitalTopic')} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">
+                            Add
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Inclusions</p>
                       <div className="flex flex-wrap gap-2">
-                        {DIGITAL_INCLUSION_OPTIONS.map(option => (
+                        {digitalInclusionOptions.map(option => (
                           <button
                             key={option.value}
                             type="button"
@@ -1977,6 +2132,19 @@ const buildTrainingBody = (f) => ({
                             {option.label}
                           </button>
                         ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={customDigitalInputs.digitalInclusion}
+                          onChange={e => setCustomDigitalInput('digitalInclusion', e.target.value)}
+                          placeholder="Add a new inclusion"
+                          className={inp + ' flex-1'}
+                        />
+                        {customDigitalInputs.digitalInclusion.trim() && (
+                          <button type="button" onClick={() => addCustomDigitalArrayValue('digitalInclusions', 'digitalInclusion')} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">
+                            Add
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2217,7 +2385,7 @@ const buildTrainingBody = (f) => ({
                     )}
                   </div>
 
-                  {false && form.templateId && (form.generationMode || 'manual') === 'template' && (() => {
+                  {form.showSelectedTemplateCallout && form.templateId && (form.generationMode || 'manual') === 'template' && (() => {
                     const selectedTemplate = findCertificateTemplate(visibleCertificateTemplates, form.templateId);
                     if (!selectedTemplate) return null;
                     return (
@@ -2702,6 +2870,10 @@ const buildTrainingBody = (f) => ({
                     <option value="">Category</option>
                     {physicalCats.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  <div className="sm:col-span-2 flex gap-2">
+                    <input value={customCat} onChange={e => setCustomCat(e.target.value)} placeholder="Or type a new category..." className={inp+' flex-1'} />
+                    {customCat && <button type="button" onClick={applyCustomCategory} className="px-3 py-2 bg-[#FDC700] text-black text-xs font-bold rounded-xl whitespace-nowrap">Use</button>}
+                  </div>
                   <input value={form.price||''}  onChange={e => sf('price',e.target.value)}  placeholder="Price (GHS)"                      type="number" className={inp} />
                   <input value={form.stock||''}  onChange={e => sf('stock',e.target.value)}  placeholder="Stock quantity (update daily)"    type="number" className={inp} />
                   <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Product description" rows={2} className={inp+' resize-none sm:col-span-2'} />
@@ -3186,9 +3358,9 @@ const buildTrainingBody = (f) => ({
                   </p>
                   <p className="text-xs text-gray-400">{item.digitalFiles?.length || 0} secure file{item.digitalFiles?.length === 1 ? '' : 's'}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
-                    {item.digitalSkillLevel && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, item.digitalSkillLevel, 'All Levels')}</span>}
-                    {item.digitalFormat && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(DIGITAL_FORMAT_OPTIONS, item.digitalFormat)}</span>}
-                    {item.digitalDuration && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(DIGITAL_DURATION_OPTIONS, item.digitalDuration)}</span>}
+                    {item.digitalSkillLevel && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(digitalSkillLevelOptions, item.digitalSkillLevel, 'All Levels')}</span>}
+                    {item.digitalFormat && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(digitalFormatOptions, item.digitalFormat)}</span>}
+                    {item.digitalDuration && <span className="text-xs bg-gray-100 text-gray-600 font-bold px-1.5 py-0.5 rounded-full">{getDigitalOptionLabel(digitalDurationOptions, item.digitalDuration)}</span>}
                     {item.digitalAccessKind === 'free' && <span className="text-xs bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded-full">Free</span>}
                     {item.digitalAccessKind === 'trial' && <span className="text-xs bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">Trial</span>}
                     {item.isSeries && <span className="text-xs bg-purple-50 text-purple-600 font-bold px-1.5 py-0.5 rounded-full">Series</span>}

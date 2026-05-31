@@ -125,6 +125,7 @@ export default function DigitalLibrary() {
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [search, setSearch] = useState('');
   const [libraryFilter, setLibraryFilter] = useState('all');
+  const [libraryPage, setLibraryPage] = useState(1);
   const [viewer, setViewer] = useState(null);
   const [certificateTarget, setCertificateTarget] = useState(null);
   const [certificateForm, setCertificateForm] = useState({
@@ -165,7 +166,7 @@ export default function DigitalLibrary() {
     const ownedProductIds = library.map((item) => item.productId).filter(Boolean);
     if (!ownedProductIds.length) return;
     removeOwnedDigitalItems(ownedProductIds);
-  }, [library]);
+  }, [library, removeOwnedDigitalItems]);
 
   const filteredLibrary = library.filter((item) => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -194,6 +195,16 @@ export default function DigitalLibrary() {
     const bFocused = focusedProductId && String(b.productId) === focusedProductId ? 1 : 0;
     return bFocused - aFocused;
   });
+  const LIBRARY_PAGE_SIZE = 4;
+  const totalLibraryPages = Math.ceil(visibleLibrary.length / LIBRARY_PAGE_SIZE);
+  const pagedLibrary = visibleLibrary.slice(
+    (libraryPage - 1) * LIBRARY_PAGE_SIZE,
+    libraryPage * LIBRARY_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setLibraryPage(1);
+  }, [search, libraryFilter, focusedProductId]);
 
   const openAsset = async (grantId, assetId, mode = 'inline') => {
     if (!customer?.accessToken) {
@@ -496,6 +507,7 @@ export default function DigitalLibrary() {
               </div>
               <p className="mt-3 text-xs text-gray-500">
                 {filteredLibrary.length} of {library.length} product{library.length === 1 ? '' : 's'} shown. Open modules on-site, and only files marked downloadable by admin will show a download action.
+                {filteredLibrary.length > LIBRARY_PAGE_SIZE ? ` Page ${libraryPage} of ${totalLibraryPages}.` : ''}
               </p>
             </div>
 
@@ -516,7 +528,7 @@ export default function DigitalLibrary() {
               </div>
             )}
 
-            {visibleLibrary.map((item) => {
+            {pagedLibrary.map((item) => {
               const certificateIssued = item.certificateStatus === 'generated' && (
                 item.certificateIssued || item.certificate?.issued || item.certificate?.emailStatus === 'sent'
               );
@@ -528,17 +540,19 @@ export default function DigitalLibrary() {
               <div key={item._id} className={`bg-white rounded-3xl border overflow-hidden ${
                 isFocusedProduct ? 'border-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.08)]' : 'border-gray-100'
               }`}>
-                <div className="grid md:grid-cols-[220px_1fr] gap-0">
-                  <div className="bg-[#fcfbf7] min-h-[220px]">
+                <div className="grid lg:grid-cols-[minmax(300px,360px)_1fr] gap-0">
+                  <div className="border-b border-gray-100 bg-[#fcfbf7] lg:border-b-0 lg:border-r">
                     {item.productImage ? (
-                      <img
-                        src={item.productImage}
-                        alt={item.productName}
-                        className="w-full h-full object-cover"
-                        onError={(event) => { event.target.style.display = 'none'; }}
-                      />
+                      <div className="flex h-full min-h-[260px] items-center justify-center p-5 sm:min-h-[320px] sm:p-6">
+                        <img
+                          src={item.productImage}
+                          alt={item.productName}
+                          className="max-h-[340px] w-full rounded-[28px] object-contain"
+                          onError={(event) => { event.target.style.display = 'none'; }}
+                        />
+                      </div>
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300">
+                      <div className="flex min-h-[260px] w-full items-center justify-center text-gray-300 sm:min-h-[320px]">
                         <BookOpen size={42} />
                       </div>
                     )}
@@ -806,6 +820,34 @@ export default function DigitalLibrary() {
               </div>
             );
             })}
+
+            {totalLibraryPages > 1 && (
+              <div className="mt-2 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => {
+                    setLibraryPage((current) => Math.max(1, current - 1));
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={libraryPage === 1}
+                  className="rounded-xl border-2 border-gray-200 px-4 py-2 text-sm font-bold hover:border-black disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-500">
+                  {libraryPage} / {totalLibraryPages}
+                </span>
+                <button
+                  onClick={() => {
+                    setLibraryPage((current) => Math.min(totalLibraryPages, current + 1));
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={libraryPage === totalLibraryPages}
+                  className="rounded-xl border-2 border-gray-200 px-4 py-2 text-sm font-bold hover:border-black disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
