@@ -1,15 +1,15 @@
 import axios from 'axios';
 import nodemailer from 'nodemailer';
 import { buildCertificatePdf } from '../Utils/certificatePdf.mjs';
+import {
+  buildEmailLayout,
+  buildEmailMetaTable,
+  buildEmailNote,
+  buildEmailText,
+  escapeHtml,
+} from './emailTemplateService.mjs';
 
 let transporter = null;
-
-const escapeHtml = (value = '') => String(value)
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
 
 const getSmtpSettings = () => ({
   host: process.env.SMTP_HOST || process.env.MAIL_HOST || '',
@@ -109,30 +109,39 @@ const resolveSender = () => {
 
 const buildCertificateFilename = (record) => String(record.certificateNumber || 'certificate').replace(/[^A-Za-z0-9-_]/g, '-');
 
-const buildCertificateEmailHtml = (record) => `
-  <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-    <p>Hello ${escapeHtml(record.learnerName || 'Learner')},</p>
-    <p>
-      Your certificate${record.certificateTitle ? ` for <strong>${escapeHtml(record.certificateTitle)}</strong>` : ''} is ready.
+const buildCertificateEmailHtml = (record) => buildEmailLayout({
+  previewText: 'Your Belle Kreyashon certificate is ready.',
+  eyebrow: 'Certificate Ready',
+  title: 'Your certificate is ready',
+  greetingHtml: `
+    <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+      Hello ${escapeHtml(record.learnerName || 'Learner')},
     </p>
-    <p>
-      Your PDF certificate is attached to this email. Please download it from your recipient email
-      and save a backup in your cloud storage for safekeeping.
+  `,
+  bodyHtml: `
+    <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+      Your certificate${record.certificateTitle ? ` for <strong style="color:#111111;">${escapeHtml(record.certificateTitle)}</strong>` : ''} is ready.
     </p>
-    <p>Thank you,<br/>Belle Kreyashon</p>
-  </div>
-`;
+    <p style="margin:0 0 18px;color:#374151;font-size:15px;line-height:1.75;">
+      Your PDF certificate is attached to this email. Please download it and save a backup copy for safekeeping.
+    </p>
+  `,
+  metaHtml: buildEmailMetaTable([
+    { label: 'Certificate', value: record.certificateTitle || record.productName || 'Belle Kreyashon Certificate' },
+    { label: 'Reference', value: record.certificateNumber || 'Pending' },
+  ]),
+  noteHtml: buildEmailNote('The certificate PDF is attached to this email.'),
+});
 
-const buildCertificateEmailText = (record) => [
-  `Hello ${record.learnerName || 'Learner'},`,
-  '',
-  `Your certificate${record.certificateTitle ? ` for ${record.certificateTitle}` : ''} is ready.`,
-  'Your PDF certificate is attached to this email.',
-  'Please download it from your recipient email and save a backup in your cloud storage for safekeeping.',
-  '',
-  'Thank you,',
-  'Belle Kreyashon',
-].join('\n');
+const buildCertificateEmailText = (record) => buildEmailText({
+  greeting: `Hello ${record.learnerName || 'Learner'},`,
+  lines: [
+    `Your certificate${record.certificateTitle ? ` for ${record.certificateTitle}` : ''} is ready.`,
+    'Your PDF certificate is attached to this email.',
+    'Please download it and save a backup copy for safekeeping.',
+    `Reference: ${record.certificateNumber || 'Pending'}`,
+  ],
+});
 
 const sendWithResend = async ({ record, sender, subject, html, text, pdf }) => {
   const apiKey = String(process.env.RESEND_API_KEY || '').trim();

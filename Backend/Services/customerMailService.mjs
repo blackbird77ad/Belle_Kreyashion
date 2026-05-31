@@ -1,14 +1,15 @@
 import axios from 'axios';
 import nodemailer from 'nodemailer';
+import {
+  buildEmailLayout,
+  buildEmailList,
+  buildEmailMetaTable,
+  buildEmailNote,
+  buildEmailText,
+  escapeHtml,
+} from './emailTemplateService.mjs';
 
 let transporter = null;
-
-const escapeHtml = (value = '') => String(value)
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
 
 const normalizeConfiguredValue = (value = '') => String(value || '').trim().replace(/^['"]|['"]$/g, '');
 
@@ -169,41 +170,57 @@ const buildFrontendLink = (path = '') => {
   return `${base}${cleanPath}`;
 };
 
-const buildButton = (label, href) => `
-  <a
-    href="${href}"
-    style="display:inline-block;padding:12px 18px;border-radius:14px;background:#111111;color:#ffffff;text-decoration:none;font-weight:700"
-  >${escapeHtml(label)}</a>
-`;
+const toTitleCase = (value = '') => {
+  const input = String(value || '').trim();
+  if (!input) return '';
+
+  return input
+    .split(/[\s-_]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
+};
 
 export const sendCustomerWelcomeEmail = async ({ customer, verificationUrl = '' }) => {
   if (!customer?.email) return null;
 
-  const dashboardUrl = buildFrontendLink('/account');
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-      <p>Hello ${escapeHtml(customer.name || 'there')},</p>
-      <p>Your Belle Kreyashon customer account is ready.</p>
-      <p>
-        You can now sign in anytime to track your orders, open your digital products,
-        and manage your learning history from one simple dashboard.
+  const dashboardUrl = buildFrontendLink('/track');
+  const actions = [
+    { label: 'Open My Dashboard', href: dashboardUrl, tone: 'primary' },
+    ...(verificationUrl ? [{ label: 'Confirm My Email', href: verificationUrl, tone: 'secondary' }] : []),
+  ];
+
+  const html = buildEmailLayout({
+    previewText: 'Your Belle Kreyashon customer account is ready.',
+    eyebrow: 'Customer Account',
+    title: 'Welcome to Belle Kreyashon',
+    greetingHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Hello ${escapeHtml(customer.name || 'there')},
       </p>
-      <p>${buildButton('Open My Dashboard', dashboardUrl)}</p>
-      ${verificationUrl ? `<p>Please also confirm your email address:</p><p>${buildButton('Confirm My Email', verificationUrl)}</p>` : ''}
-      <p>Thank you,<br/>Belle Kreyashon</p>
-    </div>
-  `;
-  const text = [
-    `Hello ${customer.name || 'there'},`,
-    '',
-    'Your Belle Kreyashon customer account is ready.',
-    'You can now sign in anytime to track your orders, open your digital products, and manage your history.',
-    `Dashboard: ${dashboardUrl}`,
-    verificationUrl ? `Confirm your email: ${verificationUrl}` : '',
-    '',
-    'Thank you,',
-    'Belle Kreyashon',
-  ].filter(Boolean).join('\n');
+    `,
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Your Belle Kreyashon customer account is ready.
+      </p>
+      <p style="margin:0 0 18px;color:#374151;font-size:15px;line-height:1.75;">
+        You can now sign in anytime to track orders, manage digital products, and keep your customer history in one place.
+      </p>
+    `,
+    actions,
+    noteHtml: verificationUrl
+      ? buildEmailNote('Please confirm your email so you can receive password resets, order updates, and support messages without interruption.')
+      : '',
+  });
+
+  const text = buildEmailText({
+    greeting: `Hello ${customer.name || 'there'},`,
+    lines: [
+      'Your Belle Kreyashon customer account is ready.',
+      'You can now sign in anytime to track orders, manage digital products, and keep your customer history in one place.',
+    ],
+    actions,
+  });
 
   return sendCustomerEmail({
     to: customer.email,
@@ -216,26 +233,34 @@ export const sendCustomerWelcomeEmail = async ({ customer, verificationUrl = '' 
 export const sendCustomerVerificationEmail = async ({ customer, verificationUrl }) => {
   if (!customer?.email || !verificationUrl) return null;
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-      <p>Hello ${escapeHtml(customer.name || 'there')},</p>
-      <p>Please confirm your Belle Kreyashon email address to keep your account up to date.</p>
-      <p>${buildButton('Confirm Email', verificationUrl)}</p>
-      <p>If you did not request this, you can ignore this email.</p>
-      <p>Thank you,<br/>Belle Kreyashon</p>
-    </div>
-  `;
-  const text = [
-    `Hello ${customer.name || 'there'},`,
-    '',
-    'Please confirm your Belle Kreyashon email address:',
-    verificationUrl,
-    '',
-    'If you did not request this, you can ignore this email.',
-    '',
-    'Thank you,',
-    'Belle Kreyashon',
-  ].join('\n');
+  const actions = [{ label: 'Confirm Email', href: verificationUrl, tone: 'primary' }];
+
+  const html = buildEmailLayout({
+    previewText: 'Confirm your Belle Kreyashon email address.',
+    eyebrow: 'Email Confirmation',
+    title: 'Confirm your email address',
+    greetingHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Hello ${escapeHtml(customer.name || 'there')},
+      </p>
+    `,
+    bodyHtml: `
+      <p style="margin:0 0 18px;color:#374151;font-size:15px;line-height:1.75;">
+        Please confirm your Belle Kreyashon email address to keep your account up to date.
+      </p>
+    `,
+    actions,
+    noteHtml: buildEmailNote('If you did not request this, you can ignore this email.'),
+  });
+
+  const text = buildEmailText({
+    greeting: `Hello ${customer.name || 'there'},`,
+    lines: [
+      'Please confirm your Belle Kreyashon email address to keep your account up to date.',
+      'If you did not request this, you can ignore this email.',
+    ],
+    actions,
+  });
 
   return sendCustomerEmail({
     to: customer.email,
@@ -248,26 +273,34 @@ export const sendCustomerVerificationEmail = async ({ customer, verificationUrl 
 export const sendCustomerPasswordResetEmail = async ({ customer, resetUrl }) => {
   if (!customer?.email || !resetUrl) return null;
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-      <p>Hello ${escapeHtml(customer.name || 'there')},</p>
-      <p>We received a request to reset your Belle Kreyashon password.</p>
-      <p>${buildButton('Reset Password', resetUrl)}</p>
-      <p>This link expires soon. If you did not request a password reset, you can ignore this email.</p>
-      <p>Thank you,<br/>Belle Kreyashon</p>
-    </div>
-  `;
-  const text = [
-    `Hello ${customer.name || 'there'},`,
-    '',
-    'We received a request to reset your Belle Kreyashon password.',
-    resetUrl,
-    '',
-    'This link expires soon. If you did not request a password reset, you can ignore this email.',
-    '',
-    'Thank you,',
-    'Belle Kreyashon',
-  ].join('\n');
+  const actions = [{ label: 'Reset Password', href: resetUrl, tone: 'primary' }];
+
+  const html = buildEmailLayout({
+    previewText: 'Reset your Belle Kreyashon password.',
+    eyebrow: 'Password Reset',
+    title: 'Reset your password',
+    greetingHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Hello ${escapeHtml(customer.name || 'there')},
+      </p>
+    `,
+    bodyHtml: `
+      <p style="margin:0 0 18px;color:#374151;font-size:15px;line-height:1.75;">
+        We received a request to reset your Belle Kreyashon password.
+      </p>
+    `,
+    actions,
+    noteHtml: buildEmailNote('This link expires soon. If you did not request a password reset, you can ignore this email.'),
+  });
+
+  const text = buildEmailText({
+    greeting: `Hello ${customer.name || 'there'},`,
+    lines: [
+      'We received a request to reset your Belle Kreyashon password.',
+      'This link expires soon. If you did not request a password reset, you can ignore this email.',
+    ],
+    actions,
+  });
 
   return sendCustomerEmail({
     to: customer.email,
@@ -281,40 +314,55 @@ export const sendCustomerOrderEmail = async ({ order }) => {
   const email = String(order?.customer?.email || '').trim().toLowerCase();
   if (!email) return null;
 
-  const dashboardUrl = buildFrontendLink('/account');
+  const dashboardUrl = buildFrontendLink('/track');
   const libraryUrl = buildFrontendLink('/digital-library');
   const hasDigitalItems = (order.items || []).some((item) => item.isDigital);
-  const itemsHtml = (order.items || []).map((item) => (
-    `<li>${escapeHtml(item.name || 'Item')}${item.variant ? ` (${escapeHtml(item.variant)})` : ''} x${Number(item.qty) || 0}</li>`
-  )).join('');
+  const itemCount = (order.items || []).reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const itemLines = (order.items || []).map((item) => (
+    `${item.name || 'Item'}${item.variant ? ` (${item.variant})` : ''} x${Number(item.qty) || 0}`
+  ));
+  const actions = [
+    { label: 'View My Dashboard', href: dashboardUrl, tone: 'primary' },
+    ...(hasDigitalItems ? [{ label: 'Open My Digital Library', href: libraryUrl, tone: 'secondary' }] : []),
+  ];
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-      <p>Hello ${escapeHtml(order.customer?.name || 'there')},</p>
-      <p>Your Belle Kreyashon order <strong>${escapeHtml(order.orderId || '')}</strong> has been received successfully.</p>
-      <ul>${itemsHtml}</ul>
-      <p><strong>Total:</strong> GHS ${Number(order.total || 0).toLocaleString()}</p>
-      <p>${buildButton('View My Dashboard', dashboardUrl)}</p>
-      ${hasDigitalItems ? `<p>${buildButton('Open My Digital Library', libraryUrl)}</p>` : ''}
-      <p>We’ll keep you updated as your order moves forward.</p>
-      <p>Thank you,<br/>Belle Kreyashon</p>
-    </div>
-  `;
-  const text = [
-    `Hello ${order.customer?.name || 'there'},`,
-    '',
-    `Your Belle Kreyashon order ${order.orderId || ''} has been received successfully.`,
-    ...(order.items || []).map((item) => `- ${item.name || 'Item'}${item.variant ? ` (${item.variant})` : ''} x${Number(item.qty) || 0}`),
-    '',
-    `Total: GHS ${Number(order.total || 0).toLocaleString()}`,
-    `Dashboard: ${dashboardUrl}`,
-    hasDigitalItems ? `Digital library: ${libraryUrl}` : '',
-    '',
-    'We’ll keep you updated as your order moves forward.',
-    '',
-    'Thank you,',
-    'Belle Kreyashon',
-  ].filter(Boolean).join('\n');
+  const html = buildEmailLayout({
+    previewText: `Your order ${order.orderId || ''} has been received.`,
+    eyebrow: 'Order Received',
+    title: 'Your order is in',
+    greetingHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Hello ${escapeHtml(order.customer?.name || 'there')},
+      </p>
+    `,
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Your Belle Kreyashon order <strong style="color:#111111;">${escapeHtml(order.orderId || '')}</strong> has been received successfully.
+      </p>
+      ${buildEmailList(itemLines)}
+    `,
+    metaHtml: buildEmailMetaTable([
+      { label: 'Order ID', value: order.orderId || 'Pending' },
+      { label: 'Total', value: `GHS ${Number(order.total || 0).toLocaleString()}` },
+      { label: 'Items', value: `${itemCount} item${itemCount === 1 ? '' : 's'}` },
+      { label: 'Fulfillment', value: toTitleCase(order.fulfillment || order.orderType || 'Order') },
+    ]),
+    actions,
+    noteHtml: buildEmailNote('We will keep you updated as your order moves forward.'),
+  });
+
+  const text = buildEmailText({
+    greeting: `Hello ${order.customer?.name || 'there'},`,
+    lines: [
+      `Your Belle Kreyashon order ${order.orderId || ''} has been received successfully.`,
+      ...itemLines.map((item) => `- ${item}`),
+      `Total: GHS ${Number(order.total || 0).toLocaleString()}`,
+      `Items: ${itemCount}`,
+      `Fulfillment: ${toTitleCase(order.fulfillment || order.orderType || 'Order')}`,
+      'We will keep you updated as your order moves forward.',
+    ],
+    actions,
+  });
 
   return sendCustomerEmail({
     to: email,
@@ -328,33 +376,46 @@ export const sendCustomerBookingEmail = async ({ booking }) => {
   const email = String(booking?.customer?.email || '').trim().toLowerCase();
   if (!email) return null;
 
-  const dashboardUrl = buildFrontendLink('/account');
+  const dashboardUrl = buildFrontendLink('/track');
   const sessionName = booking.trainingTitle || booking.consultationTitle || booking.bookingId || 'your booking';
   const typeLabel = booking.type === 'training' ? 'training booking' : 'consultation booking';
+  const actions = [{ label: 'Open My Dashboard', href: dashboardUrl, tone: 'primary' }];
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.7">
-      <p>Hello ${escapeHtml(booking.customer?.name || 'there')},</p>
-      <p>Your Belle Kreyashon ${escapeHtml(typeLabel)} is confirmed.</p>
-      <p><strong>${escapeHtml(sessionName)}</strong></p>
-      <p>Booking ID: <strong>${escapeHtml(booking.bookingId || '')}</strong></p>
-      <p>Amount paid: <strong>GHS ${Number(booking.amount || 0).toLocaleString()}</strong></p>
-      <p>${buildButton('Open My Dashboard', dashboardUrl)}</p>
-      <p>Thank you,<br/>Belle Kreyashon</p>
-    </div>
-  `;
-  const text = [
-    `Hello ${booking.customer?.name || 'there'},`,
-    '',
-    `Your Belle Kreyashon ${typeLabel} is confirmed.`,
-    sessionName,
-    `Booking ID: ${booking.bookingId || ''}`,
-    `Amount paid: GHS ${Number(booking.amount || 0).toLocaleString()}`,
-    `Dashboard: ${dashboardUrl}`,
-    '',
-    'Thank you,',
-    'Belle Kreyashon',
-  ].join('\n');
+  const html = buildEmailLayout({
+    previewText: `Your ${typeLabel} is confirmed.`,
+    eyebrow: booking.type === 'training' ? 'Training Booking' : 'Consultation Booking',
+    title: 'Booking confirmed',
+    greetingHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Hello ${escapeHtml(booking.customer?.name || 'there')},
+      </p>
+    `,
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Your Belle Kreyashon ${escapeHtml(typeLabel)} is confirmed.
+      </p>
+      <p style="margin:0 0 18px;color:#111111;font-size:18px;line-height:1.5;font-weight:700;">
+        ${escapeHtml(sessionName)}
+      </p>
+    `,
+    metaHtml: buildEmailMetaTable([
+      { label: 'Booking ID', value: booking.bookingId || 'Pending' },
+      { label: 'Type', value: toTitleCase(booking.type || 'Booking') },
+      { label: 'Amount Paid', value: `GHS ${Number(booking.amount || 0).toLocaleString()}` },
+    ]),
+    actions,
+  });
+
+  const text = buildEmailText({
+    greeting: `Hello ${booking.customer?.name || 'there'},`,
+    lines: [
+      `Your Belle Kreyashon ${typeLabel} is confirmed.`,
+      sessionName,
+      `Booking ID: ${booking.bookingId || ''}`,
+      `Amount paid: GHS ${Number(booking.amount || 0).toLocaleString()}`,
+    ],
+    actions,
+  });
 
   return sendCustomerEmail({
     to: email,

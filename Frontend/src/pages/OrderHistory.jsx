@@ -48,6 +48,16 @@ const ACTIVITY_FILTERS = [
   { key: 'digital', label: 'Digital Orders' },
 ];
 
+const ACTIVITY_STATUS_FILTERS = [
+  { key: 'all', label: 'All Status' },
+  { key: 'active', label: 'In Progress' },
+  { key: 'new', label: 'Received' },
+  { key: 'processing', label: 'Processing' },
+  { key: 'delivery-ongoing', label: 'On The Way' },
+  { key: 'delivered', label: 'Delivered' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
+
 const ACTIVITY_SORT_OPTIONS = [
   { value: 'newest', label: 'Newest First' },
   { value: 'oldest', label: 'Oldest First' },
@@ -818,6 +828,7 @@ export default function OrderHistory() {
   const [error, setError] = useState('');
   const [mainTab, setMainTab] = useState('orders');
   const [activityFilter, setActivityFilter] = useState('all');
+  const [activityStatus, setActivityStatus] = useState('all');
   const [activitySearch, setActivitySearch] = useState('');
   const [activitySort, setActivitySort] = useState('newest');
   const [activityView, setActivityView] = useState('grid');
@@ -996,8 +1007,15 @@ export default function OrderHistory() {
       return true;
     };
 
+    const matchesStatus = (entry) => {
+      if (activityStatus === 'all') return true;
+      if (entry.entityType !== 'order') return false;
+      if (activityStatus === 'active') return ACTIVE_ORDER_STATUSES.includes(entry.status);
+      return entry.status === activityStatus;
+    };
+
     const results = activityEntries.filter((entry) => (
-      matchesFilter(entry) && (!query || entry.searchText.includes(query))
+      matchesFilter(entry) && matchesStatus(entry) && (!query || entry.searchText.includes(query))
     ));
 
     return [...results].sort((left, right) => {
@@ -1013,7 +1031,7 @@ export default function OrderHistory() {
       if (activitySort === 'name') return String(left.title || '').localeCompare(String(right.title || ''));
       return new Date(right.createdAt) - new Date(left.createdAt);
     });
-  }, [activityEntries, activityFilter, activitySearch, activitySort]);
+  }, [activityEntries, activityFilter, activitySearch, activitySort, activityStatus]);
 
   const filteredLibrary = useMemo(() => {
     const query = librarySearch.trim().toLowerCase();
@@ -1068,7 +1086,13 @@ export default function OrderHistory() {
   useEffect(() => {
     const resetActivityPage = () => setActivityPage(1);
     resetActivityPage();
-  }, [activityFilter, activitySearch, activitySort, activityView, mainTab]);
+  }, [activityFilter, activityStatus, activitySearch, activitySort, activityView, mainTab]);
+
+  useEffect(() => {
+    if (activityFilter === 'bookings' || activityFilter === 'training') {
+      setActivityStatus('all');
+    }
+  }, [activityFilter]);
 
   useEffect(() => {
     const resetLibraryPage = () => setLibraryPage(1);
@@ -1321,6 +1345,21 @@ export default function OrderHistory() {
                 ))}
               </div>
 
+              {activityFilter !== 'bookings' && activityFilter !== 'training' && (
+                <div className="flex flex-wrap gap-2">
+                  {ACTIVITY_STATUS_FILTERS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setActivityStatus(option.key)}
+                      className={`rounded-full border px-3 py-2 text-xs font-bold transition-all ${activityStatus === option.key ? 'border-black bg-black text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-black'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {loaded && filteredActivities.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed border-gray-200 bg-[#fcfbf7] px-6 py-14 text-center">
                   <Package size={38} className="mx-auto mb-4 text-gray-300" />
@@ -1331,7 +1370,7 @@ export default function OrderHistory() {
                 </div>
               ) : (
                 <>
-                  <div className={activityView === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4' : 'flex flex-col gap-4'}>
+                  <div className={activityView === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'flex flex-col gap-4'}>
                     {pagedActivities.map((entry) => (
                       <ActivityCard key={entry.id} entry={entry} view={activityView} onOpen={setSelectedActivity} />
                     ))}
@@ -1392,7 +1431,7 @@ export default function OrderHistory() {
                   </div>
                 ) : (
                   <>
-                    <div className={libraryView === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4' : 'flex flex-col gap-4'}>
+                    <div className={libraryView === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'flex flex-col gap-4'}>
                       {pagedLibrary.map((item) => (
                         <LibraryCard key={item._id} item={item} view={libraryView} onOpen={setSelectedLibraryItem} />
                       ))}
