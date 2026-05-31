@@ -53,9 +53,9 @@ export default function About() {
     <div className="pt-16 min-h-screen">
       <SEO
         title="About Belle Kreyashon"
-        description="Belle Kreyashon is a growing Ghana-based store for products, training, consultations and partnership opportunities. Shop across multiple categories from one trusted platform."
+        description="Belle Kreyashon is a Ghana-based commerce and learning platform for shopping, digital products, customer access, training, consultations, sourcing support and partnership opportunities."
         url="/about"
-        keywords="about Belle Kreyashon, Ghana beauty brand, Belle Kreyashon Accra, trusted online store Ghana, beauty training brand Ghana"
+        keywords="about Belle Kreyashon, Ghana ecommerce platform, digital products Ghana, training and consultation Ghana, trusted online store Ghana, Belle Kreyashon Accra"
       />
 
       {/* Hero */}
@@ -68,7 +68,7 @@ export default function About() {
           <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Our Story</p>
           <h1 className="text-4xl md:text-6xl font-extrabold mb-4">About Belle Kreyashon</h1>
           <p className="text-gray-300 text-base leading-relaxed">
-            A growing store for shopping, services, partnerships and business support, all in one place.
+            A growing web app for shopping, digital access, customer support, learning, sourcing and brand growth, all in one place.
           </p>
         </div>
       </div>
@@ -78,19 +78,15 @@ export default function About() {
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>
             <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Who We Are</p>
-            <h2 className="text-2xl md:text-3xl font-extrabold mb-4">A Store Built For Shopping And Growth</h2>
+            <h2 className="text-2xl md:text-3xl font-extrabold mb-4">A full commerce, learning and customer-access platform</h2>
             <p className="text-gray-600 leading-relaxed mb-4">
-              Belle Kreyashon has grown into a broader ecommerce and service platform designed to make quality
-              products easier to find in one place. From beauty and fashion to accessories, wellness and everyday
-              essentials, we are building a store that serves both individual shoppers and business-minded customers.
+              Belle Kreyashon has grown beyond a regular online store into a broader web platform designed to make shopping, learning and customer support easier to access in one place. From beauty and fashion to accessories, wellness, tools and everyday essentials, we serve both individual shoppers and business-minded customers through one connected experience.
             </p>
             <p className="text-gray-600 leading-relaxed mb-4">
-              Alongside the shop, we create room for trainings, consultations and partner-led opportunities. That
-              means the platform supports learning, collaboration and commerce, not just product sales.
+              Alongside the physical shop, the platform now supports digital products, secure customer sign-in, order tracking and a protected digital library so customers can return to what they bought, manage their access and continue using the service after checkout.
             </p>
             <p className="text-gray-600 leading-relaxed">
-              Whether you are shopping for yourself, sourcing for your business, or looking to collaborate through
-              training, sponsorship or partnership, Belle Kreyashon is built to connect you to what moves you forward.
+              We also create room for trainings, consultations, importation support, featured-brand opportunities and partnerships. Whether you are shopping for yourself, building a business, learning a new skill, sourcing products from abroad or looking for a growth-focused collaboration, Belle Kreyashon is built to move you forward.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">

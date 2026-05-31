@@ -3,8 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
-  Download,
-  Lock,
+  ChevronDown,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -91,6 +90,38 @@ const FilterChipGroup = ({ title, options, values, onToggle }) => (
   </div>
 );
 
+const FilterToggle = ({ label, count = 0, open, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-bold transition-all ${
+      open
+        ? 'border-black bg-black text-white'
+        : 'border-gray-200 bg-[#fcfbf7] text-gray-700 hover:border-black hover:text-black'
+    }`}
+  >
+    <span>{label}</span>
+    {count > 0 && (
+      <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] ${
+        open ? 'bg-white/15 text-white' : 'bg-black text-white'
+      }`}>
+        {count}
+      </span>
+    )}
+    <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+  </button>
+);
+
+const FilterPanel = ({ title, subtitle, children }) => (
+  <div className="rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4">
+    <div className="mb-3">
+      <p className="text-sm font-extrabold text-black">{title}</p>
+      {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
+    </div>
+    {children}
+  </div>
+);
+
 export default function DigitalProducts() {
   const { customer } = useCustomer();
   const { removeOwnedDigitalItems } = useCart();
@@ -113,6 +144,13 @@ export default function DigitalProducts() {
   const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [openFilterPanels, setOpenFilterPanels] = useState({
+    basics: false,
+    sortPrice: false,
+    quick: false,
+    topics: false,
+    inclusions: false,
+  });
   const [optionCatalog, setOptionCatalog] = useState({
     digitalTypes: [],
     digitalSkillLevels: [],
@@ -302,6 +340,13 @@ export default function DigitalProducts() {
     setPage(1);
   };
 
+  const toggleFilterPanel = (panelKey) => {
+    setOpenFilterPanels((current) => ({
+      ...current,
+      [panelKey]: !current[panelKey],
+    }));
+  };
+
   const activeFilterCount = [
     search.trim(),
     digitalType !== 'all',
@@ -316,6 +361,36 @@ export default function DigitalProducts() {
     minPrice,
     maxPrice,
   ].filter(Boolean).length;
+
+  const panelCounts = {
+    basics: [
+      digitalType !== 'all',
+      skillLevel !== 'all',
+      formatFilter !== 'all',
+    ].filter(Boolean).length,
+    sortPrice: [
+      sort !== 'newest',
+      durationFilter !== 'all',
+      priceType !== 'all',
+      minPrice,
+      maxPrice,
+    ].filter(Boolean).length,
+    quick: special ? 1 : 0,
+    topics: topics.length,
+    inclusions: inclusions.length,
+  };
+  const activeSortLabel = SORT_OPTIONS.find((item) => item.value === sort)?.label || 'Newest First';
+  const activeTypeLabel = getDigitalOptionLabel(digitalTypeOptions, digitalType) || 'All Types';
+  const activeSkillLevelLabel = getDigitalOptionLabel(skillLevelOptions, skillLevel) || 'All Skill Levels';
+  const activeFormatLabel = getDigitalOptionLabel(formatOptions, formatFilter) || 'All Formats';
+  const activeDurationLabel = getDigitalOptionLabel(durationOptions, durationFilter) || 'Any Duration';
+  const activePriceTypeLabel = getDigitalOptionLabel(DIGITAL_PRICE_TYPE_OPTIONS, priceType) || 'Any Price Type';
+  const activeTopicSummary = topics.length
+    ? topics.slice(0, 2).map((topic) => getDigitalOptionLabel(topicOptions, topic)).join(' • ')
+    : 'Filter by subject';
+  const activeInclusionSummary = inclusions.length
+    ? inclusions.slice(0, 2).map((inclusion) => getDigitalOptionLabel(inclusionOptions, inclusion)).join(' • ')
+    : 'Filter by what is included';
 
   const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.ceil(products.length / PAGE_SIZE);
@@ -363,44 +438,36 @@ export default function DigitalProducts() {
         schema={seoSchema}
       />
 
-      <section className="bg-black text-white px-4 py-12">
-        <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
-          <div>
-            <p className="text-[#FDC700] text-xs font-bold uppercase tracking-[0.22em] mb-3">Digital Products</p>
-            <h1 className="text-3xl md:text-5xl font-extrabold leading-tight">Protected learning access with clear filters for how people actually learn.</h1>
-            <p className="text-sm md:text-base text-gray-300 leading-relaxed max-w-2xl mt-4">
-              Browse by skill level, format, duration, topic, certification, downloadable assets and pricing, then open the product page for secure library access after payment.
+      <section className="bg-black px-4 py-6 text-white md:py-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-[#FDC700]">Digital Products</p>
+            <h1 className="text-2xl font-extrabold leading-tight sm:text-3xl md:text-4xl">
+              Find digital guides, classes, templates and tools that match your level.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-300 md:text-base">
+              Use quick filters for topic, format, price and skill level, then open any product for full details before you buy.
             </p>
-            <div className="flex flex-wrap gap-3 mt-6">
+            <div className="mt-5 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-white/75">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Guides</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Templates</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Courses</span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Bundles</span>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-3">
               <Link
                 to="/digital-library"
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#FDC700] text-black text-sm font-extrabold hover:bg-yellow-300"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FDC700] px-5 py-3 text-sm font-extrabold text-black hover:bg-yellow-300"
               >
                 Open My Library
               </Link>
               <Link
                 to="/shop"
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/15 text-sm font-bold text-white hover:border-white"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white hover:border-white"
               >
                 Browse Full Shop
               </Link>
             </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            {[
-              { icon: <ShieldCheck size={18} />, title: 'Protected access', text: 'Paid items unlock inside your customer library after payment.' },
-              { icon: <Download size={18} />, title: 'View-first delivery', text: 'Downloads can be disabled so learners stay inside your on-site library experience.' },
-              { icon: <Lock size={18} />, title: 'Customer-only use', text: 'Access stays tied to the paying customer instead of being openly exposed.' },
-            ].map((item) => (
-              <div key={item.title} className="rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
-                <div className="w-10 h-10 rounded-2xl bg-[#FDC700] text-black flex items-center justify-center mb-3">
-                  {item.icon}
-                </div>
-                <h2 className="font-extrabold text-sm mb-1">{item.title}</h2>
-                <p className="text-xs text-gray-300 leading-relaxed">{item.text}</p>
-              </div>
-            ))}
           </div>
         </div>
       </section>
@@ -475,7 +542,7 @@ export default function DigitalProducts() {
               className="lg:hidden inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700"
             >
               <SlidersHorizontal size={16} />
-              Filters
+              Refine
               {activeFilterCount > 0 && (
                 <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-black px-1 text-[11px] text-white">
                   {activeFilterCount}
@@ -485,119 +552,48 @@ export default function DigitalProducts() {
           </div>
 
           <div className={`${showFilters ? 'block' : 'hidden'} lg:block`}>
-            <div className="rounded-3xl border border-gray-200 bg-white p-4 sm:p-5 space-y-5">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Sort By</span>
-                  <select
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
-                  >
-                    {SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Digital Type</span>
-                  <select
-                    value={digitalType}
-                    onChange={(event) => setDigitalType(event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
-                  >
-                    {digitalTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Skill Level</span>
-                  <select
-                    value={skillLevel}
-                    onChange={(event) => setSkillLevel(event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
-                  >
-                    {skillLevelOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Format</span>
-                  <select
-                    value={formatFilter}
-                    onChange={(event) => setFormatFilter(event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
-                  >
-                    {formatOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr_auto]">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Duration</span>
-                  <select
-                    value={durationFilter}
-                    onChange={(event) => setDurationFilter(event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
-                  >
-                    {durationOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Price Type</span>
-                  <select
-                    value={priceType}
-                    onChange={(event) => setPriceType(event.target.value)}
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
-                  >
-                    {DIGITAL_PRICE_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Min Price</span>
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={minPrice}
-                    onChange={(event) => setMinPrice(event.target.value)}
-                    placeholder="0"
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+            <div className="rounded-3xl border border-gray-200 bg-white p-4 sm:p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  <FilterToggle
+                    label="Core Filters"
+                    count={panelCounts.basics}
+                    open={openFilterPanels.basics}
+                    onClick={() => toggleFilterPanel('basics')}
                   />
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Max Price</span>
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={maxPrice}
-                    onChange={(event) => setMaxPrice(event.target.value)}
-                    placeholder="Any"
-                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  <FilterToggle
+                    label="Sort & Price"
+                    count={panelCounts.sortPrice}
+                    open={openFilterPanels.sortPrice}
+                    onClick={() => toggleFilterPanel('sortPrice')}
                   />
-                </label>
+                  <FilterToggle
+                    label="Quick Picks"
+                    count={panelCounts.quick}
+                    open={openFilterPanels.quick}
+                    onClick={() => toggleFilterPanel('quick')}
+                  />
+                  <FilterToggle
+                    label="Topics"
+                    count={panelCounts.topics}
+                    open={openFilterPanels.topics}
+                    onClick={() => toggleFilterPanel('topics')}
+                  />
+                  <FilterToggle
+                    label="What's Included"
+                    count={panelCounts.inclusions}
+                    open={openFilterPanels.inclusions}
+                    onClick={() => toggleFilterPanel('inclusions')}
+                  />
+                </div>
 
-                <div className="flex flex-col gap-1.5 justify-end">
-                  <span className="hidden xl:block text-xs font-bold uppercase tracking-[0.16em] text-transparent">Reset</span>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold text-gray-500">
+                    {!loading ? `${products.length} result${products.length !== 1 ? 's' : ''}` : 'Loading...'}
+                  </p>
                   <button
                     onClick={clearAll}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-2.5 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
                   >
                     <RotateCcw size={15} />
                     Clear All
@@ -605,44 +601,187 @@ export default function DigitalProducts() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Quick Filters</p>
-                  <p className="text-xs font-bold text-gray-500">
-                    {!loading ? `${products.length} digital product${products.length !== 1 ? 's' : ''}` : 'Loading...'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {SPECIAL_FILTERS.map((filter) => (
-                    <button
-                      key={filter.key}
-                      onClick={() => setSpecial((current) => current === filter.key ? '' : filter.key)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-all ${
-                        special === filter.key
-                          ? 'border-black bg-black text-white'
-                          : 'border-gray-200 bg-white text-gray-600 hover:border-black'
-                      }`}
+              {(openFilterPanels.basics || openFilterPanels.sortPrice || openFilterPanels.quick || openFilterPanels.topics || openFilterPanels.inclusions) && (
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {openFilterPanels.basics && (
+                    <FilterPanel
+                      title="Core Filters"
+                      subtitle={`Type: ${activeTypeLabel} • Level: ${activeSkillLevelLabel} • Format: ${activeFormatLabel}`}
                     >
-                      {filter.icon}
-                      {filter.label}
-                    </button>
-                  ))}
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Digital Type</span>
+                          <select
+                            value={digitalType}
+                            onChange={(event) => setDigitalType(event.target.value)}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          >
+                            {digitalTypeOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Skill Level</span>
+                          <select
+                            value={skillLevel}
+                            onChange={(event) => setSkillLevel(event.target.value)}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          >
+                            {skillLevelOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Format</span>
+                          <select
+                            value={formatFilter}
+                            onChange={(event) => setFormatFilter(event.target.value)}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          >
+                            {formatOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </FilterPanel>
+                  )}
+
+                  {openFilterPanels.sortPrice && (
+                    <FilterPanel
+                      title="Sort & Price"
+                      subtitle={`Sort: ${activeSortLabel} • Duration: ${activeDurationLabel} • Price: ${activePriceTypeLabel}`}
+                    >
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Sort By</span>
+                          <select
+                            value={sort}
+                            onChange={(event) => setSort(event.target.value)}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          >
+                            {SORT_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Duration</span>
+                          <select
+                            value={durationFilter}
+                            onChange={(event) => setDurationFilter(event.target.value)}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          >
+                            {durationOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Price Type</span>
+                          <select
+                            value={priceType}
+                            onChange={(event) => setPriceType(event.target.value)}
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          >
+                            {DIGITAL_PRICE_TYPE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Min Price</span>
+                          <input
+                            type="number"
+                            min="0"
+                            inputMode="numeric"
+                            value={minPrice}
+                            onChange={(event) => setMinPrice(event.target.value)}
+                            placeholder="0"
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          />
+                        </label>
+
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Max Price</span>
+                          <input
+                            type="number"
+                            min="0"
+                            inputMode="numeric"
+                            value={maxPrice}
+                            onChange={(event) => setMaxPrice(event.target.value)}
+                            placeholder="Any"
+                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                          />
+                        </label>
+                      </div>
+                    </FilterPanel>
+                  )}
+
+                  {openFilterPanels.quick && (
+                    <FilterPanel
+                      title="Quick Picks"
+                      subtitle="Tap one to narrow the list faster."
+                    >
+                      <div className="flex flex-wrap gap-2">
+                        {SPECIAL_FILTERS.map((filter) => (
+                          <button
+                            key={filter.key}
+                            onClick={() => setSpecial((current) => current === filter.key ? '' : filter.key)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-all ${
+                              special === filter.key
+                                ? 'border-black bg-black text-white'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-black'
+                            }`}
+                          >
+                            {filter.icon}
+                            {filter.label}
+                          </button>
+                        ))}
+                      </div>
+                    </FilterPanel>
+                  )}
+
+                  {openFilterPanels.topics && (
+                    <div className="xl:col-span-2">
+                      <FilterPanel
+                        title="Topics"
+                        subtitle={activeTopicSummary}
+                      >
+                        <FilterChipGroup
+                          title="Topic / Subject"
+                          options={topicOptions}
+                          values={topics}
+                          onToggle={(value) => setTopics((current) => toggleListValue(current, value))}
+                        />
+                      </FilterPanel>
+                    </div>
+                  )}
+
+                  {openFilterPanels.inclusions && (
+                    <div className="xl:col-span-2">
+                      <FilterPanel
+                        title="What's Included"
+                        subtitle={activeInclusionSummary}
+                      >
+                        <FilterChipGroup
+                          title="Included"
+                          options={inclusionOptions}
+                          values={inclusions}
+                          onToggle={(value) => setInclusions((current) => toggleListValue(current, value))}
+                        />
+                      </FilterPanel>
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              <FilterChipGroup
-                title="Topic / Subject"
-                options={topicOptions}
-                values={topics}
-                onToggle={(value) => setTopics((current) => toggleListValue(current, value))}
-              />
-
-              <FilterChipGroup
-                title="Inclusions"
-                options={inclusionOptions}
-                values={inclusions}
-                onToggle={(value) => setInclusions((current) => toggleListValue(current, value))}
-              />
+              )}
             </div>
           </div>
         </div>

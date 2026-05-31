@@ -515,20 +515,25 @@ export default function Home() {
       <section className="py-16 px-4 bg-black text-white">
         <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-10 items-center">
           <div>
-            <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Learn & Grow</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold mb-4">Training & Consultation</h2>
+            <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">More Than A Store</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold mb-4">Shop, learn and manage your customer journey in one place</h2>
             <p className="text-gray-400 mb-3 leading-relaxed">
-              Whether you want to build a business, develop new skills, or simply get expert advice on any of our products and services - we are here for you.
+              Belle Kreyashon is built to do more than sell products. The web app brings together shopping, digital learning, customer access, consultations and business support so people can move from discovery to purchase to growth without jumping between platforms.
             </p>
             <ul className="text-gray-400 text-sm space-y-2 mb-6">
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Professional hands-on training sessions for beginners and advanced learners</li>
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> One-on-one paid consultations for business, beauty and lifestyle goals</li>
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Free consultation available - just reach out and ask</li>
-              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Importation assistance - we help you source and bring in products from abroad</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Shop physical products across beauty, fashion, wellness, tools and everyday essentials</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Buy digital guides, templates, videos and bundles with secure library access after payment</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Track orders, reopen your digital library and manage your account from your customer dashboard</li>
+              <li className="flex items-start gap-2"><span className="text-[#FDC700] font-extrabold mt-0.5">-&gt;</span> Book training, paid consultations, importation help and brand support when you need expert guidance</li>
             </ul>
-            <Link to="/services" className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#FDC700] text-black font-extrabold rounded-full hover:bg-yellow-300 transition-all text-sm">
-              Explore Services <ArrowRight size={16} />
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link to="/services" className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#FDC700] text-black font-extrabold rounded-full hover:bg-yellow-300 transition-all text-sm">
+                Explore Services <ArrowRight size={16} />
+              </Link>
+              <Link to="/digital-products" className="inline-flex items-center gap-2 px-7 py-3.5 border border-white/15 text-white font-extrabold rounded-full hover:border-white transition-all text-sm">
+                Explore Digital Products <ArrowRight size={16} />
+              </Link>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="aspect-square rounded-2xl overflow-hidden bg-gray-800">

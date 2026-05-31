@@ -1,5 +1,8 @@
-import { MessageCircle, Phone, Facebook, MapPin, ChevronRight, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { MessageCircle, Phone, Facebook, MapPin, ChevronRight, Clock, Mail, Send, Loader2 } from 'lucide-react';
 import SEO from '../components/SEO';
+import { useCustomer } from '../context/CustomerContext';
+import { api } from '../hooks/useApi';
 import { PHONE, PHONE_LOCAL, SECONDARY_PHONE, SECONDARY_PHONE_LOCAL, WHATSAPP, FACEBOOK } from '../data/contact';
 
 const CONTACTS = [
@@ -38,113 +41,324 @@ const CONTACTS = [
   {
     icon: <MapPin size={20} />,
     label: 'Location',
-    value: 'Osu, Accra · Nationwide & International Delivery',
+    value: 'Osu, Accra - Nationwide and international delivery',
     href: null,
     iconBg: '#fef0f0',
     iconColor: '#dc2626',
   },
 ];
 
+const INQUIRY_TYPES = [
+  { value: 'general', label: 'General Inquiry' },
+  { value: 'order', label: 'Order Help' },
+  { value: 'digital', label: 'Digital Product Help' },
+  { value: 'training', label: 'Training or Consultation' },
+  { value: 'partnership', label: 'Partnership or Brand Feature' },
+  { value: 'sourcing', label: 'Importation or Sourcing Support' },
+];
+
+const REPLY_OPTIONS = [
+  { value: 'email', label: 'Email' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'phone', label: 'Phone Call' },
+  { value: 'any', label: 'Any available method' },
+];
+
+const INITIAL_FORM = {
+  name: '',
+  email: '',
+  phone: '',
+  inquiryType: 'general',
+  preferredReply: 'email',
+  subject: '',
+  message: '',
+};
+
+const emailLooksValid = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
 export default function Contact() {
+  const { customer } = useCustomer();
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [sending, setSending] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!customer) return;
+
+    setForm((current) => ({
+      ...current,
+      name: current.name || customer.name || '',
+      email: current.email || customer.email || '',
+      phone: current.phone || customer.phone || '',
+    }));
+  }, [customer]);
+
+  const setField = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!form.name.trim()) return setError('Please enter your name.');
+    if (!emailLooksValid(form.email)) return setError('Please enter a valid email address.');
+    if (!form.message.trim() || form.message.trim().length < 10) {
+      return setError('Please share a little more detail so we can help properly.');
+    }
+
+    setSending(true);
+    try {
+      const { data } = await api.post('/api/contact/inquiry', {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        inquiryType: form.inquiryType,
+        preferredReply: form.preferredReply,
+        subject: form.subject.trim(),
+        message: form.message.trim(),
+      });
+
+      setSuccess(data?.message || 'Your message has been sent successfully.');
+      setForm((current) => ({
+        ...current,
+        inquiryType: 'general',
+        preferredReply: current.preferredReply || 'email',
+        subject: '',
+        message: '',
+      }));
+    } catch (err) {
+      setError(err.response?.data?.message || 'We could not send your message right now. Please try again shortly.');
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
-    <div className="pt-16 min-h-screen bg-white">
+    <div className="min-h-screen bg-white pt-16">
       <SEO
         title="Contact Us"
-        description="Get in touch with Belle Kreyashon. WhatsApp, call or visit us in Osu, Accra, Ghana. Nationwide and international delivery."
+        description="Contact Belle Kreyashon by email, WhatsApp, phone or Facebook. Send inquiries about orders, digital products, training, consultations and partnerships."
         url="/contact"
-        keywords="contact Belle Kreyashon, WhatsApp beauty store Ghana, Accra wig store contact, beauty support Ghana"
+        keywords="contact Belle Kreyashon, email Belle Kreyashon, WhatsApp beauty store Ghana, Accra online store contact, digital product support Ghana"
       />
 
-      {/* Hero */}
-      <div className="bg-black text-white py-20 px-4 text-center" style={{ borderBottom: '3px solid #FDC700' }}>
-        <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Get In Touch</p>
-        <h1 className="text-4xl md:text-6xl font-extrabold">Contact Us</h1>
+      <div className="border-b-[3px] border-[#FDC700] bg-black px-4 py-16 text-center text-white sm:py-20">
+        <p className="mb-3 text-xs font-bold uppercase tracking-widest text-[#FDC700]">Get In Touch</p>
+        <h1 className="text-4xl font-extrabold md:text-6xl">Contact Us</h1>
+        <p className="mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-gray-300 md:text-base">
+          Reach Belle Kreyashon the way that works best for you. Use WhatsApp or call for quick help, or send an email inquiry if you want a fuller response.
+        </p>
       </div>
 
-      {/* Cards */}
-      <div className="max-w-lg mx-auto px-4 py-14">
-        <div className="flex flex-col gap-3">
-          {CONTACTS.map((c, i) => {
-            const inner = (
-              <>
-                {/* Icon */}
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-200"
-                  style={{ background: c.iconBg }}>
-                  <span style={{ color: c.iconColor }}>{c.icon}</span>
-                </div>
+      <div className="mx-auto max-w-6xl px-4 py-14">
+        <div className="grid gap-8 xl:grid-cols-[0.9fr_1.1fr]">
+          <section className="space-y-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Direct Channels</p>
+              <h2 className="mt-2 text-2xl font-extrabold text-black">Talk to us directly</h2>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-gray-500">
+                If you need a quick answer, these are the fastest ways to reach the team.
+              </p>
+            </div>
 
-                {/* Text */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-0.5">{c.label}</p>
-                  <p className="text-sm font-bold text-gray-900 truncate">{c.value}</p>
-                </div>
+            <div className="flex flex-col gap-3">
+              {CONTACTS.map((contact, index) => {
+                const cardContent = (
+                  <>
+                    <div
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-all duration-200"
+                      style={{ background: contact.iconBg }}
+                    >
+                      <span style={{ color: contact.iconColor }}>{contact.icon}</span>
+                    </div>
 
-                {/* Arrow */}
-                {c.href && <ChevronRight size={16} className="text-gray-300 shrink-0 transition-colors duration-200" />}
-              </>
-            );
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0.5 text-xs font-bold uppercase tracking-wider text-gray-400">{contact.label}</p>
+                      <p className="break-words text-sm font-bold text-gray-900">{contact.value}</p>
+                    </div>
 
-            const cls = `flex items-center gap-4 p-5 rounded-2xl border transition-all duration-200 group ${
-              c.href
-                ? 'border-gray-100 bg-gray-50 hover:bg-black hover:border-black cursor-pointer'
-                : 'border-gray-100 bg-gray-50 cursor-default'
-            }`;
+                    {contact.href && <ChevronRight size={16} className="shrink-0 text-gray-300 transition-colors duration-200" />}
+                  </>
+                );
 
-            const hoverStyle = `
-              .contact-card-${i}:hover .contact-label-${i} { color: #555 !important; }
-              .contact-card-${i}:hover .contact-value-${i} { color: #fff !important; }
-              .contact-card-${i}:hover .contact-icon-${i} { background: #FDC700 !important; }
-              .contact-card-${i}:hover .contact-icon-${i} * { color: #000 !important; }
-              .contact-card-${i}:hover svg.chevron-${i} { color: #555 !important; }
-            `;
+                if (!contact.href) {
+                  return (
+                    <div
+                      key={index}
+                      className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-5"
+                    >
+                      {cardContent}
+                    </div>
+                  );
+                }
 
-            if (c.href) return (
-              <div key={i}>
-                <style>{hoverStyle}</style>
-                <a href={c.href}
-                  target={c.href.startsWith('http') ? '_blank' : undefined}
-                  rel="noopener noreferrer"
-                  className={`contact-card-${i} flex items-center gap-4 p-5 rounded-2xl border transition-all duration-200`}
-                  style={{ borderColor: '#f0f0f0', background: '#fafafa' }}>
-                  <div className={`contact-icon-${i} w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-200`}
-                    style={{ background: c.iconBg }}>
-                    <span style={{ color: c.iconColor }}>{c.icon}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`contact-label-${i} text-xs font-bold uppercase tracking-wider mb-0.5 transition-colors duration-200`}
-                      style={{ color: '#999' }}>{c.label}</p>
-                    <p className={`contact-value-${i} text-sm font-bold transition-colors duration-200 break-words`}
-                      style={{ color: '#111' }}>{c.value}</p>
-                  </div>
-                  <ChevronRight size={16} className={`chevron-${i} shrink-0 transition-colors duration-200`} style={{ color: '#ccc' }} />
-                </a>
+                return (
+                  <a
+                    key={index}
+                    href={contact.href}
+                    target={contact.href.startsWith('http') ? '_blank' : undefined}
+                    rel="noopener noreferrer"
+                    className="group flex items-center gap-4 rounded-2xl border border-gray-100 bg-gray-50 p-5 transition-all duration-200 hover:border-black hover:bg-black"
+                  >
+                    <div
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-all duration-200 group-hover:bg-[#FDC700]"
+                      style={{ background: contact.iconBg }}
+                    >
+                      <span className="group-hover:text-black" style={{ color: contact.iconColor }}>{contact.icon}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0.5 text-xs font-bold uppercase tracking-wider text-gray-400 transition-colors duration-200 group-hover:text-gray-500">{contact.label}</p>
+                      <p className="break-words text-sm font-bold text-gray-900 transition-colors duration-200 group-hover:text-white">{contact.value}</p>
+                    </div>
+                    <ChevronRight size={16} className="shrink-0 text-gray-300 transition-colors duration-200 group-hover:text-gray-500" />
+                  </a>
+                );
+              })}
+            </div>
+
+            <div className="rounded-3xl border border-gray-100 bg-[#fcfbf7] p-5">
+              <div className="mb-3 inline-flex items-center gap-2 text-xs text-gray-400">
+                <Clock size={13} />
+                <span>Fastest response window</span>
               </div>
-            );
+              <p className="text-sm font-bold text-black">We typically reply within 1 hour on WhatsApp.</p>
+              <p className="mt-2 text-xs text-gray-500">Monday - Sunday | 8am - 9pm</p>
+            </div>
+          </section>
 
-            return (
-              <div key={i}
-                className="flex items-center gap-4 p-5 rounded-2xl border"
-                style={{ borderColor: '#f0f0f0', background: '#fafafa' }}>
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-                  style={{ background: c.iconBg }}>
-                  <span style={{ color: c.iconColor }}>{c.icon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wider mb-0.5" style={{ color: '#999' }}>{c.label}</p>
-                  <p className="text-sm font-bold break-words" style={{ color: '#111' }}>{c.value}</p>
-                </div>
+          <section className="rounded-[32px] border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-6">
+              <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#fff4cc] text-black">
+                <Mail size={20} />
               </div>
-            );
-          })}
-        </div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Email Inquiry</p>
+              <h2 className="mt-2 text-2xl font-extrabold text-black">Send us a message</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-500">
+                Prefer email instead of chat? Fill this form and we will deliver your message straight to the Belle Kreyashon inbox.
+              </p>
+              {customer?.email && (
+                <p className="mt-2 text-xs text-gray-400">
+                  Signed in as {customer.name || 'customer'}{customer.email ? ` - ${customer.email}` : ''}.
+                </p>
+              )}
+            </div>
 
-        {/* Footer note */}
-        <div className="mt-10 pt-8 text-center" style={{ borderTop: '1px solid #f0f0f0' }}>
-          <div className="inline-flex items-center gap-2 text-xs text-gray-400 mb-2">
-            <Clock size={13} />
-            <span>We typically reply within <strong className="text-gray-700">1 hour</strong> on WhatsApp</span>
-          </div>
-          <p className="text-xs text-gray-400">Monday – Sunday &nbsp;·&nbsp; 8am – 9pm</p>
+            {success && (
+              <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                {success}
+              </div>
+            )}
+
+            {error && (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Full Name</span>
+                  <input
+                    value={form.name}
+                    onChange={(event) => setField('name', event.target.value)}
+                    placeholder="Your full name"
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Email Address</span>
+                  <input
+                    value={form.email}
+                    onChange={(event) => setField('email', event.target.value)}
+                    placeholder="you@example.com"
+                    inputMode="email"
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Phone or WhatsApp</span>
+                  <input
+                    value={form.phone}
+                    onChange={(event) => setField('phone', event.target.value)}
+                    placeholder="Optional"
+                    inputMode="tel"
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Inquiry Type</span>
+                  <select
+                    value={form.inquiryType}
+                    onChange={(event) => setField('inquiryType', event.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    {INQUIRY_TYPES.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Preferred Reply</span>
+                  <select
+                    value={form.preferredReply}
+                    onChange={(event) => setField('preferredReply', event.target.value)}
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    {REPLY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Subject</span>
+                  <input
+                    value={form.subject}
+                    onChange={(event) => setField('subject', event.target.value)}
+                    placeholder="Optional subject"
+                    className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                  />
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Message</span>
+                <textarea
+                  value={form.message}
+                  onChange={(event) => setField('message', event.target.value)}
+                  placeholder="Tell us what you need help with."
+                  rows={7}
+                  className="w-full resize-none rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-3 text-sm outline-none focus:border-black"
+                />
+              </label>
+
+              <div className="flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-relaxed text-gray-400">
+                  We will send a confirmation to your email after your message is submitted.
+                </p>
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-5 py-3 text-sm font-extrabold text-white transition-colors hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  {sending ? 'Sending...' : 'Send Message'}
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       </div>
     </div>
