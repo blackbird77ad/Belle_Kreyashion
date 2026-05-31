@@ -23,7 +23,7 @@ export default function Footer() {
             <Link to="/shop?category=Hair+Extensions" className="hover:text-white">Hair Extensions</Link>
             <Link to="/shop?category=Wigs" className="hover:text-white">Wigs</Link>
             <Link to="/shop?category=Beauty+%26+Skincare" className="hover:text-white">Beauty & Skincare</Link>
-            <Link to="/orders" className="hover:text-white">My Orders</Link>
+            <Link to="/track" className="hover:text-white">My Dashboard</Link>
             <Link to="/digital-library" className="hover:text-white">My Digital Library</Link>
           </div>
         </div>

@@ -77,6 +77,7 @@ function Layout() {
             <Route path="/about"           element={<About />} />
             <Route path="/contact"         element={<Contact />} />
             <Route path="/order-confirmed" element={<OrderConfirmation />} />
+            <Route path="/track"           element={<OrderHistory />} />
             <Route path="/orders"          element={<OrderHistory />} />
             <Route path="/digital-library" element={<DigitalLibrary />} />
             <Route path="/admin"           element={<Admin />} />

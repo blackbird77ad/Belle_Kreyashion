@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Phone, Package, Truck, CheckCircle, Clock, XCircle, ChevronDown, ChevronUp, Calendar, Download } from 'lucide-react';
+import { Phone, Package, Truck, CheckCircle, Clock, XCircle, ChevronDown, ChevronUp, Calendar, Download, LayoutDashboard, LogOut, BookOpen } from 'lucide-react';
 import { generateInvoice } from '../utils/generateInvoice';
 import { api } from '../hooks/useApi';
 import { useCustomer } from '../context/CustomerContext';
@@ -110,7 +110,7 @@ const Paginator = ({ total, page, setPage, pageSize }) => {
 };
 
 export default function OrderHistory() {
-  const { customer } = useCustomer();
+  const { customer, logout } = useCustomer();
   const [phone,    setPhone]    = useState(customer?.phone || '');
   const [orders,   setOrders]   = useState(null);
   const [bookings, setBookings] = useState(null);
@@ -122,39 +122,78 @@ export default function OrderHistory() {
   const [orderPage,   setOrderPage]   = useState(1);
   const [bookingPage, setBookingPage] = useState(1);
   const [orderFilter, setOrderFilter] = useState('all');
+  const [bookingFilter, setBookingFilter] = useState('all');
 
-  const lookup = async () => {
-    if (!phone.trim()) return setError('Please enter your phone number');
+  const lookup = async (lookupPhone = phone) => {
+    const targetPhone = lookupPhone.trim();
+    if (!targetPhone) return setError('Please enter your phone number');
     setError(''); setLoading(true);
     try {
       const [oRes, bRes] = await Promise.all([
-        api.get(`/api/orders/customer/${phone.trim()}`),
-        api.get(`/api/training/bookings/customer/${phone.trim()}`),
+        api.get(`/api/orders/customer/${targetPhone}`),
+        api.get(`/api/training/bookings/customer/${targetPhone}`),
       ]);
       setOrders(oRes.data);
       setBookings(bRes.data);
-      setOrderPage(1); setBookingPage(1);
+      setPhone(targetPhone);
+      setOrderPage(1);
+      setBookingPage(1);
     } catch { setError('Could not load. Please try again.'); }
     setLoading(false);
   };
 
   const filteredOrders = orders?.filter(o => orderFilter === 'all' || o.status === orderFilter) || [];
+  const filteredBookings = bookings?.filter((booking) => bookingFilter === 'all' || booking.type === bookingFilter) || [];
   const pagedOrders   = filteredOrders.slice((orderPage-1)*PAGE_SIZE, orderPage*PAGE_SIZE);
-  const pagedBookings = (bookings || []).slice((bookingPage-1)*PAGE_SIZE, bookingPage*PAGE_SIZE);
+  const pagedBookings = filteredBookings.slice((bookingPage-1)*PAGE_SIZE, bookingPage*PAGE_SIZE);
 
   const hasData = orders !== null;
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
       <div className="bg-black text-white py-14 px-4 text-center">
-        <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Track Everything</p>
-        <h1 className="text-3xl md:text-4xl font-extrabold">My Orders & Bookings</h1>
+        <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Customer Dashboard</p>
+        <h1 className="text-3xl md:text-4xl font-extrabold">Track Orders, Bookings & Access</h1>
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-8">
+        {customer && (
+          <div className="mb-6 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-[#fcf7df] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">
+                  <LayoutDashboard size={13} />
+                  Signed In
+                </div>
+                <h2 className="mt-3 text-xl font-extrabold text-black">{customer?.name || 'Belle Kreyashon Customer'}</h2>
+                <p className="mt-1 text-sm text-gray-500">{customer?.phone || ''}{customer?.email ? ` • ${customer.email}` : ''}</p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Link
+                  to="/digital-library"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-3 text-sm font-extrabold text-white transition-colors hover:bg-gray-900"
+                >
+                  <BookOpen size={16} />
+                  Open Library
+                </Link>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-600 transition-colors hover:border-black hover:text-black"
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Phone lookup */}
         <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-6">
-          <p className="text-sm font-bold mb-3">Enter your phone number</p>
+          <p className="text-sm font-bold mb-1">Use your phone number to load your dashboard</p>
+          <p className="text-xs text-gray-500 mb-3">This lets customers track shop orders, training bookings, and digital access from one place.</p>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -165,7 +204,7 @@ export default function OrderHistory() {
             </div>
             <button onClick={lookup} disabled={loading}
               className="px-5 py-3 bg-black text-white font-extrabold text-sm rounded-xl hover:bg-gray-900 disabled:opacity-50">
-              {loading ? '...' : 'View'}
+              {loading ? '...' : 'Load'}
             </button>
           </div>
           {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
@@ -235,20 +274,26 @@ export default function OrderHistory() {
                     {/* Type filter */}
                     <div className="flex gap-2 mb-4">
                       {['all','training','consultation'].map(t => (
-                        <button key={t} onClick={() => setBookingPage(1)}
-                          className="px-3 py-1.5 text-xs font-bold rounded-full border-2 border-gray-200 hover:border-black capitalize transition-all">
+                        <button
+                          key={t}
+                          onClick={() => {
+                            setBookingFilter(t);
+                            setBookingPage(1);
+                          }}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-full border-2 capitalize transition-all ${bookingFilter === t ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-500 hover:border-black'}`}
+                        >
                           {t}
                         </button>
                       ))}
                     </div>
-                    {bookings?.length === 0 ? (
-                      <p className="text-center text-gray-400 py-8">No bookings found</p>
+                    {filteredBookings.length === 0 ? (
+                      <p className="text-center text-gray-400 py-8">No bookings found for this filter</p>
                     ) : (
                       <>
                         <div className="flex flex-col gap-3">
                           {pagedBookings.map(b => <BookingCard key={b._id} booking={b} />)}
                         </div>
-                        <Paginator total={bookings?.length || 0} page={bookingPage} setPage={setBookingPage} pageSize={PAGE_SIZE} />
+                        <Paginator total={filteredBookings.length} page={bookingPage} setPage={setBookingPage} pageSize={PAGE_SIZE} />
                       </>
                     )}
                   </div>

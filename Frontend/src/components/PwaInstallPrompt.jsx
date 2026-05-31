@@ -10,7 +10,7 @@ import {
   X,
 } from 'lucide-react';
 
-const GUIDE_KEY = 'bk_pwa_guide_seen_v2';
+const GUIDE_KEY = 'bk_pwa_guide_seen_v3';
 const DISMISS_KEY = 'bk_pwa_prompt_dismissed_at';
 const GUIDE_DELAY_MS = 900;
 const DISMISS_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
@@ -19,17 +19,17 @@ const BENEFITS = [
   {
     icon: ShoppingBag,
     title: 'Shop quicker',
-    copy: 'Jump back into bundles, best sellers, and your cart without hunting through browser tabs.',
+    copy: 'Open your cart and best sellers faster.',
   },
   {
     icon: GraduationCap,
-    title: 'Keep learning nearby',
-    copy: 'Open digital products, training materials, and certificate updates like a dedicated learning app.',
+    title: 'Keep access close',
+    copy: 'Reach digital products and bookings in one tap.',
   },
   {
     icon: MonitorSmartphone,
-    title: 'Use it on any screen',
-    copy: 'Get the same Belle Kreyashon experience on phone, tablet, laptop, or desktop with a real app feel.',
+    title: 'Use it like an app',
+    copy: 'Cleaner on phone and desktop.',
   },
 ];
 
@@ -94,8 +94,8 @@ const getGuideCopy = (platform, canInstallNow) => {
       eyebrow: 'iPhone & iPad Guide',
       title: 'Add Belle Kreyashon from Safari',
       detail: isSafariBrowser()
-        ? 'Safari supports home screen install on Apple devices, so the steps below will save Belle Kreyashon like a mobile app.'
-        : 'For Apple devices, open this site in Safari first, then follow the steps below to save it to your home screen.',
+        ? 'Use Safari to save Belle Kreyashon to your home screen.'
+        : 'Open this site in Safari first, then save it to your home screen.',
       steps: [
         'Open Belle Kreyashon in Safari.',
         'Tap the Share button in the browser toolbar.',
@@ -103,7 +103,7 @@ const getGuideCopy = (platform, canInstallNow) => {
       ],
       primaryLabel: 'I Understand',
       promptTitle: 'Add Belle Kreyashon to your home screen',
-      promptCopy: 'Use Safari on your iPhone or iPad, then tap Share and choose "Add to Home Screen".',
+      promptCopy: 'Open in Safari, tap Share, then choose "Add to Home Screen".',
       promptButton: 'View Apple Steps',
     };
   }
@@ -113,8 +113,8 @@ const getGuideCopy = (platform, canInstallNow) => {
       eyebrow: 'Android Guide',
       title: canInstallNow ? 'Install Belle Kreyashon in one tap' : 'Install Belle Kreyashon from your browser menu',
       detail: canInstallNow
-        ? 'Once installed, Belle Kreyashon opens in its own window and feels much closer to a mobile app.'
-        : 'If the install sheet does not appear automatically, Chrome usually keeps it inside the browser menu.',
+        ? 'Save it for quicker access from your home screen.'
+        : 'If the install sheet does not open, use your browser menu.',
       steps: canInstallNow
         ? [
             'Tap "Install App" below.',
@@ -129,8 +129,8 @@ const getGuideCopy = (platform, canInstallNow) => {
       primaryLabel: canInstallNow ? 'Install App' : 'Done',
       promptTitle: 'Install Belle Kreyashon',
       promptCopy: canInstallNow
-        ? 'Save Belle Kreyashon to your Android phone for quicker launches and a cleaner app-style experience.'
-        : 'Open your browser menu and choose "Install app" or "Add to Home screen" to save Belle Kreyashon.',
+        ? 'Save Belle Kreyashon to your Android home screen.'
+        : 'Open your browser menu and choose "Install app" or "Add to Home screen".',
       promptButton: canInstallNow ? 'Install App' : 'View Android Steps',
     };
   }
@@ -139,8 +139,8 @@ const getGuideCopy = (platform, canInstallNow) => {
     eyebrow: 'Desktop Guide',
     title: canInstallNow ? 'Install Belle Kreyashon on this computer' : 'Use Chrome or Edge to install Belle Kreyashon',
     detail: canInstallNow
-      ? 'Desktop install gives Belle Kreyashon its own window, and you can pin it to your dock or taskbar afterwards.'
-      : 'Chrome and Edge provide the smoothest install flow for desktop PWA support.',
+      ? 'Give Belle Kreyashon its own desktop window.'
+      : 'Chrome and Edge give the smoothest desktop install flow.',
     steps: canInstallNow
       ? [
           'Click "Install App" below.',
@@ -155,8 +155,8 @@ const getGuideCopy = (platform, canInstallNow) => {
     primaryLabel: canInstallNow ? 'Install App' : 'Done',
     promptTitle: 'Install Belle Kreyashon on desktop',
     promptCopy: canInstallNow
-      ? 'Keep Belle Kreyashon in its own desktop window for quicker shopping, learning, and repeat visits.'
-      : 'Open this site in Chrome or Edge to install it as a desktop app with its own icon and window.',
+      ? 'Save Belle Kreyashon for quicker return visits.'
+      : 'Open this site in Chrome or Edge to install it as a desktop app.',
     promptButton: canInstallNow ? 'Install App' : 'View Desktop Steps',
   };
 };
@@ -274,12 +274,12 @@ export default function PwaInstallPrompt() {
     <>
       {guideVisible && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-6"
+          className="fixed inset-0 z-[60] flex items-end justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-5"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
-          <div className="w-full max-w-4xl overflow-hidden rounded-[2rem] border border-[#f2de9f] bg-[#fff9ea] text-[#171717] shadow-[0_25px_80px_rgba(0,0,0,0.3)]">
-            <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="relative overflow-hidden bg-[#111111] px-5 py-6 text-white sm:px-7 sm:py-8">
+          <div className="w-full max-w-3xl overflow-hidden rounded-[2rem] border border-[#f2de9f] bg-[#fff9ea] text-[#171717] shadow-[0_25px_80px_rgba(0,0,0,0.3)] max-h-[92dvh] overflow-y-auto">
+            <div className="grid gap-0 lg:grid-cols-[1fr_0.92fr]">
+              <div className="relative overflow-hidden bg-[#111111] px-5 py-5 text-white sm:px-6 sm:py-6">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(253,199,0,0.22),_transparent_42%),linear-gradient(135deg,_rgba(255,255,255,0.06),_transparent_45%)]" />
                 <button
                   type="button"
@@ -303,24 +303,24 @@ export default function PwaInstallPrompt() {
                     </div>
                   </div>
 
-                  <h2 className="mt-6 max-w-xl text-3xl font-black leading-tight sm:text-4xl">
-                    Shop, learn, and come back faster with the Belle Kreyashon web app.
+                  <h2 className="mt-5 max-w-xl text-2xl font-black leading-tight sm:text-3xl">
+                    Install Belle Kreyashon for quicker shopping and access.
                   </h2>
-                  <p className="mt-3 max-w-2xl text-sm leading-7 text-white/74 sm:text-[15px]">
-                    This mini guide only appears once on this device. It shows what the app is for, why it helps, and how to install it on your current screen type.
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-white/74">
+                    It opens like an app and keeps your cart, orders, and digital access close.
                   </p>
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  <div className="mt-5 grid gap-2 sm:grid-cols-3">
                     {BENEFITS.map((benefit) => {
                       const BenefitIcon = benefit.icon;
 
                       return (
-                        <div key={benefit.title} className="rounded-[1.4rem] border border-white/10 bg-white/7 p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f7c600] text-black">
+                        <div key={benefit.title} className="rounded-[1.3rem] border border-white/10 bg-white/7 p-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#f7c600] text-black">
                             <BenefitIcon size={18} />
                         </div>
-                          <p className="mt-4 text-sm font-extrabold text-white">{benefit.title}</p>
-                          <p className="mt-2 text-xs leading-6 text-white/72">{benefit.copy}</p>
+                          <p className="mt-3 text-sm font-extrabold text-white">{benefit.title}</p>
+                          <p className="mt-1.5 text-xs leading-5 text-white/72">{benefit.copy}</p>
                         </div>
                       );
                     })}
@@ -328,46 +328,46 @@ export default function PwaInstallPrompt() {
                 </div>
               </div>
 
-              <div className="px-5 py-6 sm:px-7 sm:py-8">
+              <div className="px-5 py-5 sm:px-6 sm:py-6">
                 <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#a17b0a]">
                   {guideCopy.eyebrow}
                 </p>
-                <h3 className="mt-3 text-2xl font-black leading-tight text-[#171717]">
+                <h3 className="mt-3 text-xl font-black leading-tight text-[#171717] sm:text-2xl">
                   {guideCopy.title}
                 </h3>
-                <p className="mt-3 text-sm leading-7 text-gray-600">
+                <p className="mt-2 text-sm leading-6 text-gray-600">
                   {guideCopy.detail}
                 </p>
 
-                <div className="mt-6 space-y-3">
+                <div className="mt-5 space-y-2.5">
                   {guideCopy.steps.map((step, index) => (
                     <div
                       key={step}
-                      className="flex items-start gap-3 rounded-[1.35rem] border border-[#f2dfaa] bg-white/80 px-4 py-3 shadow-[0_10px_30px_rgba(17,17,17,0.05)]"
+                      className="flex items-start gap-3 rounded-[1.25rem] border border-[#f2dfaa] bg-white/80 px-4 py-3 shadow-[0_10px_30px_rgba(17,17,17,0.05)]"
                     >
                       <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111111] text-xs font-extrabold text-[#f7c600]">
                         {index + 1}
                       </div>
-                      <p className="text-sm leading-6 text-gray-700">{step}</p>
+                      <p className="text-sm leading-5 text-gray-700">{step}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-6 rounded-[1.35rem] border border-[#f2dfaa] bg-[#fff3cb] p-4">
+                <div className="mt-5 rounded-[1.25rem] border border-[#f2dfaa] bg-[#fff3cb] p-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#111111] text-[#f7c600]">
                       {platform === 'ios' ? <Share2 size={18} /> : <CheckCircle2 size={18} />}
                     </div>
                     <div>
-                      <p className="text-sm font-extrabold text-[#171717]">Why install it?</p>
-                      <p className="mt-1 text-xs leading-6 text-gray-700">
-                        Installed users get a branded icon, quicker return visits, and an app-style layout that feels cleaner on mobile and desktop.
+                      <p className="text-sm font-extrabold text-[#171717]">Quick benefit</p>
+                      <p className="mt-1 text-xs leading-5 text-gray-700">
+                        Installed users get a branded icon and faster return visits.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => closeGuide({ revealPrompt: false })}

@@ -387,7 +387,7 @@ export default function DigitalLibrary() {
               </p>
             </div>
             <Link
-              to="/orders"
+              to="/track"
               className="inline-flex items-center justify-center px-5 py-3 rounded-2xl border border-gray-200 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
             >
               View Orders

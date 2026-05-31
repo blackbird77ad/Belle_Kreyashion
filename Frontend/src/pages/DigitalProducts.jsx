@@ -376,7 +376,7 @@ export default function DigitalProducts() {
                 </button>
               )}
               <Link
-                to="/orders"
+                to="/track"
                 className="inline-flex items-center justify-center rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
               >
                 View Orders

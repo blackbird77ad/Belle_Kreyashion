@@ -260,10 +260,10 @@ export default function OrderConfirmation() {
             <Download size={16} /> Download Invoice
           </button>
           <Link
-            to="/orders"
+            to="/track"
             className="flex items-center justify-center w-full py-3.5 border-2 border-gray-200 text-black font-extrabold rounded-2xl hover:border-black transition-all text-sm"
           >
-            View My Orders
+            Open My Dashboard
           </Link>
           <Link to="/shop" className="text-center text-sm text-gray-400 hover:text-black transition-colors">
             Continue Shopping
