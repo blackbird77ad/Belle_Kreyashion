@@ -1,3 +1,5 @@
+import { sanitizeCertificateFrameStyle } from './certificateTemplatePresets.mjs';
+
 const PAGE_WIDTH = 841.89;
 const PAGE_HEIGHT = 595.28;
 
@@ -35,6 +37,17 @@ const hexToRgb = (hex) => {
 
 const toRgb = (hex, fallback) => {
   const { r, g, b } = hexToRgb(sanitizeColor(hex, fallback));
+  return `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
+};
+
+const mixToRgb = (hexA, hexB, ratio = 0.5, fallbackA = '#111827', fallbackB = '#FFFDF7') => {
+  const colorA = hexToRgb(sanitizeColor(hexA, fallbackA));
+  const colorB = hexToRgb(sanitizeColor(hexB, fallbackB));
+  const weightA = Math.max(0, Math.min(1, ratio));
+  const weightB = 1 - weightA;
+  const r = (colorA.r * weightA) + (colorB.r * weightB);
+  const g = (colorA.g * weightA) + (colorB.g * weightB);
+  const b = (colorA.b * weightA) + (colorB.b * weightB);
   return `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
 };
 
@@ -156,6 +169,46 @@ const buildLine = ({ x1, y1, x2, y2, strokeColor, lineWidth = 1 }) => [
   'Q',
 ].join('\n');
 
+const buildPolygon = ({ points = [], fillColor = null, strokeColor = null, lineWidth = 1 }) => {
+  if (!Array.isArray(points) || points.length < 2) return '';
+
+  const commands = ['q'];
+  if (fillColor) commands.push(`${fillColor} rg`);
+  if (strokeColor) commands.push(`${strokeColor} RG`);
+  commands.push(`${lineWidth} w`);
+  commands.push(`${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} m`);
+  points.slice(1).forEach((point) => {
+    commands.push(`${point.x.toFixed(2)} ${point.y.toFixed(2)} l`);
+  });
+  commands.push('h');
+  if (fillColor && strokeColor) commands.push('B');
+  else if (fillColor) commands.push('f');
+  else commands.push('S');
+  commands.push('Q');
+  return commands.join('\n');
+};
+
+const buildCircle = ({ cx, cy, radius, fillColor = null, strokeColor = null, lineWidth = 1 }) => {
+  const kappa = 0.5522847498;
+  const control = radius * kappa;
+  const commands = ['q'];
+  if (fillColor) commands.push(`${fillColor} rg`);
+  if (strokeColor) commands.push(`${strokeColor} RG`);
+  commands.push(`${lineWidth} w`);
+  commands.push(`${(cx + radius).toFixed(2)} ${cy.toFixed(2)} m`);
+  commands.push(
+    `${(cx + radius).toFixed(2)} ${(cy + control).toFixed(2)} ${(cx + control).toFixed(2)} ${(cy + radius).toFixed(2)} ${cx.toFixed(2)} ${(cy + radius).toFixed(2)} c`,
+    `${(cx - control).toFixed(2)} ${(cy + radius).toFixed(2)} ${(cx - radius).toFixed(2)} ${(cy + control).toFixed(2)} ${(cx - radius).toFixed(2)} ${cy.toFixed(2)} c`,
+    `${(cx - radius).toFixed(2)} ${(cy - control).toFixed(2)} ${(cx - control).toFixed(2)} ${(cy - radius).toFixed(2)} ${cx.toFixed(2)} ${(cy - radius).toFixed(2)} c`,
+    `${(cx + control).toFixed(2)} ${(cy - radius).toFixed(2)} ${(cx + radius).toFixed(2)} ${(cy - control).toFixed(2)} ${(cx + radius).toFixed(2)} ${cy.toFixed(2)} c`
+  );
+  if (fillColor && strokeColor) commands.push('B');
+  else if (fillColor) commands.push('f');
+  else commands.push('S');
+  commands.push('Q');
+  return commands.join('\n');
+};
+
 const buildPdf = (objects = []) => {
   let output = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offsets = [0];
@@ -176,6 +229,508 @@ const buildPdf = (objects = []) => {
   return Buffer.from(output, 'binary');
 };
 
+const buildOctagonPoints = (box, cornerRatio = 0.08) => {
+  const cornerX = box.width * cornerRatio;
+  const cornerY = box.height * cornerRatio;
+  return [
+    { x: box.x + cornerX, y: box.y + box.height },
+    { x: box.x + box.width - cornerX, y: box.y + box.height },
+    { x: box.x + box.width, y: box.y + box.height - cornerY },
+    { x: box.x + box.width, y: box.y + cornerY },
+    { x: box.x + box.width - cornerX, y: box.y },
+    { x: box.x + cornerX, y: box.y },
+    { x: box.x, y: box.y + cornerY },
+    { x: box.x, y: box.y + box.height - cornerY },
+  ];
+};
+
+const buildMedalCommands = ({ x, y, size, primaryHex, accentHex, ringColor }) => {
+  const primaryColor = toRgb(primaryHex, '#111827');
+  const accentColor = toRgb(accentHex, '#FDC700');
+  const coinRadius = size * 0.28;
+  const coinCx = x + (size * 0.5);
+  const coinCy = y + (size * 0.34);
+  const leftRibbon = [
+    { x: x + (size * 0.44), y: y + (size * 0.56) },
+    { x: x + (size * 0.33), y: y + (size * 0.94) },
+    { x: x + (size * 0.5), y: y + (size * 0.84) },
+  ];
+  const rightRibbon = [
+    { x: x + (size * 0.56), y: y + (size * 0.56) },
+    { x: x + (size * 0.5), y: y + (size * 0.84) },
+    { x: x + (size * 0.67), y: y + (size * 0.94) },
+  ];
+
+  return [
+    buildCircle({
+      cx: coinCx,
+      cy: coinCy,
+      radius: coinRadius,
+      fillColor: accentColor,
+      strokeColor: ringColor,
+      lineWidth: 1.2,
+    }),
+    buildCircle({
+      cx: coinCx,
+      cy: coinCy,
+      radius: coinRadius * 0.62,
+      fillColor: mixToRgb(accentHex, '#FFFFFF', 0.7, '#FDC700', '#FFFFFF'),
+      strokeColor: ringColor,
+      lineWidth: 0.8,
+    }),
+    buildPolygon({
+      points: leftRibbon,
+      fillColor: primaryColor,
+    }),
+    buildPolygon({
+      points: rightRibbon,
+      fillColor: accentColor,
+    }),
+  ];
+};
+
+const buildModernCertificateChrome = ({
+  frameStyle,
+  outer,
+  inner,
+  primaryHex,
+  accentHex,
+  backgroundHex,
+  fontHex,
+}) => {
+  const primaryColor = toRgb(primaryHex, '#111827');
+  const accentColor = toRgb(accentHex, '#FDC700');
+  const backgroundColor = toRgb(backgroundHex, '#FFFDF7');
+  const fontColor = toRgb(fontHex, '#374151');
+  const commands = [];
+  const softPrimary = mixToRgb(primaryHex, backgroundHex, 0.75, '#111827', '#FFFDF7');
+  const softAccent = mixToRgb(accentHex, backgroundHex, 0.7, '#FDC700', '#FFFDF7');
+  const faintLine = mixToRgb(fontHex, backgroundHex, 0.26, '#374151', '#FFFDF7');
+
+  if (frameStyle === 'certificate_of_completion_2') {
+    commands.push(buildPolygon({
+      points: buildOctagonPoints(outer, 0.09),
+      fillColor: backgroundColor,
+      strokeColor: primaryColor,
+      lineWidth: 2.6,
+    }));
+    commands.push(buildPolygon({
+      points: buildOctagonPoints(inner, 0.09),
+      strokeColor: softAccent,
+      lineWidth: 1.1,
+    }));
+    [
+      { x: inner.x + 8, y: inner.y + inner.height - 22 },
+      { x: inner.x + inner.width - 36, y: inner.y + inner.height - 22 },
+      { x: inner.x + 8, y: inner.y + 12 },
+      { x: inner.x + inner.width - 36, y: inner.y + 12 },
+    ].forEach((corner) => {
+      commands.push(buildRectangle({
+        x: corner.x,
+        y: corner.y,
+        width: 28,
+        height: 18,
+        strokeColor: faintLine,
+        lineWidth: 0.7,
+      }));
+    });
+    return commands;
+  }
+
+  commands.push(buildRectangle({
+    x: outer.x,
+    y: outer.y,
+    width: outer.width,
+    height: outer.height,
+    fillColor: backgroundColor,
+  }));
+
+  if (frameStyle === 'certificate_of_excellence') {
+    commands.push(buildRectangle({
+      x: inner.x - 4,
+      y: inner.y - 4,
+      width: inner.width + 8,
+      height: inner.height + 8,
+      strokeColor: mixToRgb(fontHex, '#FFFFFF', 0.55, '#111827', '#FFFFFF'),
+      lineWidth: 1.4,
+    }));
+    commands.push(buildRectangle({
+      x: inner.x + 10,
+      y: inner.y + 10,
+      width: inner.width - 20,
+      height: inner.height - 20,
+      strokeColor: faintLine,
+      lineWidth: 0.8,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x - 4, y: outer.y + (outer.height * 0.08) },
+        { x: outer.x + 70, y: outer.y + 22 },
+        { x: outer.x + 16, y: outer.y + outer.height - 20 },
+        { x: outer.x - 48, y: outer.y + (outer.height * 0.82) },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 26, y: outer.y + (outer.height * 0.1) },
+        { x: outer.x + 94, y: outer.y + 18 },
+        { x: outer.x + 46, y: outer.y + outer.height - 18 },
+        { x: outer.x - 6, y: outer.y + (outer.height * 0.84) },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 20, y: outer.y + 14 },
+        { x: outer.x + outer.width + 42, y: outer.y + 68 },
+        { x: outer.x + outer.width - 12, y: outer.y + outer.height - 16 },
+        { x: outer.x + outer.width - 94, y: outer.y + outer.height - 32 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 52, y: outer.y + 18 },
+        { x: outer.x + outer.width + 8, y: outer.y + 54 },
+        { x: outer.x + outer.width - 36, y: outer.y + outer.height - 18 },
+        { x: outer.x + outer.width - 96, y: outer.y + outer.height - 26 },
+      ],
+      fillColor: softPrimary,
+    }));
+    commands.push(...buildMedalCommands({
+      x: outer.x + 28,
+      y: outer.y + outer.height - 142,
+      size: 78,
+      primaryHex,
+      accentHex,
+      ringColor: softPrimary,
+    }));
+    return commands;
+  }
+
+  if (frameStyle === 'blank_diploma_certificate_template_02') {
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x - 8, y: outer.y + outer.height - 18 },
+        { x: outer.x + 146, y: outer.y + outer.height - 18 },
+        { x: outer.x + 206, y: outer.y + outer.height - 64 },
+        { x: outer.x + 38, y: outer.y + outer.height - 64 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 124, y: outer.y + outer.height - 18 },
+        { x: outer.x + 248, y: outer.y + outer.height - 18 },
+        { x: outer.x + 284, y: outer.y + outer.height - 52 },
+        { x: outer.x + 166, y: outer.y + outer.height - 52 },
+      ],
+      fillColor: softPrimary,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 198, y: outer.y + 18 },
+        { x: outer.x + outer.width + 12, y: outer.y + 18 },
+        { x: outer.x + outer.width + 12, y: outer.y + 66 },
+        { x: outer.x + outer.width - 128, y: outer.y + 58 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 308, y: outer.y + 18 },
+        { x: outer.x + outer.width - 168, y: outer.y + 18 },
+        { x: outer.x + outer.width - 144, y: outer.y + 50 },
+        { x: outer.x + outer.width - 280, y: outer.y + 54 },
+      ],
+      fillColor: softPrimary,
+    }));
+    commands.push(...buildMedalCommands({
+      x: outer.x + outer.width - 96,
+      y: outer.y + outer.height - 84,
+      size: 76,
+      primaryHex,
+      accentHex,
+      ringColor: softPrimary,
+    }));
+    return commands;
+  }
+
+  if (frameStyle === 'certificate_of_achievement_3_simple') {
+    commands.push(buildRectangle({
+      x: inner.x + 10,
+      y: inner.y + 12,
+      width: inner.width - 20,
+      height: inner.height - 24,
+      fillColor: mixToRgb('#FFFFFF', backgroundHex, 0.88, '#FFFFFF', '#FFFDF7'),
+      strokeColor: faintLine,
+      lineWidth: 0.6,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x - 8, y: outer.y + outer.height - 18 },
+        { x: outer.x + 56, y: outer.y + outer.height - 18 },
+        { x: outer.x + 92, y: outer.y + outer.height - 116 },
+        { x: outer.x + 28, y: outer.y + outer.height - 116 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 66, y: outer.y + outer.height - 18 },
+        { x: outer.x + 82, y: outer.y + outer.height - 18 },
+        { x: outer.x + 118, y: outer.y + outer.height - 116 },
+        { x: outer.x + 102, y: outer.y + outer.height - 116 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 56, y: outer.y + 18 },
+        { x: outer.x + outer.width + 8, y: outer.y + 18 },
+        { x: outer.x + outer.width - 28, y: outer.y + 116 },
+        { x: outer.x + outer.width - 92, y: outer.y + 116 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 82, y: outer.y + 18 },
+        { x: outer.x + outer.width - 66, y: outer.y + 18 },
+        { x: outer.x + outer.width - 102, y: outer.y + 116 },
+        { x: outer.x + outer.width - 118, y: outer.y + 116 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(...buildMedalCommands({
+      x: outer.x + outer.width - 100,
+      y: outer.y + outer.height - 88,
+      size: 74,
+      primaryHex,
+      accentHex,
+      ringColor: softPrimary,
+    }));
+    return commands;
+  }
+
+  if (frameStyle === 'certificate_of_achievement_2') {
+    commands.push(buildRectangle({
+      x: outer.x + 6,
+      y: outer.y + 6,
+      width: outer.width - 12,
+      height: outer.height - 12,
+      strokeColor: primaryColor,
+      lineWidth: 4.8,
+    }));
+    commands.push(buildRectangle({
+      x: inner.x + 10,
+      y: inner.y + 10,
+      width: inner.width - 20,
+      height: inner.height - 20,
+      strokeColor: faintLine,
+      lineWidth: 1.2,
+    }));
+    commands.push(buildRectangle({
+      x: outer.x + 18,
+      y: outer.y + 18,
+      width: 12,
+      height: outer.height - 36,
+      fillColor: primaryColor,
+    }));
+    commands.push(buildRectangle({
+      x: outer.x + 38,
+      y: outer.y + 18,
+      width: 6,
+      height: outer.height - 36,
+      fillColor: softPrimary,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 142, y: outer.y + outer.height - 8 },
+        { x: outer.x + outer.width - 92, y: outer.y + outer.height - 8 },
+        { x: outer.x + outer.width - 30, y: outer.y + 102 },
+        { x: outer.x + outer.width - 80, y: outer.y + 102 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 112, y: outer.y + outer.height - 8 },
+        { x: outer.x + outer.width - 82, y: outer.y + outer.height - 8 },
+        { x: outer.x + outer.width - 18, y: outer.y + 122 },
+        { x: outer.x + outer.width - 48, y: outer.y + 122 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 84, y: outer.y + 8 },
+        { x: outer.x + 114, y: outer.y + 8 },
+        { x: outer.x + 54, y: outer.y + 122 },
+        { x: outer.x + 24, y: outer.y + 122 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 108, y: outer.y + 8 },
+        { x: outer.x + 124, y: outer.y + 8 },
+        { x: outer.x + 64, y: outer.y + 118 },
+        { x: outer.x + 48, y: outer.y + 118 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(...buildMedalCommands({
+      x: (outer.x + (outer.width / 2)) - 34,
+      y: outer.y + 20,
+      size: 68,
+      primaryHex,
+      accentHex,
+      ringColor: softPrimary,
+    }));
+    return commands;
+  }
+
+  if (frameStyle === 'certificate_of_achievement_1') {
+    commands.push(buildRectangle({
+      x: inner.x + 2,
+      y: inner.y + 2,
+      width: inner.width - 4,
+      height: inner.height - 4,
+      strokeColor: softPrimary,
+      lineWidth: 1.3,
+    }));
+    commands.push(buildRectangle({
+      x: inner.x + 14,
+      y: inner.y + 14,
+      width: inner.width - 28,
+      height: inner.height - 28,
+      strokeColor: softAccent,
+      lineWidth: 0.8,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x - 8, y: outer.y + outer.height - 20 },
+        { x: outer.x + 52, y: outer.y + outer.height - 20 },
+        { x: outer.x + 104, y: outer.y + outer.height - 118 },
+        { x: outer.x + 44, y: outer.y + outer.height - 118 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 66, y: outer.y + outer.height - 20 },
+        { x: outer.x + 82, y: outer.y + outer.height - 20 },
+        { x: outer.x + 134, y: outer.y + outer.height - 118 },
+        { x: outer.x + 118, y: outer.y + outer.height - 118 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 52, y: outer.y + 20 },
+        { x: outer.x + outer.width + 8, y: outer.y + 20 },
+        { x: outer.x + outer.width - 44, y: outer.y + 118 },
+        { x: outer.x + outer.width - 104, y: outer.y + 118 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 82, y: outer.y + 20 },
+        { x: outer.x + outer.width - 66, y: outer.y + 20 },
+        { x: outer.x + outer.width - 118, y: outer.y + 118 },
+        { x: outer.x + outer.width - 134, y: outer.y + 118 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(...buildMedalCommands({
+      x: outer.x + outer.width - 102,
+      y: outer.y + outer.height - 98,
+      size: 72,
+      primaryHex,
+      accentHex,
+      ringColor: softPrimary,
+    }));
+    return commands;
+  }
+
+  if (frameStyle === 'certificate_of_excellence_1') {
+    commands.push(buildRectangle({
+      x: inner.x + 2,
+      y: inner.y + 2,
+      width: inner.width - 4,
+      height: inner.height - 4,
+      strokeColor: mixToRgb(fontHex, '#FFFFFF', 0.55, '#111827', '#FFFFFF'),
+      lineWidth: 1.3,
+    }));
+    commands.push(buildRectangle({
+      x: inner.x + 14,
+      y: inner.y + 14,
+      width: inner.width - 28,
+      height: inner.height - 28,
+      strokeColor: faintLine,
+      lineWidth: 0.8,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 72, y: outer.y + outer.height - 10 },
+        { x: outer.x + outer.width + 18, y: outer.y + outer.height - 10 },
+        { x: outer.x + outer.width - 24, y: outer.y + 96 },
+        { x: outer.x + outer.width - 114, y: outer.y + 96 },
+      ],
+      fillColor: primaryColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 32, y: outer.y + outer.height - 10 },
+        { x: outer.x + outer.width + 10, y: outer.y + outer.height - 10 },
+        { x: outer.x + outer.width - 38, y: outer.y + 114 },
+        { x: outer.x + outer.width - 80, y: outer.y + 114 },
+      ],
+      fillColor: softPrimary,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + outer.width - 6, y: outer.y + outer.height - 10 },
+        { x: outer.x + outer.width + 34, y: outer.y + outer.height - 10 },
+        { x: outer.x + outer.width - 8, y: outer.y + 128 },
+        { x: outer.x + outer.width - 48, y: outer.y + 128 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x - 18, y: outer.y + 18 },
+        { x: outer.x + 26, y: outer.y + 18 },
+        { x: outer.x + 70, y: outer.y + 132 },
+        { x: outer.x + 26, y: outer.y + 132 },
+      ],
+      fillColor: accentColor,
+    }));
+    commands.push(buildPolygon({
+      points: [
+        { x: outer.x + 20, y: outer.y + 18 },
+        { x: outer.x + 46, y: outer.y + 18 },
+        { x: outer.x + 90, y: outer.y + 128 },
+        { x: outer.x + 64, y: outer.y + 128 },
+      ],
+      fillColor: softPrimary,
+    }));
+    commands.push(...buildMedalCommands({
+      x: outer.x + 26,
+      y: outer.y + outer.height - 146,
+      size: 80,
+      primaryHex,
+      accentHex,
+      ringColor: softPrimary,
+    }));
+  }
+
+  return commands;
+};
+
 export const buildCertificatePdf = (record, { brandName = 'BELLE KREYASHON' } = {}) => {
   const learnerName = String(record.learnerName || 'Learner').trim();
   const productName = String(record.productName || '').trim();
@@ -194,17 +749,23 @@ export const buildCertificatePdf = (record, { brandName = 'BELLE KREYASHON' } = 
     : [];
   const showOrganizerBlock = organizerName && organizerName.toLowerCase() !== String(brandName || '').trim().toLowerCase();
 
-  const primaryColor = toRgb(record.primaryColor, '#111827');
-  const accentColor = toRgb(record.accentColor, '#FDC700');
-  const backgroundColor = toRgb(record.backgroundColor, '#FFFDF7');
-  const fontColor = toRgb(record.fontColor, '#374151');
+  const primaryHex = sanitizeColor(record.primaryColor, '#111827');
+  const accentHex = sanitizeColor(record.accentColor, '#FDC700');
+  const backgroundHex = sanitizeColor(record.backgroundColor, '#FFFDF7');
+  const fontHex = sanitizeColor(record.fontColor, '#374151');
+  const primaryColor = toRgb(primaryHex, '#111827');
+  const accentColor = toRgb(accentHex, '#FDC700');
+  const backgroundColor = toRgb(backgroundHex, '#FFFDF7');
+  const fontColor = toRgb(fontHex, '#374151');
+  const frameStyle = sanitizeCertificateFrameStyle(record.frameStyle, 'classic');
   const frameStyles = {
     classic: { borderWidth: 10, innerWidth: 1.5 },
     double: { borderWidth: 14, innerWidth: 2.5 },
     soft: { borderWidth: 8, innerWidth: 1.5 },
     minimal: { borderWidth: 6, innerWidth: 1 },
   };
-  const frame = frameStyles[record.frameStyle] || frameStyles.classic;
+  const frame = frameStyles[frameStyle] || frameStyles.classic;
+  const modernStyle = !frameStyles[frameStyle];
 
   const outer = { x: 24, y: 24, width: PAGE_WIDTH - 48, height: PAGE_HEIGHT - 48 };
   const inner = { x: 40, y: 40, width: PAGE_WIDTH - 80, height: PAGE_HEIGHT - 80 };
@@ -263,23 +824,35 @@ export const buildCertificatePdf = (record, { brandName = 'BELLE KREYASHON' } = 
     height: PAGE_HEIGHT,
     fillColor: '1 1 1',
   }));
-  commands.push(buildRectangle({
-    x: outer.x,
-    y: outer.y,
-    width: outer.width,
-    height: outer.height,
-    fillColor: backgroundColor,
-    strokeColor: primaryColor,
-    lineWidth: frame.borderWidth,
-  }));
-  commands.push(buildRectangle({
-    x: inner.x,
-    y: inner.y,
-    width: inner.width,
-    height: inner.height,
-    strokeColor: primaryColor,
-    lineWidth: frame.innerWidth,
-  }));
+  if (modernStyle) {
+    commands.push(...buildModernCertificateChrome({
+      frameStyle,
+      outer,
+      inner,
+      primaryHex,
+      accentHex,
+      backgroundHex,
+      fontHex,
+    }));
+  } else {
+    commands.push(buildRectangle({
+      x: outer.x,
+      y: outer.y,
+      width: outer.width,
+      height: outer.height,
+      fillColor: backgroundColor,
+      strokeColor: primaryColor,
+      lineWidth: frame.borderWidth,
+    }));
+    commands.push(buildRectangle({
+      x: inner.x,
+      y: inner.y,
+      width: inner.width,
+      height: inner.height,
+      strokeColor: primaryColor,
+      lineWidth: frame.innerWidth,
+    }));
+  }
 
   commands.push(buildTextCommands(['CERTIFICATE'], {
     x: contentBox.x,

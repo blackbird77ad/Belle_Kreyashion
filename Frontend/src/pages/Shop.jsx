@@ -16,6 +16,7 @@ import {
 import { api } from '../hooks/useApi';
 import { CATEGORIES } from '../data/categories';
 import SEO from '../components/SEO';
+import { buildBreadcrumbSchema, buildCollectionPageSchema, getProductPath } from '../utils/seoPaths';
 
 const calcDiscountedPrice = (p) => {
   if (!p.discount?.active) return p.retailPrice;
@@ -126,13 +127,48 @@ export default function Shop() {
 
   const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.ceil(products.length / PAGE_SIZE);
+  const activeSpecialLabel = SPECIAL_FILTERS.find((item) => item.key === special)?.label || '';
+  const seoTitle = search.trim()
+    ? `${search.trim()} | Shop`
+    : category !== 'All'
+      ? `${category} in Ghana`
+      : activeSpecialLabel
+        ? `${activeSpecialLabel} Products`
+        : 'Shop Hair, Beauty, Fashion & More';
+  const seoDescription = search.trim()
+    ? `Search Belle Kreyashon for ${search.trim()} and browse matching products with delivery across Ghana.`
+    : category !== 'All'
+      ? `Shop ${category.toLowerCase()} at Belle Kreyashon with fast delivery across Ghana and easy online ordering.`
+      : 'Browse Belle Kreyashon products across hair, wigs, braiding supplies, beauty, fashion, wellness and more with delivery across Ghana.';
+  const seoKeywords = [
+    'Belle Kreyashon shop',
+    'online shopping Ghana',
+    'hair extensions Accra',
+    'beauty products Ghana',
+    category !== 'All' ? category : '',
+    search.trim(),
+    activeSpecialLabel,
+  ].filter(Boolean).join(', ');
+  const seoSchema = [
+    buildCollectionPageSchema({
+      name: seoTitle,
+      description: seoDescription,
+      path: '/shop',
+    }),
+    buildBreadcrumbSchema([
+      { name: 'Home', path: '/' },
+      { name: 'Shop', path: '/shop' },
+    ]),
+  ];
 
   return (
     <div className="pt-16 min-h-screen">
       <SEO
-        title="Shop Hair, Beauty, Fashion & More"
-        description="Browse hundreds of products - hair extensions, wigs, braiding hair, skincare, fashion, health and gadgets. Fast delivery across Ghana."
+        title={seoTitle}
+        description={seoDescription}
         url="/shop"
+        keywords={seoKeywords}
+        schema={seoSchema}
       />
 
       <div className="bg-black text-white py-12 px-4 text-center">
@@ -353,7 +389,7 @@ export default function Shop() {
                       transition={{ duration: 0.2, delay: Math.min(i * 0.03, 0.15) }}
                     >
                       <Link
-                        to={`/shop/${product._id}`}
+                        to={getProductPath(product)}
                         className={`block bg-white rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border-2 ${discounted ? 'border-[#FDC700]' : 'border-gray-100'}`}
                       >
                         <div className="relative aspect-square bg-gray-100 overflow-hidden">

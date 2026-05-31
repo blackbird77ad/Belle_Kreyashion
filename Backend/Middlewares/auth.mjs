@@ -5,10 +5,12 @@ const SECRET = process.env.JWT_SECRET;
 export const signAdminToken = (payload) => jwt.sign(payload, SECRET, { expiresIn: '30d' });
 
 export const signCustomerToken = (customer) => jwt.sign({
+  id: String(customer._id || ''),
   customerId: customer.customerId,
   phone: customer.phone,
   email: customer.email || '',
   name: customer.name,
+  emailVerified: !!customer.emailVerified,
 }, SECRET, { expiresIn: '30d' });
 
 export const protect = (req, res, next) => {

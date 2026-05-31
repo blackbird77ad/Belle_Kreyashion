@@ -52,6 +52,7 @@ export default function Contact() {
         title="Contact Us"
         description="Get in touch with Belle Kreyashon. WhatsApp, call or visit us in Osu, Accra, Ghana. Nationwide and international delivery."
         url="/contact"
+        keywords="contact Belle Kreyashon, WhatsApp beauty store Ghana, Accra wig store contact, beauty support Ghana"
       />
 
       {/* Hero */}

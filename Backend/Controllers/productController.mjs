@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Product from '../Models/Product.mjs';
 import {
@@ -101,6 +102,23 @@ const applyDiscountToAmount = (amount, discount) => {
   if (!discount?.active) return amount;
   if (discount.type === 'percent') return Math.max(0, roundMoney(amount * (1 - discount.value / 100)));
   return Math.max(0, roundMoney(amount - discount.value));
+};
+
+const buildPublicIdentifierQuery = (value = '') => {
+  const identifier = String(value || '').trim();
+  if (!identifier) return null;
+
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    return {
+      available: true,
+      $or: [{ _id: identifier }, { slug: identifier }],
+    };
+  }
+
+  return {
+    available: true,
+    slug: identifier,
+  };
 };
 
 const readOptionalCustomerId = (req) => {
@@ -463,7 +481,10 @@ export const getCategories = async (_, res) => {
 
 export const getPublicProduct = async (req, res) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id, available: true });
+    const query = buildPublicIdentifierQuery(req.params.id);
+    if (!query) return res.status(404).json({ message: 'Product not found' });
+
+    const product = await Product.findOne(query);
     if (!product) return res.status(404).json({ message: 'Product not found' });
     const [publicProduct] = await decorateProductsWithAccess(req, [product]);
     res.json(publicProduct);

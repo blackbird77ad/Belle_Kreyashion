@@ -21,6 +21,7 @@ import {
 } from '../data/digitalProductOptions';
 import { useCart } from '../context/CartContext';
 import SEO from '../components/SEO';
+import { getProductPath } from '../utils/seoPaths';
 
 const calcDiscountedPrice = (p) => {
   if (!p.discount?.active) return p.retailPrice;
@@ -123,7 +124,7 @@ const ProductCard = ({ product, onPartnerClick }) => {
     );
   }
 
-  return <Link to={`/shop/${product._id}`} className="relative block">{card}</Link>;
+  return <Link to={getProductPath(product)} className="relative block">{card}</Link>;
 };
 
 const SectionHeader = ({ label, title, cta, to }) => (
@@ -189,6 +190,7 @@ export default function Home() {
         title="Hair Extensions, Wigs & Beauty Supply Ghana"
         description="Shop hair extensions, wigs, braiding hair, beauty, skincare, fashion, health and gadgets. Nationwide delivery across Ghana and international shipping. One store for everything."
         url="/"
+        keywords="hair extensions Ghana, wigs Ghana, beauty supply Ghana, digital products Ghana, beauty training Ghana, online shopping Accra, Belle Kreyashon"
       />
 
       {/* Hero */}
@@ -235,7 +237,7 @@ export default function Home() {
             </div>
 
             {activeHero ? (
-              <Link to={`/shop/${activeHero._id}`} className="block group">
+              <Link to={getProductPath(activeHero)} className="block group">
                 <div className="grid md:grid-cols-[1fr_1fr] md:min-h-[250px] lg:min-h-[23vh] lg:max-h-[240px]">
                   <div className="relative bg-gradient-to-br from-[#f6f0dc] via-[#fbf8ef] to-white min-h-[170px] sm:min-h-[195px] md:min-h-0">
                     <div className="absolute top-3 left-3 right-3 z-10 flex flex-wrap gap-2">
@@ -435,7 +437,7 @@ export default function Home() {
                 return (
                   <Link
                     key={p._id}
-                    to={`/shop/${p._id}`}
+                    to={getProductPath(p)}
                     className="block bg-white rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-2 border-[#FDC700]"
                   >
                     <div className="relative aspect-square bg-gray-100 overflow-hidden">
@@ -626,7 +628,7 @@ export default function Home() {
                       return (
                         <Link
                           key={product._id}
-                          to={`/shop/${product._id}`}
+                          to={getProductPath(product)}
                           className="group rounded-3xl border border-white/10 bg-white/5 overflow-hidden hover:bg-white/10 transition-all"
                         >
                           <div className="aspect-[4/3] bg-gradient-to-br from-[#f7f0d7] via-white to-gray-100 overflow-hidden">

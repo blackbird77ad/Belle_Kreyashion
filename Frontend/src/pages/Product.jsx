@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
+import { buildBreadcrumbSchema, getProductPath, toAbsoluteUrl } from '../utils/seoPaths';
 
 const normalizeSupportWhatsApp = (value = '') => {
   const cleaned = String(value || '').trim().replace(/[^\d+]/g, '');
@@ -30,7 +31,7 @@ const buildSupportWhatsAppLink = (phone = '', productName = '') => {
 };
 
 export default function Product() {
-  const { id } = useParams();
+  const { slugOrId } = useParams();
   const navigate = useNavigate();
   const { cart, addToCart, removeOwnedDigitalItems } = useCart();
   const { customer } = useCustomer();
@@ -45,17 +46,25 @@ export default function Product() {
   const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
 
   useEffect(() => {
-    api.get(`/api/products/public/${id}`, customer?.accessToken
+    api.get(`/api/products/public/${slugOrId}`, customer?.accessToken
       ? { headers: { 'x-customer-token': customer.accessToken } }
       : undefined)
-      .then(r => { setProduct(r.data); setLoading(false); })
+      .then((r) => {
+        setProduct(r.data);
+        setLoading(false);
+
+        const canonicalPath = getProductPath(r.data);
+        if (r.data?.slug && canonicalPath !== `/shop/${slugOrId}`) {
+          navigate(canonicalPath, { replace: true });
+        }
+      })
       .catch(() => { setLoading(false); navigate('/shop'); });
-  }, [id, navigate, customer?.accessToken]);
+  }, [slugOrId, navigate, customer?.accessToken]);
 
   useEffect(() => {
     setAdded(false);
     setShowCheckoutPrompt(false);
-  }, [id]);
+  }, [slugOrId]);
 
   useEffect(() => {
     if (!product?._id || !product?.isDigital || !product?.customerHasAccess) return;
@@ -122,15 +131,67 @@ export default function Product() {
   );
   if (!product) return null;
 
+  const canonicalPath = getProductPath(product);
+  const seoDescription = product.desc || (
+    isDigital
+      ? `Buy secure access to ${product.name} from Belle Kreyashon and open it inside your protected digital library in Ghana.`
+      : `Buy ${product.name} from Belle Kreyashon in Ghana with delivery across Accra and nationwide.`
+  );
+  const productImages = Array.isArray(product.images)
+    ? product.images.filter(Boolean).map((image) => toAbsoluteUrl(image))
+    : [];
+  const seoSchema = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      description: seoDescription,
+      image: productImages,
+      category: product.category || '',
+      sku: product.slug || product._id,
+      brand: {
+        '@type': 'Brand',
+        name: 'Belle Kreyashon',
+      },
+      seller: {
+        '@type': 'Organization',
+        name: 'Belle Kreyashon',
+        url: 'https://bellekreyashon.com',
+      },
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'GHS',
+        price: Number(price || 0),
+        availability: product.stock === 0 ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
+        url: toAbsoluteUrl(canonicalPath),
+        itemCondition: 'https://schema.org/NewCondition',
+      },
+    },
+    buildBreadcrumbSchema([
+      { name: 'Home', path: '/' },
+      { name: 'Shop', path: '/shop' },
+      { name: product.name, path: canonicalPath },
+    ]),
+  ];
+
   return (
     <div className="pt-16 min-h-screen">
       <SEO
-      title={product.name}
-      description={product.desc || `Buy ${product.name} at Belle Kreyashon Ghana. GHS ${product.retailPrice}. Fast delivery nationwide.`}
-      image={product.images?.[0]}
-      url={`/shop/${product._id}`}
-      type="product"
-    />
+        title={product.name}
+        description={seoDescription}
+        image={product.images?.[0]}
+        url={canonicalPath}
+        type="product"
+        keywords={[
+          product.name,
+          product.category,
+          'Belle Kreyashon',
+          'buy online Ghana',
+          'hair and beauty Ghana',
+          isDigital ? 'digital course Ghana' : 'beauty store Ghana',
+        ].filter(Boolean).join(', ')}
+        schema={seoSchema}
+      />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-black mb-6 transition-colors">

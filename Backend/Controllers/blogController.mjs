@@ -1,10 +1,28 @@
 import Blog from '../Models/Blog.mjs';
+import mongoose from 'mongoose';
 
 const convertDrive = (url) => {
   if (!url) return url;
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (match) return `https://drive.google.com/uc?export=view&id=${match[1]}`;
   return url;
+};
+
+const buildPublicIdentifierQuery = (value = '') => {
+  const identifier = String(value || '').trim();
+  if (!identifier) return null;
+
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    return {
+      published: true,
+      $or: [{ _id: identifier }, { slug: identifier }],
+    };
+  }
+
+  return {
+    published: true,
+    slug: identifier,
+  };
 };
 
 export const getPublicPosts = async (req, res) => {
@@ -21,7 +39,10 @@ export const getPublicPosts = async (req, res) => {
 
 export const getPublicPost = async (req, res) => {
   try {
-    const post = await Blog.findOne({ _id: req.params.id, published: true });
+    const query = buildPublicIdentifierQuery(req.params.id);
+    if (!query) return res.status(404).json({ message: 'Not found' });
+
+    const post = await Blog.findOne(query);
     if (!post) return res.status(404).json({ message: 'Not found' });
     res.json(post);
   } catch { res.status(500).json({ message: 'Server error' }); }

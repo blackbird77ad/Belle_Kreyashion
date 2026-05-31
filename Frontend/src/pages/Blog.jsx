@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Play, Calendar } from 'lucide-react';
-import { useFetch, api } from '../hooks/useApi';
+import { useFetch } from '../hooks/useApi';
 import SEO from '../components/SEO';
+import { buildBreadcrumbSchema, buildCollectionPageSchema, getBlogPath } from '../utils/seoPaths';
 
 export default function Blog() {
   const [search, setSearch] = useState('');
@@ -12,14 +13,39 @@ export default function Blog() {
   const { data: posts, loading } = useFetch(`/api/blog/public${query ? `?search=${query}` : ''}`, [query]);
   const pagedPosts   = (posts || []).slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
   const totalPages   = Math.ceil((posts?.length || 0) / PAGE_SIZE);
+  const seoTitle = query.trim() ? `Blog Search: ${query.trim()}` : 'Hair & Beauty Tips, Tutorials & News';
+  const seoDescription = query.trim()
+    ? `Browse Belle Kreyashon blog results for ${query.trim()} and discover practical hair, beauty, lifestyle and business content.`
+    : 'Read the latest hair care tips, beauty tutorials, styling guides and lifestyle content from Belle Kreyashon.';
+  const seoKeywords = [
+    'Belle Kreyashon blog',
+    'hair tips Ghana',
+    'beauty blog Ghana',
+    'wig care tips',
+    'skincare advice Ghana',
+    query.trim(),
+  ].filter(Boolean).join(', ');
+  const seoSchema = [
+    buildCollectionPageSchema({
+      name: seoTitle,
+      description: seoDescription,
+      path: '/blog',
+    }),
+    buildBreadcrumbSchema([
+      { name: 'Home', path: '/' },
+      { name: 'Blog', path: '/blog' },
+    ]),
+  ];
 
   return (
     <div className="pt-16 min-h-screen">
       <SEO
-      title="Hair & Beauty Tips, Tutorials & News"
-      description="Read the latest hair care tips, beauty tutorials, styling guides and lifestyle content from Belle Kreyashon."
-      url="/blog"
-    />
+        title={seoTitle}
+        description={seoDescription}
+        url="/blog"
+        keywords={seoKeywords}
+        schema={seoSchema}
+      />
       <div className="bg-black text-white py-16 px-4 text-center">
         <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-2">Tips, Tutorials & Trends</p>
         <h1 className="text-4xl md:text-5xl font-extrabold">Blog</h1>
@@ -44,7 +70,7 @@ export default function Blog() {
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {pagedPosts.map(post => (
-            <Link key={post._id} to={`/blog/${post._id}`}
+            <Link key={post._id} to={getBlogPath(post)}
               className="group block bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
               <div className="relative aspect-video bg-gray-100 overflow-hidden">
                 {post.coverImage && <img src={post.coverImage} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={e => { e.target.style.display='none'; }} />}

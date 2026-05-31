@@ -1,12 +1,141 @@
+import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
+import Booking from '../Models/Booking.mjs';
 import Customer from '../Models/Customer.mjs';
+import DigitalAccess from '../Models/DigitalAccess.mjs';
+import Order from '../Models/Order.mjs';
 import { signCustomerToken } from '../Middlewares/auth.mjs';
+import {
+  sendCustomerPasswordResetEmail,
+  sendCustomerVerificationEmail,
+  sendCustomerWelcomeEmail,
+} from '../Services/customerMailService.mjs';
 
-const normalizeEmail = (value) => value?.trim().toLowerCase() || '';
+const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+
+const normalizePhone = (value = '') => {
+  const cleaned = String(value || '').replace(/[\s\-().]/g, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('233') && !cleaned.startsWith('+')) return `+${cleaned}`;
+  return cleaned;
+};
+
+const hashText = (value = '') => crypto.createHash('sha256').update(String(value || '')).digest('hex');
+const createToken = () => crypto.randomBytes(24).toString('hex');
+
+const serializeCustomer = (customer) => ({
+  id: String(customer._id || ''),
+  customerId: customer.customerId || '',
+  name: customer.name || '',
+  phone: customer.phone || '',
+  email: customer.email || '',
+  paystackCustomerCode: customer.paystackCustomerCode || '',
+  emailVerified: !!customer.emailVerified,
+  hasPassword: !!customer.passwordHash,
+  lastLoginAt: customer.lastLoginAt || null,
+  createdAt: customer.createdAt || null,
+});
+
+const buildAuthResponse = (customer, extra = {}) => ({
+  customer: serializeCustomer(customer),
+  customerToken: signCustomerToken(customer),
+  ...extra,
+});
+
+const buildFrontendBaseUrl = () => String(process.env.FRONTEND_URL || 'https://bellekreyashon.com').trim().replace(/\/+$/, '');
+const buildVerificationUrl = (token) => `${buildFrontendBaseUrl()}/account/verify?token=${encodeURIComponent(token)}`;
+const buildPasswordResetUrl = (token) => `${buildFrontendBaseUrl()}/account/reset-password?token=${encodeURIComponent(token)}`;
+
+const findCustomerByIdentifier = async (identifier = '') => {
+  const email = normalizeEmail(identifier);
+  const phone = normalizePhone(identifier);
+
+  if (email && email.includes('@')) {
+    return Customer.findOne({ email });
+  }
+  if (phone) {
+    return Customer.findOne({ phone });
+  }
+  return null;
+};
+
+const ensureUniqueIdentity = async ({ email, phone, customerId = '' }) => {
+  if (email) {
+    const emailOwner = await Customer.findOne({ email });
+    if (emailOwner && String(emailOwner._id) !== String(customerId)) {
+      throw new Error('That email address is already linked to another customer');
+    }
+  }
+
+  if (phone) {
+    const phoneOwner = await Customer.findOne({ phone });
+    if (phoneOwner && String(phoneOwner._id) !== String(customerId)) {
+      throw new Error('That phone number is already linked to another customer');
+    }
+  }
+};
+
+const createEmailVerificationState = () => ({
+  token: createToken(),
+  expiresAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+});
+
+const createPasswordResetState = () => ({
+  token: createToken(),
+  expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+});
+
+const buildCustomerLookupQuery = (customer) => {
+  const orderQuery = [];
+  const bookingQuery = [];
+  const digitalQuery = [];
+
+  if (customer?.customerId) {
+    orderQuery.push({ 'customer.customerId': customer.customerId });
+    bookingQuery.push({ 'customer.customerId': customer.customerId });
+    digitalQuery.push({ customerId: customer.customerId });
+  }
+  if (customer?.email) {
+    orderQuery.push({ 'customer.email': customer.email });
+    bookingQuery.push({ 'customer.email': customer.email });
+    digitalQuery.push({ customerEmail: customer.email });
+  }
+  if (customer?.phone) {
+    orderQuery.push({ 'customer.phone': customer.phone });
+    bookingQuery.push({ 'customer.phone': customer.phone });
+    digitalQuery.push({ customerPhone: customer.phone });
+  }
+
+  return {
+    orderFilter: orderQuery.length ? { $or: orderQuery } : { _id: null },
+    bookingFilter: bookingQuery.length ? { $or: bookingQuery } : { _id: null },
+    digitalFilter: digitalQuery.length ? { $or: digitalQuery } : { _id: null },
+  };
+};
+
+const getAuthenticatedCustomer = async (req) => {
+  if (req.customerAuth?.id) {
+    const byId = await Customer.findById(req.customerAuth.id);
+    if (byId) return byId;
+  }
+  if (req.customerAuth?.customerId) {
+    const byCode = await Customer.findOne({ customerId: req.customerAuth.customerId });
+    if (byCode) return byCode;
+  }
+  if (req.customerAuth?.email) {
+    const byEmail = await Customer.findOne({ email: normalizeEmail(req.customerAuth.email) });
+    if (byEmail) return byEmail;
+  }
+  if (req.customerAuth?.phone) {
+    return Customer.findOne({ phone: normalizePhone(req.customerAuth.phone) });
+  }
+  return null;
+};
 
 export const identifyCustomer = async (req, res) => {
   try {
     const name = req.body.name?.trim() || '';
-    const phone = req.body.phone?.trim() || '';
+    const phone = normalizePhone(req.body.phone);
     const email = normalizeEmail(req.body.email);
 
     if (!phone && !email) {
@@ -21,58 +150,317 @@ export const identifyCustomer = async (req, res) => {
       if (!name || !phone || !email) {
         return res.status(400).json({ message: 'Name, phone and email are required for new customers' });
       }
+
       customer = await Customer.create({ name, phone, email });
     } else {
-      if (phone && customer.phone !== phone) {
-        const phoneOwner = await Customer.findOne({ phone });
-        if (phoneOwner && String(phoneOwner._id) !== String(customer._id)) {
-          return res.status(409).json({ message: 'That phone number is already linked to another customer' });
-        }
-        customer.phone = phone;
-      }
+      await ensureUniqueIdentity({ email, phone, customerId: customer._id });
 
-      if (email && customer.email !== email) {
-        const emailOwner = await Customer.findOne({ email });
-        if (emailOwner && String(emailOwner._id) !== String(customer._id)) {
-          return res.status(409).json({ message: 'That email is already linked to another customer' });
-        }
-        customer.email = email;
-      }
-
-      if (name && customer.name !== name && !/^\+?\d/.test(name)) {
-        customer.name = name;
-      }
-
+      if (name && customer.name !== name && !/^\+?\d/.test(name)) customer.name = name;
+      if (phone) customer.phone = phone;
+      if (email) customer.email = email;
       await customer.save();
     }
 
-    res.json({
+    res.json(buildAuthResponse(customer));
+  } catch (err) {
+    const message = err.message || 'Could not identify customer right now';
+    const status = /already linked/.test(message) ? 409 : 500;
+    res.status(status).json({ message });
+  }
+};
+
+export const signupCustomer = async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const phone = normalizePhone(req.body.phone);
+    const email = normalizeEmail(req.body.email);
+    const password = String(req.body.password || '');
+
+    if (!name || !phone || !email || !password) {
+      return res.status(400).json({ message: 'Name, phone, email and password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    const emailCustomer = await Customer.findOne({ email });
+    const phoneCustomer = await Customer.findOne({ phone });
+
+    if (emailCustomer && phoneCustomer && String(emailCustomer._id) !== String(phoneCustomer._id)) {
+      return res.status(409).json({
+        message: 'That email and phone number are already linked to different customer records. Please contact support so we can merge them safely.',
+      });
+    }
+
+    const customer = emailCustomer || phoneCustomer || new Customer({ name, phone, email });
+    if (customer.passwordHash) {
+      return res.status(409).json({ message: 'An account already exists for these details. Please sign in or reset your password.' });
+    }
+
+    customer.name = name;
+    customer.phone = phone;
+    customer.email = email;
+    customer.passwordHash = await bcrypt.hash(password, 10);
+    customer.lastLoginAt = new Date();
+
+    const verification = createEmailVerificationState();
+    customer.emailVerified = false;
+    customer.emailVerificationTokenHash = hashText(verification.token);
+    customer.emailVerificationExpiresAt = verification.expiresAt;
+
+    await customer.save();
+
+    let emailWarning = '';
+    await sendCustomerWelcomeEmail({
       customer,
-      customerToken: signCustomerToken(customer),
+      verificationUrl: buildVerificationUrl(verification.token),
+    }).catch((error) => {
+      emailWarning = error.message || 'Account created, but the confirmation email could not be sent right now.';
+    });
+
+    res.status(201).json(buildAuthResponse(customer, emailWarning ? { emailWarning } : {}));
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: 'That email or phone number is already linked to another customer account' });
+    }
+    res.status(500).json({ message: err.message || 'Could not create account right now' });
+  }
+};
+
+export const loginCustomer = async (req, res) => {
+  try {
+    const identifier = String(req.body.identifier || '').trim();
+    const password = String(req.body.password || '');
+
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Email or phone number and password are required' });
+    }
+
+    const customer = await findCustomerByIdentifier(identifier);
+    if (!customer || !customer.passwordHash) {
+      return res.status(404).json({ message: 'No customer account was found. Please sign up with the same details you used for checkout.' });
+    }
+
+    const matches = await bcrypt.compare(password, customer.passwordHash);
+    if (!matches) {
+      return res.status(401).json({ message: 'Password is incorrect' });
+    }
+
+    customer.lastLoginAt = new Date();
+    await customer.save();
+
+    res.json(buildAuthResponse(customer));
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not sign in right now' });
+  }
+};
+
+export const getCurrentCustomer = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.status(404).json({ message: 'Customer account not found' });
+    res.json({ customer: serializeCustomer(customer) });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not load your account right now' });
+  }
+};
+
+export const getCustomerDashboard = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.status(404).json({ message: 'Customer account not found' });
+
+    const { orderFilter, bookingFilter, digitalFilter } = buildCustomerLookupQuery(customer);
+    const [orders, bookings, digitalAccess] = await Promise.all([
+      Order.find(orderFilter).sort({ createdAt: -1 }),
+      Booking.find(bookingFilter).sort({ createdAt: -1 }),
+      DigitalAccess.find(digitalFilter).sort({ createdAt: -1 }),
+    ]);
+
+    const totalSpent = orders.reduce((sum, order) => sum + (Number(order.total) || 0), 0)
+      + bookings.reduce((sum, booking) => sum + (Number(booking.amount) || 0), 0);
+
+    res.json({
+      customer: serializeCustomer(customer),
+      summary: {
+        totalSpent,
+        orderCount: orders.length,
+        bookingCount: bookings.length,
+        digitalProductCount: digitalAccess.length,
+        activeDigitalCount: digitalAccess.filter((item) => item.status === 'active').length,
+      },
+      recentOrders: orders.slice(0, 5),
+      recentBookings: bookings.slice(0, 5),
+      digitalProducts: digitalAccess.slice(0, 6).map((item) => ({
+        id: String(item._id || ''),
+        productId: String(item.productId || ''),
+        productName: item.productName || '',
+        productImage: item.productImage || '',
+        productDesc: item.productDesc || '',
+        digitalAccessKind: item.digitalAccessKind || 'paid',
+        certificateStatus: item.certificateStatus || 'not-applicable',
+        status: item.status || 'active',
+        lastAccessedAt: item.lastAccessedAt || null,
+        createdAt: item.createdAt || null,
+      })),
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: err.message || 'Could not load your dashboard right now' });
+  }
+};
+
+export const getCustomerHistory = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.status(404).json({ message: 'Customer account not found' });
+
+    const { orderFilter, bookingFilter } = buildCustomerLookupQuery(customer);
+    const [orders, bookings] = await Promise.all([
+      Order.find(orderFilter).sort({ createdAt: -1 }),
+      Booking.find(bookingFilter).sort({ createdAt: -1 }),
+    ]);
+
+    res.json({
+      customer: serializeCustomer(customer),
+      orders,
+      bookings,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not load your order history right now' });
+  }
+};
+
+export const requestCustomerPasswordReset = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    if (!email) {
+      return res.status(400).json({ message: 'Email address is required' });
+    }
+
+    const customer = await Customer.findOne({ email });
+    if (!customer || !customer.passwordHash) {
+      return res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
+    }
+
+    const resetState = createPasswordResetState();
+    customer.passwordResetTokenHash = hashText(resetState.token);
+    customer.passwordResetExpiresAt = resetState.expiresAt;
+    await customer.save();
+
+    await sendCustomerPasswordResetEmail({
+      customer,
+      resetUrl: buildPasswordResetUrl(resetState.token),
+    });
+
+    res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not send password reset email right now' });
+  }
+};
+
+export const resetCustomerPassword = async (req, res) => {
+  try {
+    const token = String(req.body.token || '').trim();
+    const password = String(req.body.password || '');
+
+    if (!token || !password) {
+      return res.status(400).json({ message: 'Reset token and new password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    const customer = await Customer.findOne({
+      passwordResetTokenHash: hashText(token),
+      passwordResetExpiresAt: { $gt: new Date() },
+    });
+
+    if (!customer) {
+      return res.status(400).json({ message: 'This password reset link is invalid or has expired' });
+    }
+
+    customer.passwordHash = await bcrypt.hash(password, 10);
+    customer.passwordResetTokenHash = '';
+    customer.passwordResetExpiresAt = null;
+    customer.lastLoginAt = new Date();
+    await customer.save();
+
+    res.json(buildAuthResponse(customer));
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not reset password right now' });
+  }
+};
+
+export const verifyCustomerEmail = async (req, res) => {
+  try {
+    const token = String(req.body.token || '').trim();
+    if (!token) return res.status(400).json({ message: 'Verification token is required' });
+
+    const customer = await Customer.findOne({
+      emailVerificationTokenHash: hashText(token),
+      emailVerificationExpiresAt: { $gt: new Date() },
+    });
+
+    if (!customer) {
+      return res.status(400).json({ message: 'This email confirmation link is invalid or has expired' });
+    }
+
+    customer.emailVerified = true;
+    customer.emailVerificationTokenHash = '';
+    customer.emailVerificationExpiresAt = null;
+    customer.lastLoginAt = new Date();
+    await customer.save();
+
+    res.json(buildAuthResponse(customer, { message: 'Your email address has been confirmed.' }));
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not confirm email right now' });
+  }
+};
+
+export const resendCustomerVerification = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.status(404).json({ message: 'Customer account not found' });
+    if (!customer.email) return res.status(400).json({ message: 'Add an email address to this account first' });
+    if (customer.emailVerified) return res.json({ message: 'Your email address is already confirmed.' });
+
+    const verification = createEmailVerificationState();
+    customer.emailVerificationTokenHash = hashText(verification.token);
+    customer.emailVerificationExpiresAt = verification.expiresAt;
+    await customer.save();
+
+    await sendCustomerVerificationEmail({
+      customer,
+      verificationUrl: buildVerificationUrl(verification.token),
+    });
+
+    res.json({ message: 'A new confirmation email has been sent.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not resend confirmation email right now' });
   }
 };
 
 export const getOrderHistory = async (req, res) => {
   try {
-    const { phone } = req.params;
+    const phone = normalizePhone(req.params.phone);
     const customer = await Customer.findOne({ phone });
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
-    const Order = (await import('../Models/Order.mjs')).default;
+
     const orders = await Order.find({ 'customer.phone': phone }).sort({ createdAt: -1 });
-    res.json({ customer, orders });
+    res.json({ customer: serializeCustomer(customer), orders });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: err.message || 'Could not load order history right now' });
   }
 };
 
 export const getAllCustomers = async (_, res) => {
   try {
-    const customers = await Customer.find().sort({ createdAt: -1 });
+    const customers = await Customer.find()
+      .select('-passwordHash -emailVerificationTokenHash -passwordResetTokenHash')
+      .sort({ createdAt: -1 });
+
     res.json(customers);
-  } catch {
-    res.status(500).json({ message: 'Server error' });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Server error' });
   }
 };

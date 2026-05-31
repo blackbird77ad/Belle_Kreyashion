@@ -5,6 +5,7 @@ import { CartProvider } from './context/CartContext';
 import Navbar     from './components/Navbar';
 import Footer     from './components/Footer';
 import CartDrawer from './components/CartDrawer';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { rememberAttributionFromLocation } from './utils/attribution';
 
 // Home loads immediately — it's the first thing customers see
@@ -66,10 +67,10 @@ function Layout() {
             <Route path="/shop"            element={<Shop />} />
             <Route path="/digital-products" element={<DigitalProducts />} />
             <Route path="/shop/checkout"   element={<Checkout />} />
-            <Route path="/shop/:id"        element={<Product />} />
+            <Route path="/shop/:slugOrId"  element={<Product />} />
             <Route path="/services"        element={<Services />} />
             <Route path="/blog"            element={<Blog />} />
-            <Route path="/blog/:id"        element={<BlogPost />} />
+            <Route path="/blog/:slugOrId"  element={<BlogPost />} />
             <Route path="/about"           element={<About />} />
             <Route path="/contact"         element={<Contact />} />
             <Route path="/order-confirmed" element={<OrderConfirmation />} />
@@ -79,6 +80,7 @@ function Layout() {
           </Routes>
         </Suspense>
       </main>
+      {!isAdmin && <PwaInstallPrompt />}
       {!isAdmin && <Footer />}
     </div>
   );

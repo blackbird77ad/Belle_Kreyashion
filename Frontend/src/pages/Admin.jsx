@@ -10,6 +10,12 @@ import {
   DIGITAL_TOPIC_OPTIONS,
   getDigitalOptionLabel,
 } from '../data/digitalProductOptions';
+import {
+  CERTIFICATE_LAYOUT_OPTIONS,
+  getCertificateLayoutLabel,
+} from '../data/certificateLayouts';
+import { FRONTEND_CERTIFICATE_TEMPLATE_PRESETS } from '../data/certificateTemplatePresets';
+import { CertificateTemplatePreview } from '../components/CertificateTemplatePicker';
 import { generateCertificate } from '../utils/generateCertificate';
 
 const TABS = ['Analytics','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Abandoned','Consultations','Blog','Featured','Invoice'];
@@ -67,6 +73,195 @@ const formatCertificateEmailStatus = (item = {}) => {
   return 'Email not sent yet';
 };
 
+const normalizeTemplateNameKey = (value = '') => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '');
+
+const resolvePresetTemplateKey = (template = {}) => {
+  const explicitPresetKey = String(template.presetKey || '').trim();
+  if (explicitPresetKey && FRONTEND_CERTIFICATE_TEMPLATE_PRESETS.some((preset) => preset.presetKey === explicitPresetKey)) {
+    return explicitPresetKey;
+  }
+
+  const frameStyle = String(template.frameStyle || '').trim();
+  const framePreset = FRONTEND_CERTIFICATE_TEMPLATE_PRESETS.find((preset) => preset.frameStyle === frameStyle);
+  if (framePreset) return framePreset.presetKey;
+
+  const normalizedName = normalizeTemplateNameKey(template.name || '');
+  const namePreset = FRONTEND_CERTIFICATE_TEMPLATE_PRESETS.find(
+    (preset) => normalizeTemplateNameKey(preset.name) === normalizedName
+  );
+  return namePreset?.presetKey || '';
+};
+
+const getCertificateTemplateKey = (template = {}) => (
+  template.presetKey
+  || resolvePresetTemplateKey(template)
+  || template._id
+  || template.name
+  || ''
+);
+
+const findCertificateTemplate = (templates = [], identifier = '') => (
+  templates.find((template) => (
+    template._id === identifier
+    || template.presetKey === identifier
+    || resolvePresetTemplateKey(template) === identifier
+    || template.name === identifier
+  )) || null
+);
+
+const mergeCertificateTemplates = (templates = []) => {
+  const merged = new Map();
+
+  FRONTEND_CERTIFICATE_TEMPLATE_PRESETS.forEach((preset) => {
+    merged.set(preset.presetKey, { ...preset });
+  });
+
+  templates.forEach((template) => {
+    const presetKey = resolvePresetTemplateKey(template);
+    if (presetKey && merged.has(presetKey)) {
+      merged.set(presetKey, { ...merged.get(presetKey), ...template, presetKey, isPreset: true });
+      return;
+    }
+    merged.set(getCertificateTemplateKey(template), { ...template, presetKey: template.presetKey || '', isPreset: !!template.isPreset });
+  });
+
+  return Array.from(merged.values()).sort((a, b) => {
+    if (!!a.isPreset !== !!b.isPreset) return a.isPreset ? -1 : 1;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+};
+
+const normalizeWhatsAppPhone = (value = '') => {
+  const cleaned = String(value || '').trim().replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('+')) return cleaned.slice(1);
+  if (cleaned.startsWith('00')) return cleaned.slice(2);
+  if (cleaned.startsWith('0') && cleaned.length === 10) return `233${cleaned.slice(1)}`;
+  return cleaned;
+};
+
+const buildWhatsAppAdminLink = (phone = '', message = '') => {
+  const normalized = normalizeWhatsAppPhone(phone);
+  if (!normalized) return '';
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+};
+
+const CertificateTemplateDropdown = ({
+  templates = [],
+  selectedId = '',
+  appliedId = '',
+  onSelectId,
+  onPreview,
+  onApply,
+  applyLabel = 'Use This Template',
+  emptyMessage = 'No certificate templates yet.',
+  selectLabel = 'Select template',
+}) => {
+  if (!templates.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-4 text-xs text-gray-500">
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  const selectedTemplate = findCertificateTemplate(templates, selectedId) || templates[0] || null;
+  const selectedKey = selectedTemplate ? getCertificateTemplateKey(selectedTemplate) : '';
+  const applied = !!selectedKey && selectedKey === appliedId;
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white px-3 py-3 sm:px-4 sm:py-4">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px] lg:grid-cols-[minmax(0,1fr)_165px] sm:items-start">
+        <div className="space-y-3 min-w-0">
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-500">
+              {selectLabel}
+            </label>
+            <select
+              value={selectedKey}
+              onChange={(event) => onSelectId?.(event.target.value)}
+              className={`${inp} mt-1.5`}
+            >
+              {templates.map((template) => {
+                const templateKey = getCertificateTemplateKey(template);
+                return (
+                  <option key={templateKey} value={templateKey}>
+                    {template.name}{template.isPreset ? ' (Preset)' : ' (Saved)'}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {selectedTemplate && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${
+                  selectedTemplate.isPreset ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {selectedTemplate.isPreset ? 'Preset' : 'Saved'}
+                </span>
+                {applied && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-green-700">
+                    <CheckCircle size={11} />
+                    Applied
+                  </span>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-sm font-extrabold text-gray-900 truncate">{selectedTemplate.name}</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
+                  {getCertificateLayoutLabel(selectedTemplate.frameStyle || 'classic')}
+                </p>
+                <p className="mt-1.5 text-xs text-gray-500 line-clamp-2">
+                  {selectedTemplate.certificateTitle || selectedTemplate.productName || 'Certificate'}
+                  {selectedTemplate.organizerName ? ` | ${selectedTemplate.organizerName}` : ''}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {onPreview && (
+                  <button
+                    type="button"
+                    onClick={() => onPreview(selectedTemplate)}
+                    className="inline-flex items-center justify-center gap-1 rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] sm:text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                  >
+                    <Eye size={12} />
+                    Preview
+                  </button>
+                )}
+                {onApply && (
+                  <button
+                    type="button"
+                    onClick={() => onApply(selectedTemplate)}
+                    className={`inline-flex items-center justify-center rounded-xl px-2.5 py-1.5 text-[10px] sm:text-[11px] font-bold ${
+                      applied
+                        ? 'border border-green-200 bg-green-50 text-green-700'
+                        : 'bg-black text-white hover:bg-gray-900'
+                    }`}
+                  >
+                    {applied ? 'Applied' : applyLabel}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {selectedTemplate && (
+          <div className="mx-auto w-full max-w-[130px] sm:max-w-[150px] lg:max-w-[165px]">
+            <CertificateTemplatePreview template={selectedTemplate} compact />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const EMPTY_PROD = { name:'',desc:'',category:'',images:[],retailPrice:'',wholesalePrice:'',wholesaleMinQty:'',stock:'',isPreOrder:false,preOrderType:'',depositPercent:'',available:true,featured:false,fastSelling:false,hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:false,partnerBrand:'',partnerContact:'' };
 const EMPTY_DIGITAL = {
   name:'', desc:'', category:'Digital Products', images:[], retailPrice:'', available:true, featured:false, fastSelling:false,
@@ -79,7 +274,7 @@ const EMPTY_DIGITAL = {
 };
 const EMPTY_CERT = {
   type:'manual', status:'generated', digitalAccess:'', productId:'', productName:'', customerId:'',
-  generationMode:'manual', generationChoiceMade:true, templateId:'', templateName:'', templatePickerOpen:false, templateCandidateId:'',
+  generationMode:'manual', generationChoiceMade:true, templateId:'', templateName:'', presetKey:'', templatePickerOpen:false, templateCandidateId:'',
   learnerName:'', learnerEmail:'', learnerPhone:'', requestedAt:toDateInput(new Date()), requestNotes:'',
   completionSnapshot:{ totalModules:0, completedModules:0, percent:0 },
   certificateTitle:'', certificateSubtitle:'', certificateBody:'', issueDate:toDateInput(new Date()),
@@ -95,6 +290,37 @@ const inferCertificateGenerationChoice = (item = {}) => {
   return !!item.templateId;
 };
 
+const mapCertificateRecordToForm = (item = {}, fallbackTemplateId = '') => {
+  const signatories = item.signatories || [];
+  const generationChoiceMade = inferCertificateGenerationChoice(item);
+  const generationMode = item.generationMode || (item.templateId ? 'template' : 'manual');
+
+  return {
+    ...EMPTY_CERT,
+    ...item,
+    generationMode,
+    generationChoiceMade,
+    templateId: item.templateId || '',
+    templateName: item.templateName || '',
+    presetKey: item.presetKey || '',
+    templatePickerOpen: generationMode === 'template',
+    templateCandidateId: item.templateId || fallbackTemplateId || '',
+    sponsors: item.sponsors?.join(', ') || '',
+    requestedAt: toDateInput(item.requestedAt),
+    issueDate: toDateInput(item.issueDate || item.generatedAt),
+    primaryColor: item.primaryColor || '#111827',
+    accentColor: item.accentColor || '#FDC700',
+    backgroundColor: item.backgroundColor || '#FFFDF7',
+    fontColor: item.fontColor || '#374151',
+    fontFamily: item.fontFamily || 'classic_serif',
+    frameStyle: item.frameStyle || 'classic',
+    signatoryOneName: signatories[0]?.name || '',
+    signatoryOneRole: signatories[0]?.role || '',
+    signatoryTwoName: signatories[1]?.name || '',
+    signatoryTwoRole: signatories[1]?.role || '',
+  };
+};
+
 const applyCertificateTemplateToForm = (current, template) => {
   if (!template) return current;
   const signatories = template.signatories || [];
@@ -104,6 +330,7 @@ const applyCertificateTemplateToForm = (current, template) => {
     generationMode: 'template',
     templateId: template._id || '',
     templateName: template.name || '',
+    presetKey: template.presetKey || '',
     certificateTitle: template.certificateTitle || current.certificateTitle || current.productName || '',
     certificateSubtitle: template.certificateSubtitle || current.certificateSubtitle || '',
     certificateBody: template.certificateBody || current.certificateBody || '',
@@ -128,12 +355,6 @@ const EMPTY_BLOG = { title:'',excerpt:'',content:'',coverImage:'',videoUrl:'',me
 const EMPTY_FEATURED = { brandName:'',productName:'',desc:'',images:[],contactInfo:'',plan:1,category:'',price:'',stock:'',available:true,featured:true,fastSelling:false,isPreOrder:false,preOrderType:'',depositPercent:'',hasDiscount:false,discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},isPartner:true,partnerContact:'' };
 
 const PLANS = [1,3,6,9,12];
-const CERTIFICATE_FRAMES = [
-  { value:'classic', label:'Classic frame' },
-  { value:'double', label:'Double frame' },
-  { value:'soft', label:'Soft rounded' },
-  { value:'minimal', label:'Minimal frame' },
-];
 const CERTIFICATE_FONTS = [
   { value:'classic_serif', label:'Classic Serif' },
   { value:'formal_serif', label:'Formal Serif' },
@@ -648,6 +869,7 @@ export default function Admin() {
   const [viewMode, setViewMode] = useState('list');
 
   const auth = { headers: { Authorization: `Bearer ${token}` } };
+  const visibleCertificateTemplates = mergeCertificateTemplates(certificateTemplates);
   const [orderFilter,    setOrderFilter]    = useState('all');
   const [customerSearch, setCustomerSearch] = useState('');
 
@@ -746,7 +968,7 @@ export default function Admin() {
       if (t === 'Certificates') {
         const templates = Array.isArray(templatesResponse?.data) ? templatesResponse.data : [];
         setCertificateTemplates(templates);
-        setBulkTemplateId(current => current || templates[0]?._id || '');
+        setBulkTemplateId(current => current || getCertificateTemplateKey(templates[0]) || '');
       }
     } catch (e) {
       if (e.response?.status === 401) {
@@ -769,6 +991,14 @@ export default function Admin() {
   useEffect(() => {
     setShowTabMenu(false);
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'Certificates' || !visibleCertificateTemplates.length) return;
+    setBulkTemplateId((current) => {
+      const selectedTemplate = findCertificateTemplate(visibleCertificateTemplates, current);
+      return selectedTemplate ? current : getCertificateTemplateKey(visibleCertificateTemplates[0]) || '';
+    });
+  }, [tab, visibleCertificateTemplates]);
 
   const getEmptyForm = (t) => {
     const map = { Products: EMPTY_PROD, 'Digital Products': EMPTY_DIGITAL, Certificates: EMPTY_CERT, Training: EMPTY_TRAIN, Delivery: EMPTY_ZONE, Consultations: EMPTY_CONSULT, Blog: EMPTY_BLOG, Featured: EMPTY_FEATURED };
@@ -833,31 +1063,7 @@ export default function Admin() {
         digitalFiles:    item.digitalFiles?.length ? item.digitalFiles.map(file => ({ ...file, allowDownload: !!file.allowDownload })) : [],
       });
     } else if (tab === 'Certificates') {
-      const signatories = item.signatories || [];
-      const generationChoiceMade = inferCertificateGenerationChoice(item);
-      const generationMode = item.generationMode || (item.templateId ? 'template' : 'manual');
-      setForm({
-        ...item,
-        generationMode,
-        generationChoiceMade,
-        templateId: item.templateId || '',
-        templateName: item.templateName || '',
-        templatePickerOpen: generationMode === 'template',
-        templateCandidateId: item.templateId || '',
-        sponsors: item.sponsors?.join(', ') || '',
-        requestedAt: toDateInput(item.requestedAt),
-        issueDate: toDateInput(item.issueDate || item.generatedAt),
-        primaryColor: item.primaryColor || '#111827',
-        accentColor: item.accentColor || '#FDC700',
-        backgroundColor: item.backgroundColor || '#FFFDF7',
-        fontColor: item.fontColor || '#374151',
-        fontFamily: item.fontFamily || 'classic_serif',
-        frameStyle: item.frameStyle || 'classic',
-        signatoryOneName: signatories[0]?.name || '',
-        signatoryOneRole: signatories[0]?.role || '',
-        signatoryTwoName: signatories[1]?.name || '',
-        signatoryTwoRole: signatories[1]?.role || '',
-      });
+      setForm(mapCertificateRecordToForm(item, getCertificateTemplateKey(visibleCertificateTemplates[0]) || ''));
     } else if (tab === 'Featured') {
       // ── Featured edit: map stored product fields back to the featured form ──
       setForm({
@@ -979,6 +1185,7 @@ export default function Admin() {
     generationChoiceMade: f.type === 'digital_request' ? !!f.generationChoiceMade : true,
     templateId: f.generationMode === 'template' ? (f.templateId || null) : null,
     templateName: f.generationMode === 'template' ? (f.templateName || '') : '',
+    presetKey: f.presetKey || '',
     productName: f.productName || '',
     customerId: f.customerId || '',
     learnerName: f.learnerName || '',
@@ -1056,6 +1263,10 @@ const buildTrainingBody = (f) => ({
     // For Featured, save via products endpoint (they are products with isPartner flag)
     const ep = tab === 'Featured' || tab === 'Digital Products' ? '/api/products' : ENDPOINTS[tab];
     let body = { ...form };
+    if (tab === 'Certificates' && form.type === 'digital_request' && !form.generationChoiceMade) {
+      alert('Choose whether to use the manual generator or a saved template for this learner request first.');
+      return;
+    }
     if (tab === 'Certificates' && form.generationMode === 'template' && !form.templateId) {
       alert('Select a saved certificate template first, or switch back to manual generator.');
       return;
@@ -1091,17 +1302,77 @@ const buildTrainingBody = (f) => ({
 
   const sf  = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const sfd = (key, val) => setForm(f => ({ ...f, discount: { ...f.discount, [key]: val } }));
+  const reloadCertificateTemplates = useCallback(async () => {
+    const { data: templates } = await api.get('/api/certificates/templates', auth);
+    const nextTemplates = Array.isArray(templates) ? templates : [];
+    setCertificateTemplates(nextTemplates);
+    return nextTemplates;
+  }, [auth]);
+
+  const ensureCertificateTemplateStored = useCallback(async (template) => {
+    if (!template) return null;
+    if (template._id) return template;
+
+    const payload = {
+      name: template.name || 'Certificate Template',
+      presetKey: template.presetKey || '',
+      productName: template.productName || '',
+      certificateTitle: template.certificateTitle || '',
+      certificateSubtitle: template.certificateSubtitle || '',
+      certificateBody: template.certificateBody || '',
+      primaryColor: template.primaryColor || '#111827',
+      accentColor: template.accentColor || '#FDC700',
+      backgroundColor: template.backgroundColor || '#FFFDF7',
+      fontColor: template.fontColor || '#374151',
+      fontFamily: template.fontFamily || 'classic_serif',
+      frameStyle: template.frameStyle || 'classic',
+      issueDate: template.issueDate || '',
+      organizerName: template.organizerName || '',
+      sponsors: Array.isArray(template.sponsors) ? template.sponsors : [],
+      signatories: Array.isArray(template.signatories) ? template.signatories : [],
+      notes: template.notes || '',
+      isPreset: !!template.isPreset,
+    };
+
+    const { data: created } = await api.post('/api/certificates/templates', payload, auth);
+    const refreshed = await reloadCertificateTemplates().catch(() => []);
+    return findCertificateTemplate(refreshed, created?._id || template.presetKey || '') || created;
+  }, [auth, reloadCertificateTemplates]);
+
   const applySelectedCertificateTemplate = useCallback((templateId, options = {}) => {
-    const template = certificateTemplates.find((entry) => entry._id === templateId);
+    const template = findCertificateTemplate(visibleCertificateTemplates, templateId);
     if (!template) return false;
     setForm((current) => ({
       ...applyCertificateTemplateToForm(current, template),
       generationChoiceMade: options.markChosen ?? true,
       templatePickerOpen: options.keepPickerOpen ?? false,
-      templateCandidateId: template._id || '',
+      templateCandidateId: getCertificateTemplateKey(template),
     }));
     return true;
-  }, [certificateTemplates]);
+  }, [visibleCertificateTemplates]);
+
+  const applyCertificateTemplateFromPicker = useCallback(async (template, options = {}) => {
+    try {
+      setCertificateBusy('template-sync');
+      const storedTemplate = await ensureCertificateTemplateStored(template);
+      if (!storedTemplate) {
+        alert('Selected certificate template was not found.');
+        return;
+      }
+      if (!applySelectedCertificateTemplate(getCertificateTemplateKey(storedTemplate), options)) {
+        setForm((current) => ({
+          ...applyCertificateTemplateToForm(current, storedTemplate),
+          generationChoiceMade: options.markChosen ?? true,
+          templatePickerOpen: options.keepPickerOpen ?? false,
+          templateCandidateId: getCertificateTemplateKey(storedTemplate),
+        }));
+      }
+    } catch (e) {
+      alert(e.response?.data?.message || 'Could not prepare the selected template.');
+    } finally {
+      setCertificateBusy('');
+    }
+  }, [applySelectedCertificateTemplate, ensureCertificateTemplateStored]);
 
   const chooseManualCertificateGenerator = () => {
     setForm((current) => ({
@@ -1115,38 +1386,52 @@ const buildTrainingBody = (f) => ({
     }));
   };
 
-  const openCertificateTemplateChooser = () => {
+  const openCertificateTemplateChooser = useCallback(() => {
+    setForm((current) => ({
+      ...current,
+      templatePickerOpen: true,
+      templateCandidateId: current.templateCandidateId || current.templateId || getCertificateTemplateKey(visibleCertificateTemplates[0]) || '',
+    }));
+  }, [visibleCertificateTemplates]);
+
+  const openManualCertificateTemplateLibrary = useCallback(() => {
     setForm((current) => ({
       ...current,
       generationMode: 'template',
       templatePickerOpen: true,
-      templateCandidateId: current.templateCandidateId || current.templateId || certificateTemplates[0]?._id || '',
+      templateCandidateId: current.templateId || current.templateCandidateId || getCertificateTemplateKey(visibleCertificateTemplates[0]) || '',
     }));
-  };
+  }, [visibleCertificateTemplates]);
+
+  const previewCertificateTemplateRecord = useCallback((template) => {
+    if (!template) return;
+    const previewForm = {
+      ...applyCertificateTemplateToForm(form, template),
+      learnerName: form.learnerName || 'Learner Name',
+      productName: form.productName || template.productName || 'Programme',
+      generationChoiceMade: true,
+    };
+    generateCertificate(buildCertificateBody(previewForm), { autoPrint: false });
+  }, [form]);
 
   const previewSelectedCertificateTemplate = () => {
     const templateId = form.templateCandidateId || form.templateId;
-    const template = certificateTemplates.find((entry) => entry._id === templateId);
+    const template = findCertificateTemplate(visibleCertificateTemplates, templateId);
     if (!template) {
       alert('Select a saved certificate template first.');
       return;
     }
-    const previewForm = {
-      ...applyCertificateTemplateToForm(form, template),
-      generationChoiceMade: true,
-    };
-    generateCertificate(buildCertificateBody(previewForm), { autoPrint: false });
+    previewCertificateTemplateRecord(template);
   };
 
-  const useSelectedCertificateTemplate = () => {
+  const useSelectedCertificateTemplate = async () => {
     const templateId = form.templateCandidateId || form.templateId;
     if (!templateId) {
       alert('Select a saved certificate template first.');
       return;
     }
-    if (!applySelectedCertificateTemplate(templateId, { markChosen: true, keepPickerOpen: false })) {
-      alert('Selected certificate template was not found.');
-    }
+    const template = findCertificateTemplate(visibleCertificateTemplates, templateId);
+    await applyCertificateTemplateFromPicker(template, { markChosen: true, keepPickerOpen: false });
   };
 
   const resetCertificateGenerationChoice = () => {
@@ -1156,6 +1441,17 @@ const buildTrainingBody = (f) => ({
       templatePickerOpen: false,
       templateCandidateId: current.templateId || current.templateCandidateId || '',
     }));
+  };
+
+  const openCertificateTemplateSelectorFromCard = (item) => {
+    setForm({
+      ...mapCertificateRecordToForm(item, getCertificateTemplateKey(visibleCertificateTemplates[0]) || ''),
+      templatePickerOpen: true,
+      templateCandidateId: item.templateId || item.presetKey || getCertificateTemplateKey(visibleCertificateTemplates[0]) || '',
+    });
+    setEditId(item._id);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const saveCertificateTemplate = async () => {
@@ -1169,9 +1465,8 @@ const buildTrainingBody = (f) => ({
         name: templateName.trim(),
       };
       await api.post('/api/certificates/templates', payload, auth);
-      const { data: templates } = await api.get('/api/certificates/templates', auth);
-      setCertificateTemplates(Array.isArray(templates) ? templates : []);
-      setBulkTemplateId(current => current || templates?.[0]?._id || '');
+      const templates = await reloadCertificateTemplates();
+      setBulkTemplateId((current) => current || getCertificateTemplateKey(mergeCertificateTemplates(templates)[0]) || '');
       alert('Certificate template saved');
     } catch (e) {
       alert(e.response?.data?.message || 'Could not save certificate template');
@@ -1186,8 +1481,15 @@ const buildTrainingBody = (f) => ({
 
     try {
       setCertificateBusy('bulk-generate');
+      const selectedTemplate = findCertificateTemplate(visibleCertificateTemplates, bulkTemplateId);
+      const storedTemplate = await ensureCertificateTemplateStored(selectedTemplate);
+      if (!storedTemplate?._id) {
+        alert('Select a valid certificate template first.');
+        return;
+      }
+      setBulkTemplateId(getCertificateTemplateKey(storedTemplate));
       const { data: created } = await api.post('/api/certificates/bulk-generate', {
-        templateId: bulkTemplateId,
+        templateId: storedTemplate._id,
         bulkText: bulkLearners,
         productName: form.productName || '',
         issueDate: form.issueDate || '',
@@ -1328,6 +1630,10 @@ const buildTrainingBody = (f) => ({
   const analyticsBestSellerMonths = salesAnalytics?.bestSellers?.monthly || [];
   const analyticsPreviousWeekBestSellers = salesAnalytics?.bestSellers?.previousWeek || null;
   const analyticsRecentSales = salesAnalytics?.recentSales || [];
+  const certificateChoicePending = tab === 'Certificates' && form.type === 'digital_request' && !form.generationChoiceMade;
+  const activeCertificateTemplateId = form.templateCandidateId || form.templateId || '';
+  const activeCertificateTemplate = findCertificateTemplate(visibleCertificateTemplates, activeCertificateTemplateId);
+  const hasPresetCertificateTemplates = visibleCertificateTemplates.some((template) => template.isPreset);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1714,11 +2020,11 @@ const buildTrainingBody = (f) => ({
                       <input value={form.certificateDescription||''} onChange={e => sf('certificateDescription',e.target.value)} placeholder="Completion note shown to learners" className={inp} />
                     </>
                   )}
-                  <div>
+                  <div className="sm:col-span-2 space-y-3">
                     <input value={form.supportEmail||''} onChange={e => sf('supportEmail',e.target.value)} placeholder="Trainer / tutor support email" className={inp} />
                     <p className={certHelp}>Learners will see this inside the digital library and secure viewer when they need help with lessons or modules.</p>
                   </div>
-                  <div>
+                  <div className="sm:col-span-2 space-y-3">
                     <input value={form.supportWhatsApp||''} onChange={e => sf('supportWhatsApp',e.target.value)} placeholder="Trainer / tutor WhatsApp (optional)" className={inp} />
                     <p className={certHelp}>Optional support line for quicker help. Example: `0594038888` or `+233594038888`.</p>
                   </div>
@@ -1804,8 +2110,23 @@ const buildTrainingBody = (f) => ({
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-3">
-                  <div>
-                    <select value={form.type||'manual'} onChange={e => sf('type',e.target.value)} className={inp}>
+                  <div className="sm:col-span-2 space-y-3">
+                    <select
+                      value={form.type||'manual'}
+                      onChange={e => {
+                        const nextType = e.target.value;
+                        setForm(current => ({
+                          ...current,
+                          type: nextType,
+                          generationChoiceMade: nextType === 'manual'
+                            ? true
+                            : current.type === 'manual'
+                              ? false
+                              : current.generationChoiceMade,
+                        }));
+                      }}
+                      className={inp}
+                    >
                       <option value="manual">Manual certificate</option>
                       <option value="digital_request">Digital product request</option>
                     </select>
@@ -1820,14 +2141,16 @@ const buildTrainingBody = (f) => ({
                     <p className={certHelp}>Use `pending` while reviewing, `generated` when the certificate is ready, and `declined` if it should not be issued.</p>
                   </div>
 
+                  {form.type === 'manual' && (
+                    <>
                   <div>
                     <select
                       value={form.generationMode || 'manual'}
                       onChange={e => {
                         const nextMode = e.target.value === 'template' ? 'template' : 'manual';
                         setForm(current => nextMode === 'manual'
-                          ? { ...current, generationMode: 'manual', templateId: '', templateName: '' }
-                          : { ...current, generationMode: 'template' });
+                          ? { ...current, generationMode: 'manual', templateId: '', templateName: '', templateCandidateId: '', templatePickerOpen: false }
+                          : { ...current, generationMode: 'template', templateCandidateId: current.templateId || current.templateCandidateId || getCertificateTemplateKey(visibleCertificateTemplates[0]) || '', templatePickerOpen: true });
                       }}
                       className={inp}
                     >
@@ -1836,34 +2159,66 @@ const buildTrainingBody = (f) => ({
                     </select>
                     <p className={certHelp}>Choose `manual generator` to design this certificate directly here, or `use saved template` to prefill it from a reusable certificate layout.</p>
                   </div>
-                  <div>
-                    <select
-                      value={form.templateId || ''}
-                      onChange={e => {
-                        const nextTemplateId = e.target.value;
-                        if (!nextTemplateId) {
-                          setForm(current => ({ ...current, templateId: '', templateName: '' }));
-                          return;
-                        }
-                        applySelectedCertificateTemplate(nextTemplateId);
-                      }}
-                      disabled={(form.generationMode || 'manual') !== 'template'}
-                      className={inp}
-                    >
-                      <option value="">Select saved template</option>
-                      {certificateTemplates.map(template => (
-                        <option key={template._id} value={template._id}>{template.name}</option>
-                      ))}
-                    </select>
-                    <p className={certHelp}>
-                      {(form.generationMode || 'manual') === 'template'
-                        ? 'Selecting a template loads its title, body, colors, frame, issuer and signatories into this request while keeping the learner details.'
-                        : 'Switch to `use saved template` if you want a saved certificate design to fill this request first.'}
-                    </p>
+                  <div className="sm:col-span-2 space-y-3">
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-600">Template library</p>
+                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                            {(form.generationMode || 'manual') === 'template'
+                              ? 'Choose a visual template below, preview it if needed, then apply it. Every field still stays editable afterwards.'
+                              : 'Open the template library to start from a preset or previously saved certificate design.'}
+                          </p>
+                          <p className="text-[11px] font-bold text-gray-400 mt-2">
+                            {visibleCertificateTemplates.length} template{visibleCertificateTemplates.length === 1 ? '' : 's'} available
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={openManualCertificateTemplateLibrary}
+                          className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                        >
+                          Browse Templates
+                        </button>
+                      </div>
+                      {!hasPresetCertificateTemplates && (
+                        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                          Preset templates are still syncing. If you only see your old saved templates here, refresh the Certificates tab after the backend restart so the 7 new presets can appear.
+                        </p>
+                      )}
+                    </div>
+
+                    {((form.generationMode || 'manual') === 'template' || form.templatePickerOpen) && (
+                      <div className="space-y-3">
+                        <CertificateTemplateDropdown
+                          templates={visibleCertificateTemplates}
+                          selectedId={activeCertificateTemplateId}
+                          appliedId={form.templateId || ''}
+                          onSelectId={(templateId) => setForm((current) => ({
+                            ...current,
+                            templateCandidateId: templateId,
+                            templatePickerOpen: true,
+                          }))}
+                          onPreview={previewCertificateTemplateRecord}
+                          onApply={async (template) => {
+                            setForm((current) => ({ ...current, templateCandidateId: getCertificateTemplateKey(template), templatePickerOpen: true }));
+                            await applyCertificateTemplateFromPicker(template, { markChosen: true, keepPickerOpen: false });
+                          }}
+                          applyLabel={form.templateId ? 'Apply Again' : 'Use This Template'}
+                          emptyMessage="No saved templates yet. Use the manual generator once, then save that design as a reusable template."
+                          selectLabel="Choose saved template"
+                        />
+                        <p className={certHelp}>
+                          {activeCertificateTemplate
+                            ? `Selected layout: ${activeCertificateTemplate.name}. Preview it or apply it below.`
+                            : 'Choose a saved template from the dropdown to preview or apply it.'}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {form.templateId && (form.generationMode || 'manual') === 'template' && (() => {
-                    const selectedTemplate = certificateTemplates.find(template => template._id === form.templateId);
+                  {false && form.templateId && (form.generationMode || 'manual') === 'template' && (() => {
+                    const selectedTemplate = findCertificateTemplate(visibleCertificateTemplates, form.templateId);
                     if (!selectedTemplate) return null;
                     return (
                       <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
@@ -1887,6 +2242,8 @@ const buildTrainingBody = (f) => ({
                       </div>
                     );
                   })()}
+                    </>
+                  )}
 
                   <div>
                     <input value={form.learnerName||''} onChange={e => sf('learnerName',e.target.value)} placeholder="Learner full name *" className={inp} />
@@ -1915,6 +2272,122 @@ const buildTrainingBody = (f) => ({
                     <p className={certHelp}>The date printed as the official issue date on the certificate.</p>
                   </div>
 
+                  {form.type === 'digital_request' && (
+                    <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-white p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">Certificate Design Path</p>
+                          <p className="text-sm font-extrabold text-black mt-1">
+                            {certificateChoicePending
+                              ? 'Choose how this learner request should be generated'
+                              : form.generationMode === 'template'
+                                ? 'Saved template path selected'
+                                : 'Manual generator path selected'}
+                          </p>
+                        <p className="text-xs text-gray-500 mt-2 leading-relaxed max-w-2xl">
+                          {certificateChoicePending
+                            ? 'This learner request will stay waiting until you choose whether to use the manual generator or a saved template first.'
+                            : form.generationMode === 'template'
+                              ? 'You can preview the chosen template, apply it to this request, and still edit every certificate field normally afterwards.'
+                              : 'You are using the manual generator for this learner request, and you can still save the finished result as a reusable template later.'}
+                        </p>
+                        {!!form.requestNotes && (
+                          <p className="mt-3 rounded-xl border border-gray-200 bg-[#fcfbf7] px-3 py-2 text-xs text-gray-600 leading-relaxed">
+                            Learner note: {form.requestNotes}
+                          </p>
+                        )}
+                      </div>
+                        {form.generationChoiceMade && (
+                          <button
+                            type="button"
+                            onClick={resetCertificateGenerationChoice}
+                            className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                          >
+                            Change Selection
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                        <button
+                          type="button"
+                          onClick={chooseManualCertificateGenerator}
+                          className={`rounded-2xl border-2 px-4 py-4 text-left transition-all ${
+                            form.generationChoiceMade && form.generationMode === 'manual'
+                              ? 'border-black bg-black text-white'
+                              : 'border-gray-200 bg-[#fcfbf7] text-gray-800 hover:border-black'
+                          }`}
+                        >
+                          <p className="text-sm font-extrabold">Use Manual Generator</p>
+                          <p className={`mt-2 text-xs leading-relaxed ${
+                            form.generationChoiceMade && form.generationMode === 'manual' ? 'text-gray-200' : 'text-gray-500'
+                          }`}>
+                            Open the full editor, make all the design changes yourself, and save the finished layout later as a template if you want.
+                          </p>
+                        </button>
+
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-sm font-extrabold text-blue-950">Use Saved Template</p>
+                              <p className="mt-2 text-xs text-blue-900/80 leading-relaxed">
+                                Select one of your saved certificate templates, preview it if needed, then apply it to this learner request before editing the details normally.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={openCertificateTemplateChooser}
+                              className="inline-flex items-center justify-center rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-800 hover:border-blue-400"
+                            >
+                              Select Template
+                            </button>
+                          </div>
+
+                          {form.templatePickerOpen && (
+                            <div className="mt-4 space-y-3">
+                              {visibleCertificateTemplates.length > 0 ? (
+                                <>
+                                  <CertificateTemplateDropdown
+                                    templates={visibleCertificateTemplates}
+                                    selectedId={activeCertificateTemplateId}
+                                    appliedId={form.templateId || ''}
+                                    onSelectId={(templateId) => setForm(current => ({
+                                      ...current,
+                                      templateCandidateId: templateId,
+                                      templatePickerOpen: true,
+                                    }))}
+                                    onPreview={previewCertificateTemplateRecord}
+                                    onApply={async (template) => {
+                                      setForm(current => ({
+                                        ...current,
+                                        templateCandidateId: getCertificateTemplateKey(template),
+                                        templatePickerOpen: true,
+                                      }));
+                                      await applyCertificateTemplateFromPicker(template, { markChosen: true, keepPickerOpen: false });
+                                    }}
+                                    applyLabel={form.generationChoiceMade && form.generationMode === 'template' ? 'Re-apply Template' : 'Use This Template'}
+                                    selectLabel="Choose learner template"
+                                  />
+                                  <p className={certHelp}>
+                                    {activeCertificateTemplate
+                                      ? `Active selection: ${activeCertificateTemplate.name}. Preview it or apply it below.`
+                                      : 'Pick a saved template from the dropdown to preview or apply it to this learner request.'}
+                                  </p>
+                                </>
+                              ) : (
+                                <div className="rounded-xl border border-blue-200 bg-white px-4 py-3 text-xs text-blue-900/80">
+                                  No saved templates yet. Use the manual generator once, then save that finished design as a template for later learner requests.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!certificateChoicePending && (
+                    <>
                   <div>
                     <input value={form.certificateTitle||''} onChange={e => sf('certificateTitle',e.target.value)} placeholder="Certificate title" className={inp} />
                     <p className={certHelp}>Main heading at the top. Example: `Certificate of Completion` or `Certification of Recognition`.</p>
@@ -1971,9 +2444,9 @@ const buildTrainingBody = (f) => ({
                   </div>
                   <div>
                     <select value={form.frameStyle||'classic'} onChange={e => sf('frameStyle',e.target.value)} className={inp}>
-                      {CERTIFICATE_FRAMES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      {CERTIFICATE_LAYOUT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
-                    <p className={certHelp}>Changes the certificate border style. Choose the look that best fits the programme or sponsor brand.</p>
+                    <p className={certHelp}>Changes the full certificate layout, including border treatment, decorative shapes, corner styling, and overall art direction.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-100 bg-[#fcfbf7] px-4 py-3 flex items-center gap-3 sm:col-span-2">
@@ -1984,7 +2457,7 @@ const buildTrainingBody = (f) => ({
                       <span className="w-6 h-6 rounded-full border border-gray-200" style={{ backgroundColor: form.fontColor || '#374151' }} />
                     </div>
                     <p className="text-xs text-gray-500">
-                      Frame: <span className="font-bold text-gray-700">{CERTIFICATE_FRAMES.find(option => option.value === (form.frameStyle || 'classic'))?.label || 'Classic frame'}</span>
+                      Layout: <span className="font-bold text-gray-700">{getCertificateLayoutLabel(form.frameStyle || 'classic')}</span>
                       {' • '}
                       Font: <span className="font-bold text-gray-700">{CERTIFICATE_FONTS.find(option => option.value === (form.fontFamily || 'classic_serif'))?.label || 'Classic Serif'}</span>
                       {' • '}
@@ -2001,9 +2474,11 @@ const buildTrainingBody = (f) => ({
                     <textarea value={form.requestNotes||''} onChange={e => sf('requestNotes',e.target.value)} placeholder="Learner request notes (optional)" rows={2} className={inp + ' resize-none'} />
                     <p className={certHelp}>Admin-only note from the learner or organiser. Example: `Please use full middle name on the certificate`.</p>
                   </div>
+                    </>
+                  )}
                 </div>
 
-                <div className="grid sm:grid-cols-3 gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <div className={`grid gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3 ${certificateChoicePending ? 'sm:grid-cols-1' : 'sm:grid-cols-3'}`}>
                   <div>
                     <p className="text-xs font-bold text-gray-700 mb-2">Completion snapshot</p>
                     <div className="space-y-2">
@@ -2013,6 +2488,8 @@ const buildTrainingBody = (f) => ({
                     </div>
                     <p className={certHelp}>Admin tracking only. Example: `10 total`, `10 completed`, `100%` when a learner finished every module.</p>
                   </div>
+                  {!certificateChoicePending && (
+                    <>
                   <div>
                     <p className="text-xs font-bold text-gray-700 mb-2">Signatory 1</p>
                     <div className="space-y-2">
@@ -2029,13 +2506,18 @@ const buildTrainingBody = (f) => ({
                     </div>
                     <p className={certHelp}>Use this for a co-signer, sponsor rep, partner lead, or leave it blank if not needed.</p>
                   </div>
+                    </>
+                  )}
                 </div>
 
+                {!certificateChoicePending && (
                 <div>
                   <textarea value={form.notes||''} onChange={e => sf('notes',e.target.value)} placeholder="Admin notes (optional)" rows={2} className={inp + ' resize-none'} />
                   <p className={certHelp}>Internal only. Example: `Used for May 2026 graduation batch` or `Waiting for sponsor confirmation`.</p>
                 </div>
+                )}
 
+                {!certificateChoicePending ? (
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
@@ -2114,6 +2596,11 @@ const buildTrainingBody = (f) => ({
                     </p>
                   )}
                 </div>
+                ) : (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                    Choose the manual generator or apply a saved template above before previewing, generating, or sending this learner certificate.
+                  </div>
+                )}
               </div>
             )}
 
@@ -2287,7 +2774,7 @@ const buildTrainingBody = (f) => ({
         )}
 
         {tab === 'Certificates' && (
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
+          <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
               <div>
                 <h3 className="font-extrabold">Bulk Certificate Generator</h3>
@@ -2298,40 +2785,42 @@ const buildTrainingBody = (f) => ({
               <p className="text-xs text-gray-400">A4 output • reusable templates • email-ready</p>
             </div>
 
-            <div className="grid lg:grid-cols-[320px_1fr] gap-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-3">
-                <select value={bulkTemplateId} onChange={e => setBulkTemplateId(e.target.value)} className={inp}>
-                  <option value="">Select saved template</option>
-                  {certificateTemplates.map(template => (
-                    <option key={template._id} value={template._id}>{template.name}</option>
-                  ))}
-                </select>
-                {bulkTemplateId && (() => {
-                  const selected = certificateTemplates.find(template => template._id === bulkTemplateId);
-                  if (!selected) return null;
-                      return (
-                        <div className="rounded-xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
-                          <p className="text-xs font-bold text-gray-700">{selected.name}</p>
-                          <p className="text-xs text-gray-500 mt-1">{selected.certificateTitle || selected.productName || 'Certificate'}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: selected.primaryColor || '#111827' }} />
-                            <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: selected.accentColor || '#FDC700' }} />
-                            <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: selected.backgroundColor || '#FFFDF7' }} />
-                            <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: selected.fontColor || '#374151' }} />
-                            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.16em]">{selected.frameStyle || 'classic'} frame</span>
-                          </div>
-                          <p className="text-[11px] text-gray-400 mt-1">{CERTIFICATE_FONTS.find(option => option.value === (selected.fontFamily || 'classic_serif'))?.label || 'Classic Serif'}</p>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                <div className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-600">Choose template</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Pick a preset or saved certificate design first. The selected card below becomes the layout used for everyone in this bulk batch.
+                  </p>
+                  {!hasPresetCertificateTemplates && (
+                    <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                      Preset templates are still syncing. Refresh this tab after the backend restart if the 7 new preset designs do not show yet.
+                    </p>
+                  )}
+                </div>
+                <CertificateTemplateDropdown
+                  templates={visibleCertificateTemplates}
+                  selectedId={bulkTemplateId}
+                  appliedId={bulkTemplateId}
+                  onSelectId={(templateId) => setBulkTemplateId(templateId)}
+                  onPreview={previewCertificateTemplateRecord}
+                  emptyMessage="No saved templates yet. Save a certificate design as a template first, then it will appear here for bulk generation."
+                  selectLabel="Choose bulk template"
+                />
+              </div>
 
               <div className="space-y-3">
+                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-600">Learner list</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Add one learner per line using `Full Name, email, phone` or `Full Name | email | phone`.
+                  </p>
+                </div>
                 <textarea
                   value={bulkLearners}
                   onChange={e => setBulkLearners(e.target.value)}
                   placeholder={`Ama Mensah, ama@example.com, 0240000000\nKwame Asare | kwame@example.com | 0550000000\nJoan Doe`}
-                  rows={8}
+                  rows={7}
                   className={inp + ' resize-none'}
                 />
                 <div className="flex flex-wrap gap-3">
@@ -2673,9 +3162,9 @@ const buildTrainingBody = (f) => ({
                   </div>
                 </div>
                 <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col items-center gap-2 shrink-0'}`}>
-                  <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
-                  <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                  <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                  <button title={item.available ? 'Hide product' : 'Show product'} aria-label={item.available ? 'Hide product' : 'Show product'} onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                  <button title="Edit product" aria-label="Edit product" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                  <button title="Delete product" aria-label="Delete product" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               </div>
             ))}
@@ -2711,9 +3200,9 @@ const buildTrainingBody = (f) => ({
                   </div>
                 </div>
                 <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col items-center gap-2 shrink-0'}`}>
-                  <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
-                  <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                  <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                  <button title={item.available ? 'Hide digital product' : 'Show digital product'} aria-label={item.available ? 'Hide digital product' : 'Show digital product'} onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                  <button title="Edit digital product" aria-label="Edit digital product" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                  <button title="Delete digital product" aria-label="Delete digital product" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               </div>
             ))}
@@ -2725,6 +3214,9 @@ const buildTrainingBody = (f) => ({
                 declined: 'bg-red-100 text-red-700',
               };
               const completion = item.completionSnapshot || {};
+              const certificateIssued = isCertificateIssued(item);
+              const canUseGeneratedActions = item.status === 'generated';
+              const generationChoiceMade = inferCertificateGenerationChoice(item);
               return (
                 <div key={item._id} className="bg-white rounded-2xl p-4 border border-gray-100">
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
@@ -2737,11 +3229,13 @@ const buildTrainingBody = (f) => ({
                           {item.type === 'digital_request' ? 'DIGITAL REQUEST' : 'MANUAL'}
                         </span>
                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                          item.generationMode === 'template'
+                          generationChoiceMade === false
+                            ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                            : item.generationMode === 'template'
                             ? 'bg-blue-50 text-blue-700 border border-blue-100'
                             : 'bg-gray-100 text-gray-600'
                         }`}>
-                          {formatCertificateGenerationMode(item.generationMode)}
+                          {formatCertificateGenerationMode(item.generationMode, generationChoiceMade)}
                         </span>
                         {item.certificateNumber && (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#fcfbf7] text-[#9a7a00] border border-[#FDC700]/30">
@@ -2792,7 +3286,7 @@ const buildTrainingBody = (f) => ({
                         <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: item.accentColor || '#FDC700' }} />
                         <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: item.backgroundColor || '#FFFDF7' }} />
                         <span className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: item.fontColor || '#374151' }} />
-                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.16em]">{item.frameStyle || 'classic'} frame</span>
+                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.16em]">{getCertificateLayoutLabel(item.frameStyle || 'classic')}</span>
                       </div>
                       <p className="text-[11px] text-gray-400 mt-1">{CERTIFICATE_FONTS.find(option => option.value === (item.fontFamily || 'classic_serif'))?.label || 'Classic Serif'}</p>
                       <p className="text-xs text-gray-400 mt-2">
@@ -2802,48 +3296,72 @@ const buildTrainingBody = (f) => ({
                     </div>
 
                     <div className="flex flex-row lg:flex-col gap-2 shrink-0">
-                      {item.status === 'generated' && isCertificateIssued(item) && (
-                        <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-green-200 bg-green-50 text-green-600">
-                          <CheckCircle size={15} />
-                        </div>
-                      )}
-                      <button onClick={() => openEdit(item)} className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black">
+                      <div
+                        title={certificateIssued ? 'Certificate issued to learner' : 'Certificate not yet marked as issued'}
+                        className={`inline-flex items-center justify-center w-9 h-9 rounded-xl border ${
+                          certificateIssued
+                            ? 'border-green-200 bg-green-50 text-green-600'
+                            : 'border-gray-200 bg-gray-50 text-gray-400'
+                        }`}
+                      >
+                        {certificateIssued ? <CheckCircle size={15} /> : <Circle size={15} />}
+                      </div>
+                      <button
+                        title="Edit certificate"
+                        onClick={() => openEdit(item)}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black"
+                      >
                         <Pencil size={15} />
                       </button>
                       <button
+                        title="Choose or apply template"
+                        onClick={() => openCertificateTemplateSelectorFromCard(item)}
+                        className={`inline-flex items-center justify-center w-9 h-9 rounded-xl border ${
+                          generationChoiceMade === false
+                            ? 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300'
+                            : item.generationMode === 'template'
+                              ? 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300'
+                              : 'border-gray-200 text-gray-500 hover:border-black hover:text-black'
+                        }`}
+                      >
+                        <FileText size={15} />
+                      </button>
+                      <button
+                        title="Preview certificate"
                         onClick={() => generateCertificate(item, { autoPrint: false })}
                         className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black"
                       >
                         <Award size={15} />
                       </button>
-                      {item.status === 'generated' && (
-                        <button
-                          onClick={() => downloadCertificatePdf(item)}
-                          disabled={certificateBusy === `download-${item._id}`}
-                          className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black disabled:opacity-60"
-                        >
-                          {certificateBusy === `download-${item._id}` ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                        </button>
-                      )}
-                      {item.status === 'generated' && (
-                        <button
-                          onClick={() => shareCertificateWhatsApp(item)}
-                          disabled={certificateBusy === `whatsapp-${item._id}`}
-                          className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black disabled:opacity-60"
-                        >
-                          {certificateBusy === `whatsapp-${item._id}` ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />}
-                        </button>
-                      )}
-                      {item.status === 'generated' && (
-                        <button
-                          onClick={() => sendCertificateEmail(item)}
-                          disabled={certificateBusy === `email-${item._id}`}
-                          className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black disabled:opacity-60"
-                        >
-                          {certificateBusy === `email-${item._id}` ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
-                        </button>
-                      )}
-                      <button onClick={() => del(item._id)} className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-400 hover:border-red-200 hover:text-red-500">
+                      <button
+                        title={canUseGeneratedActions ? 'Download certificate PDF' : 'Generate the certificate before downloading'}
+                        onClick={() => canUseGeneratedActions && downloadCertificatePdf(item)}
+                        disabled={!canUseGeneratedActions || certificateBusy === `download-${item._id}`}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+                      >
+                        {certificateBusy === `download-${item._id}` ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                      </button>
+                      <button
+                        title={canUseGeneratedActions ? 'Share certificate on WhatsApp' : 'Generate the certificate before sharing on WhatsApp'}
+                        onClick={() => canUseGeneratedActions && shareCertificateWhatsApp(item)}
+                        disabled={!canUseGeneratedActions || certificateBusy === `whatsapp-${item._id}`}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+                      >
+                        {certificateBusy === `whatsapp-${item._id}` ? <Loader2 size={15} className="animate-spin" /> : <MessageCircle size={15} />}
+                      </button>
+                      <button
+                        title={canUseGeneratedActions ? 'Send certificate by email' : 'Generate the certificate before emailing it'}
+                        onClick={() => canUseGeneratedActions && sendCertificateEmail(item)}
+                        disabled={!canUseGeneratedActions || certificateBusy === `email-${item._id}`}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-500 hover:border-black hover:text-black disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-500"
+                      >
+                        {certificateBusy === `email-${item._id}` ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+                      </button>
+                      <button
+                        title="Delete certificate record"
+                        onClick={() => del(item._id)}
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 text-gray-400 hover:border-red-200 hover:text-red-500"
+                      >
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -2867,9 +3385,9 @@ const buildTrainingBody = (f) => ({
                   {!!item.sponsors?.length && <p className="text-xs text-gray-500">Sponsors: {item.sponsors.join(', ')}</p>}
                   <p className="font-bold text-sm">GHS {item.price?.toLocaleString()}</p>
                 </div>
-                <button onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
-                <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                <button title={item.active ? 'Hide training' : 'Show training'} aria-label={item.active ? 'Hide training' : 'Show training'} onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                <button title="Edit training" aria-label="Edit training" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                <button title="Delete training" aria-label="Delete training" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
               </div>
             ))}
 
@@ -2878,8 +3396,8 @@ const buildTrainingBody = (f) => ({
               <div key={item._id} className="bg-white rounded-2xl p-4 border border-gray-100 flex justify-between items-center">
                 <div><p className="font-bold text-sm">{item.name}</p><p className="text-xs text-gray-400">GHS {item.fee?.toLocaleString()}</p></div>
                 <div className="flex gap-2">
-                  <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                  <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                  <button title="Edit delivery zone" aria-label="Edit delivery zone" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                  <button title="Delete delivery zone" aria-label="Delete delivery zone" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               </div>
             ))}
@@ -2888,6 +3406,10 @@ const buildTrainingBody = (f) => ({
             {tab === 'Orders' && pagedData.filter(item => !customerSearch || item.customer?.name?.toLowerCase().includes(customerSearch.toLowerCase()) || item.customer?.phone?.includes(customerSearch)).map(item => {
               const STATUS_OPTS   = ['new','processing','delivery-ongoing','delivered','cancelled'];
               const STATUS_COLORS = { new:'bg-blue-100 text-blue-700', processing:'bg-yellow-100 text-yellow-700', 'delivery-ongoing':'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', cancelled:'bg-red-100 text-red-700' };
+              const orderWhatsappLink = buildWhatsAppAdminLink(
+                item.customer?.phone || '',
+                `Hi ${item.customer?.name || 'there'}! Your Belle Kreyashon order ${item.orderId} status has been updated. Please contact us for details.`
+              );
               const updateStatus  = async (id, status) => {
                 try {
                   const { data: updated } = await api.patch(`/api/orders/${id}/status`, { status }, auth);
@@ -2921,16 +3443,26 @@ const buildTrainingBody = (f) => ({
                         {s.replace('-',' ')}
                       </button>
                     ))}
-                    <a href={`https://wa.me/${item.customer?.phone?.replace(/[^0-9]/g,'')}?text=${encodeURIComponent('Hi ' + item.customer?.name + '! Your Belle Kreyashon order ' + item.orderId + ' status has been updated. Please contact us for details.')}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="ml-auto text-xs bg-green-500 text-white font-bold px-3 py-1 rounded-full hover:bg-green-600">Notify</a>
+                    {orderWhatsappLink ? (
+                      <a href={orderWhatsappLink}
+                        target="_blank" rel="noopener noreferrer"
+                        className="ml-auto text-xs bg-green-500 text-white font-bold px-3 py-1 rounded-full hover:bg-green-600">Notify</a>
+                    ) : (
+                      <span className="ml-auto text-[11px] font-bold text-gray-300">No WhatsApp</span>
+                    )}
                   </div>
                 </div>
               );
             })}
 
             {/* ABANDONED */}
-            {tab === 'Abandoned' && pagedData.map(item => (
+            {tab === 'Abandoned' && pagedData.map(item => {
+              const abandonedWhatsappLink = buildWhatsAppAdminLink(
+                item.phone || '',
+                `Hi ${item.name || 'there'}! We noticed you left items in your cart at Belle Kreyashon. Can we help?`
+              );
+
+              return (
               <div key={item._id} className={`bg-white rounded-2xl p-4 border flex gap-3 ${item.followedUp?'border-green-200 opacity-70':'border-gray-100'}`}>
                 <AlertCircle size={18} className={item.followedUp?'text-green-500 shrink-0 mt-0.5':'text-yellow-500 shrink-0 mt-0.5'} />
                 <div className="flex-1 min-w-0">
@@ -2944,12 +3476,16 @@ const buildTrainingBody = (f) => ({
                     className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg transition-all ${item.followedUp?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500 hover:bg-green-50'}`}>
                     {item.followedUp ? <CheckCircle size={13}/> : <Circle size={13}/>} {item.followedUp?'Done':'Pending'}
                   </button>
-                  <a href={`https://wa.me/${item.phone?.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(`Hi ${item.name}! We noticed you left items in your cart at Belle Kreyashon. Can we help?`)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-xs bg-green-500 text-white font-bold px-2 py-1 rounded-lg text-center">WA</a>
+                  {abandonedWhatsappLink ? (
+                    <a href={abandonedWhatsappLink}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-xs bg-green-500 text-white font-bold px-2 py-1 rounded-lg text-center">WA</a>
+                  ) : (
+                    <span className="text-[11px] text-center font-bold text-gray-300 px-2 py-1">No WA</span>
+                  )}
                 </div>
               </div>
-            ))}
+            )})}
 
             {/* CONSULTATIONS */}
             {tab === 'Consultations' && pagedData.map(item => (
@@ -2962,9 +3498,9 @@ const buildTrainingBody = (f) => ({
                   <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.desc}</p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
-                  <button onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
-                  <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                  <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                  <button title={item.active ? 'Hide blog post' : 'Show blog post'} aria-label={item.active ? 'Hide blog post' : 'Show blog post'} onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                  <button title="Edit blog post" aria-label="Edit blog post" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                  <button title="Delete blog post" aria-label="Delete blog post" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               </div>
             ))}
@@ -2984,8 +3520,8 @@ const buildTrainingBody = (f) => ({
                   <p className="text-xs text-gray-400 mb-2">{new Date(item.createdAt).toLocaleDateString()}</p>
                   <div className="flex gap-2">
                     <button onClick={() => toggle(item._id)} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-black hover:text-white transition-all">{item.published?'Unpublish':'Publish'}</button>
-                    <button onClick={() => openEdit(item)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-black hover:text-white transition-all"><Pencil size={13}/></button>
-                    <button onClick={() => del(item._id)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={13}/></button>
+                    <button title="Edit consultation" aria-label="Edit consultation" onClick={() => openEdit(item)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-black hover:text-white transition-all"><Pencil size={13}/></button>
+                    <button title="Delete consultation" aria-label="Delete consultation" onClick={() => del(item._id)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={13}/></button>
                   </div>
                 </div>
               </div>
@@ -3012,16 +3548,22 @@ const buildTrainingBody = (f) => ({
                     </div>
                   </div>
                   <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col gap-2 shrink-0'}`}>
-                    <button onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
-                    <button onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                    <button onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                    <button title={item.available ? 'Hide featured product' : 'Show featured product'} aria-label={item.available ? 'Hide featured product' : 'Show featured product'} onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                    <button title="Edit featured product" aria-label="Edit featured product" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                    <button title="Delete featured product" aria-label="Delete featured product" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                   </div>
                 </div>
               );
             })}
 
             {/* BOOKINGS */}
-            {tab === 'Bookings' && pagedData.map(item => (
+            {tab === 'Bookings' && pagedData.map(item => {
+              const bookingWhatsappLink = buildWhatsAppAdminLink(
+                item.customer?.phone || '',
+                `Hi ${item.customer?.name || 'there'}! Your Belle Kreyashon booking ${item.bookingId} has been confirmed. We will contact you with further details soon.`
+              );
+
+              return (
               <div key={item._id} className="bg-white rounded-2xl p-4 border border-gray-100">
                 <div className="flex justify-between items-start mb-2">
                   <div>
@@ -3044,13 +3586,17 @@ const buildTrainingBody = (f) => ({
                   {item.notes             && <p className="mt-1 text-gray-400">Notes: {item.notes}</p>}
                   <p className="mt-1 text-gray-400">Ref: {item.paymentRef}</p>
                 </div>
-                <a href={`https://wa.me/${item.customer?.phone?.replace(/[^0-9]/g,'')}?text=${encodeURIComponent('Hi ' + item.customer?.name + '! Your Belle Kreyashon booking ' + item.bookingId + ' has been confirmed. We will contact you with further details soon.')}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 text-xs bg-green-500 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-green-600">
-                  WhatsApp Customer
-                </a>
+                {bookingWhatsappLink ? (
+                  <a href={bookingWhatsappLink}
+                    target="_blank" rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-xs bg-green-500 text-white font-bold px-3 py-1.5 rounded-lg hover:bg-green-600">
+                    WhatsApp Customer
+                  </a>
+                ) : (
+                  <span className="mt-2 inline-flex text-[11px] font-bold text-gray-300">No WhatsApp number</span>
+                )}
               </div>
-            ))}
+            )})}
 
             {/* INVOICE */}
             {tab === 'Invoice' && <InvoiceCreator auth={auth} />}

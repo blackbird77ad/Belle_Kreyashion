@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Play } from 'lucide-react';
 import { api } from '../hooks/useApi';
+import SEO from '../components/SEO';
+import { buildBreadcrumbSchema, getBlogPath, toAbsoluteUrl } from '../utils/seoPaths';
 
 const isYoutube = (url) => url && (url.includes('youtube.com') || url.includes('youtu.be'));
 const getYoutubeId = (url) => {
@@ -10,19 +12,76 @@ const getYoutubeId = (url) => {
 };
 
 export default function BlogPost() {
-  const { id } = useParams();
+  const { slugOrId } = useParams();
+  const navigate = useNavigate();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get(`/api/blog/public/${id}`).then(r => { setPost(r.data); setLoading(false); }).catch(() => setLoading(false));
-  }, [id]);
+    api.get(`/api/blog/public/${slugOrId}`)
+      .then((r) => {
+        setPost(r.data);
+        setLoading(false);
+
+        const canonicalPath = getBlogPath(r.data);
+        if (r.data?.slug && canonicalPath !== `/blog/${slugOrId}`) {
+          navigate(canonicalPath, { replace: true });
+        }
+      })
+      .catch(() => setLoading(false));
+  }, [slugOrId, navigate]);
 
   if (loading) return <div className="pt-16 min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin" /></div>;
   if (!post) return <div className="pt-16 min-h-screen flex items-center justify-center"><p className="text-gray-400">Post not found. <Link to="/blog" className="underline">Back to Blog</Link></p></div>;
 
+  const canonicalPath = getBlogPath(post);
+  const seoDescription = post.excerpt || post.content?.slice(0, 160) || 'Read practical beauty, hair and business tips from Belle Kreyashon.';
+  const seoKeywords = [post.title, ...(post.tags || []), 'Belle Kreyashon blog', 'beauty tips Ghana', 'hair tutorials Ghana']
+    .filter(Boolean)
+    .join(', ');
+  const schema = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: post.title,
+      description: seoDescription,
+      image: post.coverImage ? [toAbsoluteUrl(post.coverImage)] : undefined,
+      datePublished: post.createdAt,
+      dateModified: post.updatedAt || post.createdAt,
+      author: {
+        '@type': 'Organization',
+        name: 'Belle Kreyashon',
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: 'Belle Kreyashon',
+        logo: {
+          '@type': 'ImageObject',
+          url: toAbsoluteUrl('/icons/icon-512.png'),
+        },
+      },
+      mainEntityOfPage: toAbsoluteUrl(canonicalPath),
+    },
+    buildBreadcrumbSchema([
+      { name: 'Home', path: '/' },
+      { name: 'Blog', path: '/blog' },
+      { name: post.title, path: canonicalPath },
+    ]),
+  ];
+
   return (
     <div className="pt-16 min-h-screen">
+      <SEO
+        title={post.title}
+        description={seoDescription}
+        image={post.coverImage || ''}
+        url={canonicalPath}
+        type="article"
+        keywords={seoKeywords}
+        schema={schema}
+        publishedTime={post.createdAt}
+        modifiedTime={post.updatedAt || post.createdAt}
+      />
       <div className="max-w-3xl mx-auto px-4 py-10">
         <Link to="/blog" className="flex items-center gap-1 text-sm text-gray-500 hover:text-black mb-6"><ChevronLeft size={18} /> Back to Blog</Link>
 

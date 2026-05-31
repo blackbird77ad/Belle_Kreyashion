@@ -3,6 +3,11 @@ import CertificateRecord from '../Models/CertificateRecord.mjs';
 import CertificateTemplate from '../Models/CertificateTemplate.mjs';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import { sendCertificateEmail } from '../Services/certificateMailService.mjs';
+import {
+  CERTIFICATE_TEMPLATE_PRESETS,
+  resolveCertificateTemplatePresetKey,
+  sanitizeCertificateFrameStyle,
+} from '../Utils/certificateTemplatePresets.mjs';
 import { buildCertificatePdf } from '../Utils/certificatePdf.mjs';
 
 const normalizeEmail = (value = '') => value.trim().toLowerCase();
@@ -43,8 +48,12 @@ const buildSignatories = (value = []) => {
     .filter((entry) => entry.name || entry.role);
 };
 
-const cleanTemplateBody = (body = {}, admin = {}) => ({
+const cleanTemplateBody = (body = {}, admin = {}) => {
+  const resolvedPresetKey = resolveCertificateTemplatePresetKey(body);
+
+  return {
   name: normalizeText(body.name || ''),
+  presetKey: resolvedPresetKey,
   productName: normalizeText(body.productName || ''),
   certificateTitle: normalizeText(body.certificateTitle || body.productName || ''),
   certificateSubtitle: normalizeText(body.certificateSubtitle || ''),
@@ -54,14 +63,55 @@ const cleanTemplateBody = (body = {}, admin = {}) => ({
   backgroundColor: normalizeColor(body.backgroundColor, '#FFFDF7'),
   fontColor: normalizeColor(body.fontColor, '#374151'),
   fontFamily: normalizeFontFamily(body.fontFamily, 'classic_serif'),
-  frameStyle: ['classic', 'double', 'soft', 'minimal'].includes(body.frameStyle) ? body.frameStyle : 'classic',
+  frameStyle: sanitizeCertificateFrameStyle(body.frameStyle, 'classic'),
   issueDate: parseDate(body.issueDate, null),
   organizerName: normalizeText(body.organizerName || ''),
   sponsors: normalizeList(body.sponsors || []),
   signatories: buildSignatories(body.signatories || []),
   notes: normalizeText(body.notes || ''),
   createdBy: normalizeText(admin.username || admin.email || admin.id || admin.adminId || 'admin'),
-});
+  isPreset: !!resolvedPresetKey || !!body.isPreset,
+  };
+};
+
+const normalizeTemplateCollection = (templates = []) => {
+  const seen = new Set();
+  const deduped = [];
+
+  templates.forEach((template) => {
+    const resolvedPresetKey = resolveCertificateTemplatePresetKey(template);
+    const dedupeKey = resolvedPresetKey
+      ? `preset:${resolvedPresetKey}`
+      : `saved:${String(template._id)}`;
+
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    if (resolvedPresetKey) {
+      template.presetKey = resolvedPresetKey;
+      template.isPreset = true;
+    }
+
+    deduped.push(template);
+  });
+
+  return deduped;
+};
+
+const ensurePresetCertificateTemplates = async () => {
+  if (!CERTIFICATE_TEMPLATE_PRESETS.length) return;
+
+  await CertificateTemplate.bulkWrite(
+    CERTIFICATE_TEMPLATE_PRESETS.map((preset) => ({
+      updateOne: {
+        filter: { presetKey: preset.presetKey },
+        update: { $setOnInsert: preset },
+        upsert: true,
+      },
+    })),
+    { ordered: false }
+  ).catch(() => {});
+};
 
 const parseBulkLearners = (raw = '') => String(raw)
   .split(/\r?\n/)
@@ -205,7 +255,7 @@ const cleanCertificateBody = (body = {}, admin = {}) => {
     backgroundColor: normalizeColor(body.backgroundColor, '#FFFDF7'),
     fontColor: normalizeColor(body.fontColor, '#374151'),
     fontFamily: normalizeFontFamily(body.fontFamily, 'classic_serif'),
-    frameStyle: ['classic', 'double', 'soft', 'minimal'].includes(body.frameStyle) ? body.frameStyle : 'classic',
+    frameStyle: sanitizeCertificateFrameStyle(body.frameStyle, 'classic'),
     issueDate,
     organizerName: normalizeText(body.organizerName || ''),
     sponsors: normalizeList(body.sponsors || []),
@@ -281,8 +331,9 @@ export const getCertificates = async (req, res) => {
 
 export const getCertificateTemplates = async (req, res) => {
   try {
-    const templates = await CertificateTemplate.find().sort({ updatedAt: -1, createdAt: -1 });
-    res.json(templates);
+    await ensurePresetCertificateTemplates();
+    const templates = await CertificateTemplate.find().sort({ isPreset: -1, updatedAt: -1, createdAt: -1 });
+    res.json(normalizeTemplateCollection(templates));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -292,8 +343,25 @@ export const createCertificateTemplate = async (req, res) => {
   try {
     const payload = cleanTemplateBody(req.body, req.admin || {});
     if (!payload.name) return res.status(400).json({ message: 'Template name is required' });
-    const template = await CertificateTemplate.create(payload);
-    res.status(201).json(template);
+    let template = null;
+
+    if (payload.presetKey) {
+      template = await CertificateTemplate.findOne({
+        $or: [
+          { presetKey: payload.presetKey },
+          { isPreset: true, name: payload.name, frameStyle: payload.frameStyle },
+        ],
+      });
+    }
+
+    if (template) {
+      Object.assign(template, payload);
+      await template.save();
+      return res.status(201).json(template);
+    }
+
+    template = await CertificateTemplate.create(payload);
+    return res.status(201).json(template);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

@@ -7,6 +7,7 @@ import CustomerModal from '../components/CustomerModal';
 import { useCustomer } from '../context/CustomerContext';
 import SEO from '../components/SEO';
 import { getAttributionSnapshot } from '../utils/attribution';
+import { buildBreadcrumbSchema, buildCollectionPageSchema } from '../utils/seoPaths';
 
 const WHATSAPP_NUM = WHATSAPP;
 
@@ -208,11 +209,6 @@ function TrainingModal({ event, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
-        <SEO
-      title="Professional Training, Consultations & Importation"
-      description="Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support."
-      url="/services"
-    />
       <div className="bg-white rounded-2xl w-full max-w-sm p-4 sm:p-6 shadow-2xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-4">
           <div>
@@ -340,6 +336,17 @@ export default function Services() {
 
   const freeMsg   = encodeURIComponent("Hi Belle Kreyashon! I'd like to book a free consultation. Please advise on availability.");
   const importMsg = encodeURIComponent("Hi Belle Kreyashon! I'd like to inquire about importation assistance.");
+  const seoSchema = [
+    buildCollectionPageSchema({
+      name: 'Professional Training, Consultations & Importation',
+      description: 'Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support.',
+      path: '/services',
+    }),
+    buildBreadcrumbSchema([
+      { name: 'Home', path: '/' },
+      { name: 'Services', path: '/services' },
+    ]),
+  ];
 
   const handleTrainingClick = (evt) => setSelectedTraining(evt);
 
@@ -375,6 +382,13 @@ Notes: ${preOrderForm.notes || 'None'}`
 
   return (
     <div className="pt-16 min-h-screen">
+      <SEO
+        title="Professional Training, Consultations & Importation"
+        description="Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support."
+        url="/services"
+        keywords="beauty training Ghana, business consultations Accra, importation support Ghana, practical skill training Ghana, Belle Kreyashon services"
+        schema={seoSchema}
+      />
       <div className="bg-black text-white py-20 px-4 text-center">
         <p className="text-[#FDC700] text-xs font-bold uppercase tracking-widest mb-3">Grow With Us</p>
         <h1 className="text-4xl md:text-6xl font-extrabold mb-3">Services</h1>

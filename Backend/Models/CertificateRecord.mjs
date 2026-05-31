@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { CERTIFICATE_FRAME_STYLES } from '../Utils/certificateTemplatePresets.mjs';
 
 const signatorySchema = new mongoose.Schema({
   name: { type: String, default: '' },
@@ -10,6 +11,13 @@ const completionSnapshotSchema = new mongoose.Schema({
   completedModules: { type: Number, default: 0 },
   percent: { type: Number, default: 0 },
 }, { _id: false });
+
+const buildCertificateNumber = (record) => {
+  const sourceDate = record.generatedAt || record.issueDate || record.createdAt || new Date();
+  const year = new Date(sourceDate).getFullYear();
+  const uniqueTail = String(record._id || new mongoose.Types.ObjectId()).slice(-6).toUpperCase();
+  return `CERT-${year}-${uniqueTail}`;
+};
 
 const certificateRecordSchema = new mongoose.Schema({
   type: { type: String, enum: ['digital_request', 'manual'], default: 'manual' },
@@ -43,7 +51,7 @@ const certificateRecordSchema = new mongoose.Schema({
   },
   frameStyle: {
     type: String,
-    enum: ['classic', 'double', 'soft', 'minimal'],
+    enum: CERTIFICATE_FRAME_STYLES,
     default: 'classic',
   },
   issueDate: { type: Date, default: null },
@@ -72,15 +80,10 @@ certificateRecordSchema.pre('validate', function (next) {
   if (!this.digitalAccess) this.digitalAccess = undefined;
   if (!this.productId) this.productId = undefined;
   if (!this.templateId) this.templateId = undefined;
-  next();
-});
-
-certificateRecordSchema.pre('save', async function () {
   if (!this.certificateNumber && this.status === 'generated') {
-    const year = new Date().getFullYear();
-    const count = await mongoose.model('CertificateRecord').countDocuments();
-    this.certificateNumber = `CERT-${year}-${String(count + 1).padStart(4, '0')}`;
+    this.certificateNumber = buildCertificateNumber(this);
   }
+  next();
 });
 
 export default mongoose.model('CertificateRecord', certificateRecordSchema);

@@ -55,6 +55,7 @@ export default function About() {
         title="About Belle Kreyashon"
         description="Belle Kreyashon is a growing Ghana-based store for products, training, consultations and partnership opportunities. Shop across multiple categories from one trusted platform."
         url="/about"
+        keywords="about Belle Kreyashon, Ghana beauty brand, Belle Kreyashon Accra, trusted online store Ghana, beauty training brand Ghana"
       />
 
       {/* Hero */}

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#111111"/>
+      <stop offset="100%" stop-color="#2b261d"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#FDC700"/>
+      <stop offset="100%" stop-color="#FFE58A"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="40" fill="url(#bg)"/>
+  <circle cx="1030" cy="140" r="170" fill="#FDC700" fill-opacity="0.08"/>
+  <circle cx="150" cy="520" r="180" fill="#FDC700" fill-opacity="0.07"/>
+  <rect x="72" y="72" width="1056" height="486" rx="28" fill="none" stroke="#FDC700" stroke-opacity="0.22" stroke-width="3"/>
+
+  <g transform="translate(92 110)">
+    <text x="0" y="82" font-family="Arial Black, Arial, sans-serif" font-size="88" font-weight="900" fill="url(#gold)">BELLE</text>
+    <text x="300" y="82" font-family="Arial Black, Arial, sans-serif" font-size="88" font-weight="900" fill="#FFFFFF">KREYASHON</text>
+    <text x="0" y="152" font-family="Arial, sans-serif" font-size="26" font-weight="700" fill="#FDC700" letter-spacing="4">HAIR, BEAUTY, DIGITAL TRAINING AND LIFESTYLE</text>
+    <text x="0" y="248" font-family="Arial, sans-serif" font-size="54" font-weight="800" fill="#FFFFFF">Shop trusted products.</text>
+    <text x="0" y="320" font-family="Arial, sans-serif" font-size="54" font-weight="800" fill="#FFFFFF">Learn practical skills.</text>
+    <text x="0" y="392" font-family="Arial, sans-serif" font-size="54" font-weight="800" fill="#FFFFFF">Grow with confidence.</text>
+    <text x="0" y="472" font-family="Arial, sans-serif" font-size="28" font-weight="400" fill="#D1D5DB">
+      Nationwide delivery across Ghana. Secure digital access. Business-driven training.
+    </text>
+  </g>
+</svg>

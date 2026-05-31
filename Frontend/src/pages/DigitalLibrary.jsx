@@ -363,6 +363,7 @@ export default function DigitalLibrary() {
         title="Digital Library"
         description="Access your Belle Kreyashon digital products, free claims, trial access, files and protected learning materials."
         url="/digital-library"
+        noindex
       />
 
       <div className="bg-black text-white py-14 px-4 text-center">

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { CERTIFICATE_FRAME_STYLES } from '../Utils/certificateTemplatePresets.mjs';
 
 const signatorySchema = new mongoose.Schema({
   name: { type: String, default: '' },
@@ -22,7 +23,7 @@ const certificateTemplateSchema = new mongoose.Schema({
   },
   frameStyle: {
     type: String,
-    enum: ['classic', 'double', 'soft', 'minimal'],
+    enum: CERTIFICATE_FRAME_STYLES,
     default: 'classic',
   },
   issueDate: { type: Date, default: null },
@@ -31,6 +32,8 @@ const certificateTemplateSchema = new mongoose.Schema({
   signatories: { type: [signatorySchema], default: [] },
   notes: { type: String, default: '' },
   createdBy: { type: String, default: '' },
+  presetKey: { type: String, default: '' },
+  isPreset: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model('CertificateTemplate', certificateTemplateSchema);

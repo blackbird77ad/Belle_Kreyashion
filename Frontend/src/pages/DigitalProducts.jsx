@@ -18,6 +18,7 @@ import SEO from '../components/SEO';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import { api } from '../hooks/useApi';
+import { buildBreadcrumbSchema, buildCollectionPageSchema, getProductPath } from '../utils/seoPaths';
 import {
   DIGITAL_DURATION_OPTIONS,
   DIGITAL_FORMAT_OPTIONS,
@@ -253,13 +254,48 @@ export default function DigitalProducts() {
 
   const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const totalPages = Math.ceil(products.length / PAGE_SIZE);
+  const activeSpecialLabel = SPECIAL_FILTERS.find((item) => item.key === special)?.label || '';
+  const seoTitle = search.trim()
+    ? `${search.trim()} Digital Products`
+    : digitalType !== 'all'
+      ? `${formatType(digitalType)} Digital Products`
+      : skillLevel !== 'all'
+        ? `${getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, skillLevel)} Digital Products`
+        : 'Digital Products';
+  const seoDescription = search.trim()
+    ? `Browse Belle Kreyashon digital products for ${search.trim()} with secure access, guided learning, and Ghana-friendly checkout.`
+    : 'Browse Belle Kreyashon digital products with filters for skill level, format, duration, topic, inclusions, pricing and secure library access.';
+  const seoKeywords = [
+    'digital products Ghana',
+    'online beauty courses Ghana',
+    'downloadable training Ghana',
+    'secure digital library',
+    'Belle Kreyashon academy',
+    digitalType !== 'all' ? formatType(digitalType) : '',
+    skillLevel !== 'all' ? getDigitalOptionLabel(DIGITAL_SKILL_LEVEL_OPTIONS, skillLevel) : '',
+    search.trim(),
+    activeSpecialLabel,
+  ].filter(Boolean).join(', ');
+  const seoSchema = [
+    buildCollectionPageSchema({
+      name: seoTitle,
+      description: seoDescription,
+      path: '/digital-products',
+    }),
+    buildBreadcrumbSchema([
+      { name: 'Home', path: '/' },
+      { name: 'Digital Products', path: '/digital-products' },
+    ]),
+  ];
 
   return (
     <div className="pt-16 min-h-screen bg-[#fcfbf7]">
       <SEO
-        title="Digital Products"
-        description="Browse Belle Kreyashon digital products with filters for skill level, format, duration, topic, inclusions, pricing and secure library access."
+        title={seoTitle}
+        description={seoDescription}
         url="/digital-products"
+        keywords={seoKeywords}
+        schema={seoSchema}
       />
 
       <section className="bg-black text-white px-4 py-12">
@@ -615,7 +651,7 @@ export default function DigitalProducts() {
                 return (
                   <Link
                     key={product._id}
-                    to={`/shop/${product._id}`}
+                    to={getProductPath(product)}
                     onClick={(event) => {
                       if (customerHasAccess) {
                         event.preventDefault();
