@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { api } from '../hooks/useApi';
 import { useCustomer } from './CustomerContext';
 import { getAttributionSnapshot } from '../utils/attribution';
+import { trackAddToCart } from '../utils/marketing';
 
 const CartContext = createContext();
 const readStoredCart = () => {
@@ -67,24 +68,31 @@ export function CartProvider({ children }) {
 
   const addToCart = (product, qty = 1, isWholesale = false, variant = null) => {
     const key = product.isDigital ? `digital-${product._id}` : `${product._id}-${isWholesale}-${variant}`;
-    setCart(prev => {
-      const existing = prev.find(i => i.key === key);
-      const currentQty = existing ? existing.qty : 0;
-      const requestedQty = product.isDigital ? 1 : qty;
-      const maxAllowed = product.isDigital ? 1 : (product.stock !== null ? product.stock : Infinity);
-      const addQty = Math.min(requestedQty, maxAllowed - currentQty);
-      if (addQty <= 0) return prev; // already at max
-      if (existing) return prev.map(i => i.key === key ? { ...i, qty: i.qty + addQty } : i);
-      const digitalAccessKind = product.isDigital ? (product.digitalAccessKind || 'paid') : null;
-      const checkoutPrice = calculateCheckoutPrice(product, isWholesale);
-      const priceNow = product.isDigital && digitalAccessKind !== 'paid' ? 0 : checkoutPrice;
-      const trialChargeAmount = product.isDigital && digitalAccessKind === 'trial' ? checkoutPrice : null;
-      const sourceAttribution = getAttributionSnapshot();
-      return [...prev, {
+    const existing = cart.find((item) => item.key === key);
+    const currentQty = existing ? existing.qty : 0;
+    const requestedQty = product.isDigital ? 1 : qty;
+    const maxAllowed = product.isDigital ? 1 : (product.stock !== null ? product.stock : Infinity);
+    const addQty = Math.min(requestedQty, maxAllowed - currentQty);
+
+    if (addQty <= 0) return;
+
+    const digitalAccessKind = product.isDigital ? (product.digitalAccessKind || 'paid') : null;
+    const checkoutPrice = calculateCheckoutPrice(product, isWholesale);
+    const priceNow = product.isDigital && digitalAccessKind !== 'paid' ? 0 : checkoutPrice;
+    const trialChargeAmount = product.isDigital && digitalAccessKind === 'trial' ? checkoutPrice : null;
+    const sourceAttribution = getAttributionSnapshot();
+
+    if (existing) {
+      setCart((prev) => prev.map((item) => item.key === key ? { ...item, qty: item.qty + addQty } : item));
+    } else {
+      setCart((prev) => [...prev, {
         key,
         productId: product._id,
-        name:      product.name,
-        image:     product.images?.[0] || '',
+        slug: product.slug || '',
+        name: product.name,
+        brand: 'Belle Kreyashon',
+        category: product.category || '',
+        image: product.images?.[0] || '',
         price: priceNow,
         qty: product.isDigital ? 1 : qty,
         isWholesale,
@@ -98,7 +106,21 @@ export function CartProvider({ children }) {
         seriesDescription: product.seriesDescription || '',
         variant,
         sourceAttribution,
-      }];
+      }]);
+    }
+
+    trackAddToCart({
+      product: {
+        _id: product._id,
+        slug: product.slug,
+        name: product.name,
+        category: product.category,
+        brand: 'Belle Kreyashon',
+      },
+      quantity: addQty,
+      price: priceNow,
+      variant,
+      customer,
     });
   };
 

@@ -12,6 +12,7 @@ import consultationRoutes from './Routes/consultation.mjs';
 import blogRoutes         from './Routes/blog.mjs';
 import featuredRoutes     from './Routes/featured.mjs';
 import certificateRoutes  from './Routes/certificates.mjs';
+import marketingRoutes    from './Routes/marketing.mjs';
 import { startDigitalTrialBillingWorker } from './Services/digitalAccessService.mjs';
 
 await connectDB();
@@ -45,6 +46,7 @@ app.use('/api/consultation', consultationRoutes);
 app.use('/api/blog',         blogRoutes);
 app.use('/api/featured',     featuredRoutes);
 app.use('/api/certificates', certificateRoutes);
+app.use('/api/marketing',    marketingRoutes);
 
 const PORT = process.env.PORT || 8002;
 startDigitalTrialBillingWorker();

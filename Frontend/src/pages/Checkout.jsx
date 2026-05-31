@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import { api, useFetch } from '../hooks/useApi';
 import { getAttributionSnapshot } from '../utils/attribution';
+import { getMarketingBrowserData, trackBeginCheckout } from '../utils/marketing';
 
 const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
@@ -108,7 +109,10 @@ export default function Checkout() {
       },
       items: cart.map((item) => ({
         productId: item.productId,
+        slug: item.slug || '',
         name: item.name,
+        brand: item.brand || 'Belle Kreyashon',
+        category: item.category || '',
         qty: item.qty,
         price: item.price,
         isWholesale: item.isWholesale,
@@ -134,9 +138,17 @@ export default function Checkout() {
       paymentPurpose: hasTrialItems && total === 0 ? 'trial_setup' : 'purchase',
       sourceAttribution: primaryAttribution,
       sourcePages,
+      browserData: getMarketingBrowserData(),
     };
 
     if (freeOnlyDigital) {
+      trackBeginCheckout({
+        items: orderData.items,
+        value: 0,
+        customer,
+        source: 'free_digital_claim',
+      });
+
       try {
         const { data } = await api.post('/api/orders/free-digital', { orderData });
         sessionStorage.setItem('bk_last_order', JSON.stringify({
@@ -159,6 +171,13 @@ export default function Checkout() {
       setLoading(false);
       return;
     }
+
+    trackBeginCheckout({
+      items: orderData.items,
+      value: payableNow,
+      customer,
+      source: 'paystack_checkout',
+    });
 
     const ref = `BK-${Date.now()}`;
 

@@ -4,10 +4,18 @@ import Booking from '../Models/Booking.mjs';
 import Customer from '../Models/Customer.mjs';
 import Order from '../Models/Order.mjs';
 import { grantDigitalAccessForOrder, processDueTrialCharges } from '../Services/digitalAccessService.mjs';
+import { sendMetaOrderEvent } from '../Services/metaConversionsService.mjs';
 import { reduceStock } from './productController.mjs';
 
 const WHATSAPP = process.env.WHATSAPP_NUMBER;
 const PAYSTACK_KEY = process.env.PAYSTACK_SECRET_KEY;
+
+const getMarketingRequestContext = (req, browserData = {}) => ({
+  browserData: browserData || {},
+  clientIp: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '',
+  userAgent: req.get('user-agent') || '',
+});
+
 const buildOrderResponse = (order, paymentRef = '') => {
   const msg = buildWhatsAppMessage(order, paymentRef || order.paymentRef || '');
   return {
@@ -517,6 +525,10 @@ export const verifyAndCreateOrder = async (req, res) => {
       console.error('Digital access grant error:', digitalErr.message);
     }
 
+    sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
+      console.error('Meta purchase tracking error:', metaErr.message);
+    });
+
     await AbandonedCart.findOneAndDelete({ phone: order.customer?.phone || normalizedOrderData.customer?.phone });
     res.json(buildOrderResponse(order, paymentRef));
   } catch (err) {
@@ -554,6 +566,10 @@ export const createFreeDigitalOrder = async (req, res) => {
     await grantDigitalAccessForOrder(order, {
       paymentRef,
       paystackAmount: 0,
+    });
+
+    sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
+      console.error('Meta free digital tracking error:', metaErr.message);
     });
 
     await AbandonedCart.findOneAndDelete({ phone: order.customer?.phone || normalizedOrderData.customer?.phone });

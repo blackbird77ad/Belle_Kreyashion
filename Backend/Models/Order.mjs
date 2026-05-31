@@ -16,7 +16,10 @@ const sourceAttributionSchema = new mongoose.Schema({
 
 const orderItemSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+  slug: { type: String, default: '' },
   name: String,
+  brand: { type: String, default: 'Belle Kreyashon' },
+  category: { type: String, default: '' },
   qty: Number,
   price: Number,
   isWholesale: { type: Boolean, default: false },

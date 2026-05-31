@@ -1,8 +1,15 @@
 import Training from '../Models/Training.mjs';
 import Booking from '../Models/Booking.mjs';
 import axios from 'axios';
+import { sendMetaBookingEvent } from '../Services/metaConversionsService.mjs';
 
 const WHATSAPP = process.env.WHATSAPP_NUMBER;
+
+const getMarketingRequestContext = (req, browserData = {}) => ({
+  browserData: browserData || {},
+  clientIp: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '',
+  userAgent: req.get('user-agent') || '',
+});
 
 const convertDrive = (url) => {
   if (!url) return url;
@@ -113,6 +120,10 @@ export const verifyAndCreateBooking = async (req, res) => {
     }
 
     const booking = await Booking.create({ ...bookingData, paymentRef, paymentStatus: 'paid' });
+
+    sendMetaBookingEvent(booking, getMarketingRequestContext(req, bookingData?.browserData)).catch((metaErr) => {
+      console.error('Meta booking tracking error:', metaErr.message);
+    });
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });

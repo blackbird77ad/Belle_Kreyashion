@@ -6,6 +6,7 @@ import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import { WHATSAPP } from '../data/contact';
+import { trackOrderCompletion } from '../utils/marketing';
 
 export default function OrderConfirmation() {
   const [state, setState] = useState('verifying');
@@ -61,6 +62,11 @@ export default function OrderConfirmation() {
       setErrMsg('No order found.');
     }
   }, []);
+
+  useEffect(() => {
+    if (state !== 'success' || !order?.orderId) return;
+    trackOrderCompletion({ order });
+  }, [state, order]);
 
   if (state === 'verifying') {
     return (

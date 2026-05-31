@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar, MessageCircle, Phone, Clock, Users, Send, X, Loader2, CheckCircle } from 'lucide-react';
 import { useFetch, api } from '../hooks/useApi';
@@ -7,6 +7,7 @@ import CustomerModal from '../components/CustomerModal';
 import { useCustomer } from '../context/CustomerContext';
 import SEO from '../components/SEO';
 import { getAttributionSnapshot } from '../utils/attribution';
+import { getMarketingBrowserData, trackBeginCheckout, trackContactClick, trackServicePurchase } from '../utils/marketing';
 import { buildBreadcrumbSchema, buildCollectionPageSchema } from '../utils/seoPaths';
 
 const WHATSAPP_NUM = WHATSAPP;
@@ -29,7 +30,7 @@ const waitForPaystack = () => new Promise((resolve, reject) => {
   }, 100);
 });
 
-const payWithPaystack = ({ amount, name, phone, description, onSuccess, onClose }) => {
+const payWithPaystack = ({ amount, name, phone, description, onSuccess, onClose, onBeforeOpen }) => {
   waitForPaystack().then(PaystackPop => {
     const handler = PaystackPop.setup({
       key:      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
@@ -40,12 +41,18 @@ const payWithPaystack = ({ amount, name, phone, description, onSuccess, onClose 
       callback: onSuccess,
       onClose,
     });
+    onBeforeOpen?.();
     handler.openIframe();
   }).catch(() => alert('Payment system not ready. Please refresh the page.'));
 };
 
 // Booking confirmation modal
 function BookingConfirmed({ booking, whatsappUrl, onClose }) {
+  useEffect(() => {
+    if (!booking?.bookingId) return;
+    trackServicePurchase({ booking });
+  }, [booking]);
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -182,6 +189,26 @@ function TrainingModal({ event, onClose }) {
       amount: event.price,
       name, phone,
       description: `Training: ${event.title}`,
+      onBeforeOpen: () => {
+        trackBeginCheckout({
+          items: [{
+            productId: event._id,
+            name: event.title,
+            brand: 'Belle Kreyashon',
+            category: 'Training',
+            qty: 1,
+            price: Number(event.price || 0) || 0,
+          }],
+          value: Number(event.price || 0) || 0,
+          customer: {
+            name,
+            phone,
+            email: customer?.email || '',
+          },
+          source: 'training_registration',
+          contentType: 'service',
+        });
+      },
       onSuccess: (response) => {
         api.post('/api/training/book/verify', {
           paymentRef: response.reference,
@@ -192,6 +219,7 @@ function TrainingModal({ event, onClose }) {
             customer: { name, phone },
             amount: event.price,
             sourceAttribution,
+            browserData: getMarketingBrowserData(),
           },
         }).then(res => {
           setLoading(false);
@@ -257,6 +285,26 @@ function ConsultationModal({ consultation, onClose }) {
       amount: consultation.price,
       name, phone,
       description: `Consultation: ${consultation.title}`,
+      onBeforeOpen: () => {
+        trackBeginCheckout({
+          items: [{
+            productId: consultation._id,
+            name: consultation.title,
+            brand: 'Belle Kreyashon',
+            category: 'Consultation',
+            qty: 1,
+            price: Number(consultation.price || 0) || 0,
+          }],
+          value: Number(consultation.price || 0) || 0,
+          customer: {
+            name,
+            phone,
+            email: customer?.email || '',
+          },
+          source: 'consultation_booking',
+          contentType: 'service',
+        });
+      },
       onSuccess: (response) => {
         api.post('/api/training/book/verify', {
           paymentRef: response.reference,
@@ -268,6 +316,7 @@ function ConsultationModal({ consultation, onClose }) {
             amount: consultation.price,
             notes,
             sourceAttribution,
+            browserData: getMarketingBrowserData(),
           },
         }).then(res => {
           setLoading(false);
@@ -365,7 +414,13 @@ Description: ${featureForm.desc}
 Contact: ${featureForm.contact}
 Plan: ${plan?.label} subscription`
     );
-    window.open(`https://wa.me/${WHATSAPP_NUM}?text=${msg}`, '_blank');
+    const url = `https://wa.me/${WHATSAPP_NUM}?text=${msg}`;
+    trackContactClick({
+      channel: 'whatsapp',
+      label: 'Feature application WhatsApp',
+      url,
+    });
+    window.open(url, '_blank');
   };
 
   const sendPreOrder = () => {
@@ -377,7 +432,13 @@ Needed by: ${preOrderForm.date}
 Contact: ${preOrderForm.contact}
 Notes: ${preOrderForm.notes || 'None'}`
     );
-    window.open(`https://wa.me/${WHATSAPP_NUM}?text=${msg}`, '_blank');
+    const url = `https://wa.me/${WHATSAPP_NUM}?text=${msg}`;
+    trackContactClick({
+      channel: 'whatsapp',
+      label: 'Pre-order request WhatsApp',
+      url,
+    });
+    window.open(url, '_blank');
   };
 
   return (

@@ -5,6 +5,8 @@ import { CartProvider } from './context/CartContext';
 import Navbar     from './components/Navbar';
 import Footer     from './components/Footer';
 import CartDrawer from './components/CartDrawer';
+import ConsentBanner from './components/ConsentBanner';
+import MarketingTracker from './components/MarketingTracker';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { rememberAttributionFromLocation } from './utils/attribution';
 
@@ -58,6 +60,7 @@ function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {!isAdmin && <MarketingTracker />}
       {!isAdmin && <Navbar onCartOpen={() => setCartOpen(true)} />}
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
       <main className="flex-1">
@@ -80,6 +83,7 @@ function Layout() {
           </Routes>
         </Suspense>
       </main>
+      {!isAdmin && <ConsentBanner />}
       {!isAdmin && <PwaInstallPrompt />}
       {!isAdmin && <Footer />}
     </div>

@@ -7,6 +7,7 @@ import { useCustomer } from '../context/CustomerContext';
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
 import { buildBreadcrumbSchema, getProductPath, toAbsoluteUrl } from '../utils/seoPaths';
+import { trackProductView } from '../utils/marketing';
 
 const normalizeSupportWhatsApp = (value = '') => {
   const cleaned = String(value || '').trim().replace(/[^\d+]/g, '');
@@ -94,6 +95,20 @@ export default function Product() {
   const price        = isWholesale ? product?.wholesalePrice : finalPrice;
   const digitalCartKey = product?._id ? `digital-${product._id}` : '';
   const isDigitalAlreadyInCart = !!(isDigital && digitalCartKey && cart.some((item) => item.key === digitalCartKey));
+
+  useEffect(() => {
+    if (!product?._id) return;
+    trackProductView({
+      product: {
+        _id: product._id,
+        slug: product.slug,
+        name: product.name,
+        category: product.category,
+        brand: 'Belle Kreyashon',
+      },
+      price: isDigital && digitalAccessKind !== 'paid' ? 0 : Number(finalPrice || 0),
+    });
+  }, [product?._id, product?.slug, product?.name, product?.category, isDigital, digitalAccessKind, finalPrice]);
 
   const doAddToCart = () => {
     addToCart(product, qty, isWholesale, variant);
