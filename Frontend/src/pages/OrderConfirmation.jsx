@@ -5,6 +5,7 @@ import { generateInvoice } from '../utils/generateInvoice';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
+import { useIntlPreferences } from '../context/IntlContext';
 import { WHATSAPP } from '../data/contact';
 import { trackOrderCompletion } from '../utils/marketing';
 
@@ -16,6 +17,7 @@ export default function OrderConfirmation() {
   const [errMsg, setErrMsg] = useState('');
   const { customer } = useCustomer();
   const { clearCart } = useCart();
+  const { formatMoney, formatBaseMoney, ghanaCheckoutNote, isConvertedDisplay } = useIntlPreferences();
 
   useEffect(() => {
     const pending = sessionStorage.getItem('bk_pending_order');
@@ -113,6 +115,22 @@ export default function OrderConfirmation() {
     : order?.paymentPurpose === 'trial_setup'
       ? 'Instant after trial setup'
       : 'Instant after payment';
+  const deliverySummary = digitalOnly
+    ? digitalDeliveryLabel
+    : order?.fulfillment === 'pickup'
+      ? 'Free'
+      : order?.fulfillment === 'arranged-delivery'
+        ? 'Arrange on WhatsApp'
+        : order?.fulfillment === 'international'
+          ? 'Quoted after payment'
+          : formatMoney(Number(order?.deliveryFee || 0));
+  const fulfillmentLabel = String(order?.fulfillment || '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const shouldShowAddress = !!(
+    order?.customer?.address
+    && !['PICKUP', 'DIGITAL ACCESS', 'ARRANGED DELIVERY - CONFIRM ON WHATSAPP'].includes(order.customer.address)
+  );
 
   return (
     <div className="pt-16 min-h-screen bg-gray-50">
@@ -135,7 +153,12 @@ export default function OrderConfirmation() {
             </div>
             <div className="text-right">
               <p className="text-xs text-gray-400">{order?.paymentPurpose === 'trial_setup' ? 'Card Setup Taken Now' : 'Total Paid'}</p>
-              <p className="font-extrabold text-lg">GHS {amountPaidNow?.toLocaleString()}</p>
+              <p className="font-extrabold text-lg">{formatMoney(amountPaidNow)}</p>
+              {isConvertedDisplay && (
+                <p className="mt-1 text-[11px] font-bold text-gray-400">
+                  Charged as {formatBaseMoney(amountPaidNow, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              )}
             </div>
           </div>
           <div className="border-t border-gray-100 pt-3">
@@ -148,8 +171,8 @@ export default function OrderConfirmation() {
                   {item.isDigital && item.digitalAccessKind === 'free'
                     ? 'Free'
                     : item.isDigital && item.digitalAccessKind === 'trial'
-                      ? `Trial now${item.trialChargeAmount ? `, then GHS ${Number(item.trialChargeAmount).toLocaleString()}` : ''}`
-                      : `GHS ${(item.price * item.qty).toLocaleString()}`}
+                      ? `Trial now${item.trialChargeAmount ? `, then ${formatMoney(Number(item.trialChargeAmount))}` : ''}`
+                      : formatMoney(item.price * item.qty)}
                 </span>
               </div>
             ))}
@@ -157,17 +180,21 @@ export default function OrderConfirmation() {
               <span className="text-gray-500">
                 {digitalOnly ? 'Access Delivery' : `Delivery (${order?.deliveryZone})`}
               </span>
-              <span className="font-bold">
-                {digitalOnly ? digitalDeliveryLabel : `GHS ${order?.deliveryFee}`}
-              </span>
+              <span className="font-bold">{deliverySummary}</span>
             </div>
           </div>
-          <div className="mt-3 p-3 bg-gray-50 rounded-xl text-xs text-gray-500 capitalize">
-            <span className="font-bold">Fulfillment:</span> {order?.fulfillment}
-            {order?.customer?.address && order.customer.address !== 'PICKUP' && order.customer.address !== 'DIGITAL ACCESS' && (
-              <div className="mt-1">{order.customer.address}</div>
-            )}
+          <div className="mt-3 p-3 bg-gray-50 rounded-xl text-xs text-gray-500">
+            <span className="font-bold">Fulfillment:</span> {fulfillmentLabel}
+            {shouldShowAddress && <div className="mt-1">{order.customer.address}</div>}
           </div>
+          <p className="mt-3 text-center text-xs leading-relaxed text-gray-400">
+            {ghanaCheckoutNote}
+          </p>
+          {isConvertedDisplay && (
+            <p className="mt-1 text-center text-[11px] leading-relaxed text-gray-400">
+              Final payment was processed as {formatBaseMoney(amountPaidNow, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.
+            </p>
+          )}
         </div>
 
         {hasDigitalItems && (
@@ -219,6 +246,13 @@ export default function OrderConfirmation() {
                 <li className="flex gap-2"><span className="text-[#FDC700]">1.</span> We will confirm your order via WhatsApp</li>
                 <li className="flex gap-2"><span className="text-[#FDC700]">2.</span> Your order will be dispatched within 1 to 2 days</li>
                 <li className="flex gap-2"><span className="text-[#FDC700]">3.</span> We will notify you when it is on its way</li>
+              </>
+            )}
+            {!digitalOnly && order?.fulfillment === 'arranged-delivery' && (
+              <>
+                <li className="flex gap-2"><span className="text-[#FDC700]">1.</span> We will follow up on WhatsApp so you can confirm your rider, courier, bus service or pickup partner</li>
+                <li className="flex gap-2"><span className="text-[#FDC700]">2.</span> Final delivery cost is agreed separately based on your location and preferred delivery method</li>
+                <li className="flex gap-2"><span className="text-[#FDC700]">3.</span> We dispatch once the delivery arrangement is confirmed</li>
               </>
             )}
             {!digitalOnly && order?.fulfillment === 'international' && (

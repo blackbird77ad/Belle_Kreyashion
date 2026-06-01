@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { toAbsoluteUrl } from '../utils/seoPaths';
+import { buildSiteOrganizationSchema, buildWebsiteSchema, toAbsoluteUrl } from '../utils/seoPaths';
 
 const SITE = 'Belle Kreyashon';
 const BASE_URL = 'https://bellekreyashon.com';
@@ -78,7 +78,12 @@ export default function SEO({
       schemaTag.dataset.seoSchema = 'true';
       document.head.appendChild(schemaTag);
     }
-    const schemaPayload = Array.isArray(schema) ? schema.filter(Boolean) : schema;
+    const pageSchemas = Array.isArray(schema) ? schema.filter(Boolean) : schema ? [schema] : [];
+    const schemaPayload = [
+      buildSiteOrganizationSchema(),
+      buildWebsiteSchema(),
+      ...pageSchemas,
+    ].filter(Boolean);
     schemaTag.textContent = schemaPayload ? JSON.stringify(schemaPayload) : '';
   }, [title, description, image, url, type, noindex, keywords, schema, publishedTime, modifiedTime]);
 

@@ -11,6 +11,7 @@ import {
   resendCustomerVerification,
   resetCustomerPassword,
   signupCustomer,
+  updateCustomerPreferences,
   verifyCustomerEmail,
 } from '../Controllers/customerController.mjs';
 import { protect, protectCustomer } from '../Middlewares/auth.mjs';
@@ -20,6 +21,7 @@ const router = Router();
 router.post('/signup', signupCustomer);
 router.post('/login', loginCustomer);
 router.get('/me', protectCustomer, getCurrentCustomer);
+router.patch('/preferences', protectCustomer, updateCustomerPreferences);
 router.get('/dashboard', protectCustomer, getCustomerDashboard);
 router.get('/history', protectCustomer, getCustomerHistory);
 router.post('/password-reset/request', requestCustomerPasswordReset);

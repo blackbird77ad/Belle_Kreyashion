@@ -2,9 +2,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { useIntlPreferences } from '../context/IntlContext';
 
 export default function CartDrawer({ open, onClose }) {
   const { cart, updateQty, removeFromCart, cartCount, subtotal } = useCart();
+  const { formatMoney, ghanaCheckoutNote } = useIntlPreferences();
   const navigate = useNavigate();
 
   const handleCheckout = () => {
@@ -57,11 +59,11 @@ export default function CartDrawer({ open, onClose }) {
                             ? 'Free'
                             : item.isDigital && item.digitalAccessKind === 'trial'
                               ? `${item.freeTrialDays || 7}-day trial`
-                              : `GHS ${(item.price * item.qty).toLocaleString()}`}
+                              : formatMoney(item.price * item.qty)}
                         </div>
                         {item.isDigital && item.digitalAccessKind === 'trial' && (
                           <div className="text-xs text-gray-400 mt-1">
-                            Then GHS {Number(item.trialChargeAmount || 0).toLocaleString()} will be billed if the trial continues.
+                            Then {formatMoney(Number(item.trialChargeAmount || 0))} will be billed if the trial continues.
                           </div>
                         )}
                         {item.isDigital ? (
@@ -91,9 +93,10 @@ export default function CartDrawer({ open, onClose }) {
                 <div className="p-5 border-t border-gray-100 bg-gray-50">
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-bold text-sm">Subtotal</span>
-                    <span className="font-extrabold text-lg">GHS {subtotal.toLocaleString()}</span>
+                    <span className="font-extrabold text-lg">{formatMoney(subtotal)}</span>
                   </div>
                   <p className="text-xs text-gray-400 mb-4 text-center">Delivery fee added at checkout</p>
+                  <p className="text-[11px] leading-relaxed text-center text-gray-400 mb-4">{ghanaCheckoutNote}</p>
                   <button onClick={handleCheckout}
                     className="w-full py-3.5 rounded-2xl bg-black text-white font-extrabold text-sm text-center hover:bg-gray-900 transition-all">
                     Proceed to Checkout

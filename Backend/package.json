@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "nodemon server.mjs",
-    "generate:sitemap": "node generateSitemap.mjs"
+    "generate:sitemap": "node generateSitemap.mjs",
+    "generate:merchant-feed": "node generateMerchantFeed.mjs"
   },
   "dependencies": {
     "axios": "^1.6.0",

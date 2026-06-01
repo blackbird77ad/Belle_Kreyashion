@@ -56,7 +56,7 @@ const orderSchema = new mongoose.Schema({
   subtotal: Number,
   fulfillment: {
     type: String,
-    enum: ['pickup', 'delivery', 'international', 'digital'],
+    enum: ['pickup', 'delivery', 'arranged-delivery', 'international', 'digital'],
     default: 'delivery',
   },
   deliveryZone: { type: String, default: '' },

@@ -391,6 +391,8 @@ const buildWhatsAppMessage = (order, paymentRef) => {
 
   const fulfillmentLine = order.fulfillment === 'pickup'
     ? 'Fulfillment: PICKUP - customer will collect'
+    : order.fulfillment === 'arranged-delivery'
+      ? 'Fulfillment: ARRANGED DELIVERY - customer will confirm delivery method on WhatsApp'
     : order.fulfillment === 'international'
       ? 'Fulfillment: INTERNATIONAL - arrange shipping'
       : order.fulfillment === 'digital'

@@ -4,6 +4,7 @@ import { ShoppingBag, Minus, Plus, ChevronLeft, ShieldCheck, Mail, Phone } from 
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
+import { useIntlPreferences } from '../context/IntlContext';
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
 import { buildBreadcrumbSchema, getProductPath, toAbsoluteUrl } from '../utils/seoPaths';
@@ -36,6 +37,7 @@ export default function Product() {
   const navigate = useNavigate();
   const { cart, addToCart, removeOwnedDigitalItems } = useCart();
   const { customer } = useCustomer();
+  const { formatMoney, ghanaCheckoutNote, isConvertedDisplay } = useIntlPreferences();
   const [product,   setProduct]   = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [tab,       setTab]       = useState('retail');
@@ -250,21 +252,24 @@ export default function Product() {
 
             <div className="flex items-center gap-3 mb-1 flex-wrap">
               <p className="text-3xl font-extrabold">
-                {isFreeDigital ? 'Free' : isTrialDigital ? 'Free Trial' : `GHS ${price?.toLocaleString()}`}
+                {isFreeDigital ? 'Free' : isTrialDigital ? 'Free Trial' : formatMoney(price)}
               </p>
               {discountActive && !isFreeDigital && (
                 <div className="flex flex-col">
-                  <span className="text-sm text-gray-400 line-through">GHS {retailPrice?.toLocaleString()}</span>
+                  <span className="text-sm text-gray-400 line-through">{formatMoney(retailPrice)}</span>
                   <span className="text-xs font-extrabold text-green-600">
-                    -{product.discount.value}{product.discount.type === 'percent' ? '%' : ' GHS'} off
+                    {product.discount.type === 'percent' ? `-${product.discount.value}% off` : `Save ${formatMoney(product.discount.value)}`}
                   </span>
                 </div>
               )}
             </div>
             {isTrialDigital && (
               <p className="text-sm text-gray-600 mb-3">
-                Start with {freeTrialDays} free day{freeTrialDays === 1 ? '' : 's'}, then we bill <span className="font-extrabold">GHS {price?.toLocaleString()}</span> if the trial continues.
+                Start with {freeTrialDays} free day{freeTrialDays === 1 ? '' : 's'}, then we bill <span className="font-extrabold">{formatMoney(price)}</span> if the trial continues.
               </p>
+            )}
+            {isConvertedDisplay && !isFreeDigital && (
+              <p className="text-xs text-gray-500 mb-3">{ghanaCheckoutNote}</p>
             )}
             {isWholesale && product.wholesaleMinQty && (
               <p className="text-xs text-[#FDC700] font-bold mb-3">Minimum order: {product.wholesaleMinQty} units</p>
@@ -483,7 +488,7 @@ export default function Product() {
                   {product.variants.map((v, i) => (
                     <button key={i} onClick={() => setVariant(v.name)}
                       className={`px-4 py-2 rounded-xl border-2 text-sm font-bold transition-all ${variant === v.name ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-black'}`}>
-                      {v.name} {v.price ? `— GHS ${v.price}` : ''}
+                      {v.name} {v.price ? `- ${formatMoney(v.price)}` : ''}
                     </button>
                   ))}
                 </div>

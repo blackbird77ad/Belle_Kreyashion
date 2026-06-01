@@ -16,6 +16,7 @@ import {
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
 } from '../Utils/digitalModules.mjs';
+import { buildGoogleMerchantFeedXml, isMerchantFeedEligible } from '../Utils/googleMerchantFeed.mjs';
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
 const CUSTOMER_JWT_SECRET = process.env.JWT_SECRET;
@@ -652,6 +653,24 @@ export const getDigitalProductOptions = async (_, res) => {
     });
   } catch {
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+export const getGoogleMerchantFeed = async (_, res) => {
+  try {
+    const products = await Product.find({
+      available: true,
+      isDigital: { $ne: true },
+      'images.0': { $exists: true },
+    })
+      .select('name slug desc category images retailPrice stock discount isPreOrder partnerBrand available isDigital isPartner featured')
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    const xml = buildGoogleMerchantFeedXml(products.filter(isMerchantFeedEligible));
+    res.type('application/xml').send(xml);
+  } catch {
+    res.status(500).json({ message: 'Could not generate the Google Merchant feed right now.' });
   }
 };
 

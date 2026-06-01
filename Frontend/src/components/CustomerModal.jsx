@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, User, Phone, Mail, Lock } from 'lucide-react';
 import { api, getApiErrorMessage } from '../hooks/useApi';
 import { useCustomer } from '../context/CustomerContext';
+import { useIntlPreferences } from '../context/IntlContext';
 
 function validatePhone(raw) {
   const cleaned = raw.replace(/[\s\-().]/g, '');
@@ -79,6 +80,16 @@ export default function CustomerModal({ onClose, onSuccess }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const { setCustomer } = useCustomer();
+  const {
+    currencyOptions,
+    languageOptions,
+    selectedCurrency,
+    selectedLanguage,
+    setSelectedCurrency,
+    setSelectedLanguage,
+  } = useIntlPreferences();
+  const [preferredCurrency, setPreferredCurrency] = useState(selectedCurrency);
+  const [preferredLanguage, setPreferredLanguage] = useState(selectedLanguage);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -93,6 +104,12 @@ export default function CustomerModal({ onClose, onSuccess }) {
       ...data.customer,
       accessToken: data.customerToken,
     });
+    if (data?.customer?.preferredCurrency) {
+      setSelectedCurrency(data.customer.preferredCurrency);
+    }
+    if (data?.customer?.preferredLanguage) {
+      setSelectedLanguage(data.customer.preferredLanguage);
+    }
     onSuccess?.(data);
     onClose?.();
     if (data.emailWarning || fallbackMessage) {
@@ -120,6 +137,8 @@ export default function CustomerModal({ onClose, onSuccess }) {
       email: email.trim().toLowerCase(),
       phone: normalizePhone(phone.trim()),
       password,
+      preferredCurrency,
+      preferredLanguage,
     });
 
     finishAuth(
@@ -256,6 +275,33 @@ export default function CustomerModal({ onClose, onSuccess }) {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Currency</span>
+                  <select
+                    value={preferredCurrency}
+                    onChange={(event) => setPreferredCurrency(event.target.value)}
+                    className="w-full rounded-xl border border-gray-200 py-3 px-3 text-sm outline-none transition-all focus:border-black"
+                  >
+                    {currencyOptions.map((option) => (
+                      <option key={option.code} value={option.code}>{option.code}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">Language</span>
+                  <select
+                    value={preferredLanguage}
+                    onChange={(event) => setPreferredLanguage(event.target.value)}
+                    className="w-full rounded-xl border border-gray-200 py-3 px-3 text-sm outline-none transition-all focus:border-black"
+                  >
+                    {languageOptions.map((option) => (
+                      <option key={option.code} value={option.code}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
               <div className="relative">
                 <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -280,6 +326,9 @@ export default function CustomerModal({ onClose, onSuccess }) {
 
               <p className="text-xs text-gray-400">
                 Ghana: use 10 digits starting with 0. International numbers should include the + country code.
+              </p>
+              <p className="text-xs text-gray-400">
+                You can still change your preferred currency and language later from the navigation bar.
               </p>
             </>
           )}

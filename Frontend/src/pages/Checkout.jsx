@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Loader2, MapPin, Package } from 'lucide-react';
+import { Globe, Loader2, MapPin, MessageCircle, Package } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
+import { useIntlPreferences } from '../context/IntlContext';
 import { api, useFetch } from '../hooks/useApi';
 import { getAttributionSnapshot } from '../utils/attribution';
 import { getMarketingBrowserData, trackBeginCheckout } from '../utils/marketing';
+import { WHATSAPP } from '../data/contact';
 
 const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
@@ -38,9 +40,23 @@ function validatePhone(raw) {
   return 'Please enter a valid phone number';
 }
 
+const buildCheckoutWhatsAppLink = (customer = {}, fulfillment = '', note = '') => {
+  const message = encodeURIComponent(
+`Hi Belle Kreyashon,
+I want to arrange ${fulfillment || 'delivery'} for my order.
+
+Name: ${customer?.name || ''}
+Phone: ${customer?.phone || ''}
+Email: ${customer?.email || 'N/A'}
+Address / delivery note: ${note || 'I will send my delivery details here.'}`
+  );
+  return `https://wa.me/${WHATSAPP}?text=${message}`;
+};
+
 export default function Checkout() {
   const { cart, subtotal, clearCart } = useCart();
   const { customer, saveAddress } = useCustomer();
+  const { formatMoney, formatBaseMoney, ghanaCheckoutNote, isConvertedDisplay } = useIntlPreferences();
   const navigate = useNavigate();
   const { data: zones } = useFetch('/api/delivery/public');
 
@@ -56,12 +72,14 @@ export default function Checkout() {
   const hasTrialItems = cart.some((item) => item.isDigital && item.digitalAccessKind === 'trial');
   const freeOnlyDigital = hasDigitalItems && !hasPhysicalItems && cart.every((item) => item.digitalAccessKind === 'free');
   const digitalOnly = hasDigitalItems && !hasPhysicalItems;
+  const hasDeliveryZones = Array.isArray(zones) && zones.length > 0;
   const selectedZone = digitalOnly ? null : zones?.find((item) => item._id === zone);
   const deliveryFee = digitalOnly ? 0 : fulfillment === 'delivery' ? (selectedZone?.fee || 0) : 0;
   const total = subtotal + deliveryFee;
   const trialSetupCharge = hasTrialItems && total === 0 ? 0.1 : 0;
   const payableNow = total + trialSetupCharge;
   const digitalDeliveryLabel = freeOnlyDigital ? 'Instant after free claim' : hasTrialItems ? 'Instant after trial start' : 'Instant after payment';
+  const arrangedDeliveryWhatsappUrl = buildCheckoutWhatsAppLink(customer, fulfillment === 'international' ? 'international shipping' : 'custom delivery', address.trim());
 
   useEffect(() => {
     if (!customer) {
@@ -73,6 +91,14 @@ export default function Checkout() {
     if (!isPaying && cart.length === 0) navigate('/shop');
   }, []);
 
+  useEffect(() => {
+    if (digitalOnly) return;
+    if (fulfillment === 'delivery' && !hasDeliveryZones) {
+      setFulfillment('pickup');
+      setZone('');
+    }
+  }, [digitalOnly, fulfillment, hasDeliveryZones]);
+
   const isPaying = !!sessionStorage.getItem('bk_pending_order');
   if (!customer) return null;
   if (!isPaying && cart.length === 0) return null;
@@ -82,7 +108,7 @@ export default function Checkout() {
     if (phoneErr) return `Your saved phone number looks incorrect (${phoneErr}). Please update it.`;
     if (digitalOnly) return null;
     if (fulfillment === 'delivery' && !zone) return 'Please select a delivery zone';
-    if (fulfillment !== 'pickup' && !address.trim()) return 'Please enter your address';
+    if ((fulfillment === 'delivery' || fulfillment === 'international') && !address.trim()) return 'Please enter your address';
     return null;
   };
 
@@ -105,7 +131,13 @@ export default function Checkout() {
     const orderData = {
       customer: {
         ...customer,
-        address: digitalOnly ? 'DIGITAL ACCESS' : fulfillment === 'pickup' ? 'PICKUP' : address.trim(),
+        address: digitalOnly
+          ? 'DIGITAL ACCESS'
+          : fulfillment === 'pickup'
+            ? 'PICKUP'
+            : fulfillment === 'arranged-delivery'
+              ? (address.trim() || 'ARRANGED DELIVERY - CONFIRM ON WHATSAPP')
+              : address.trim(),
       },
       items: cart.map((item) => ({
         productId: item.productId,
@@ -129,9 +161,11 @@ export default function Checkout() {
         ? 'Digital Delivery'
         : fulfillment === 'pickup'
           ? 'Pickup'
+          : fulfillment === 'arranged-delivery'
+            ? 'Customer-arranged delivery'
           : fulfillment === 'international'
             ? 'International'
-        : (selectedZone?.name || ''),
+            : (selectedZone?.name || ''),
       deliveryFee: digitalOnly ? 0 : deliveryFee,
       total,
       orderType: digitalOnly ? 'digital' : fulfillment === 'international' ? 'international' : 'standard',
@@ -220,7 +254,8 @@ export default function Checkout() {
 
   const FULFILLMENT_OPTIONS = [
     { value: 'pickup', label: 'Pickup', desc: 'Collect from Osu, Accra', icon: <Package size={18} />, fee: 'Free' },
-    { value: 'delivery', label: 'Delivery', desc: 'Delivered to you', icon: <MapPin size={18} />, fee: 'By zone' },
+    ...(hasDeliveryZones ? [{ value: 'delivery', label: 'Delivery', desc: 'Delivered to you', icon: <MapPin size={18} />, fee: 'By zone' }] : []),
+    { value: 'arranged-delivery', label: 'Arrange Delivery', desc: 'Confirm a rider or courier on WhatsApp', icon: <MessageCircle size={18} />, fee: 'Quoted after' },
     { value: 'international', label: 'International', desc: 'Ship anywhere', icon: <Globe size={18} />, fee: 'Quoted after' },
   ];
 
@@ -259,7 +294,21 @@ export default function Checkout() {
               ) : (
                 <>
                   <h2 className="font-extrabold mb-4">How do you want to receive your order?</h2>
-                  <div className="grid grid-cols-3 gap-3 mb-5">
+                  {!hasDeliveryZones && (
+                    <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                      <p className="text-sm font-bold text-amber-800">Delivery pricing is not set for this area yet</p>
+                      <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                        You can still pay for your items now, then pick up, arrange your own rider, or confirm delivery directly with us on WhatsApp.
+                      </p>
+                    </div>
+                  )}
+                  <div className={`grid gap-3 mb-5 ${
+                    FULFILLMENT_OPTIONS.length >= 4
+                      ? 'grid-cols-2 xl:grid-cols-4'
+                      : FULFILLMENT_OPTIONS.length === 3
+                        ? 'grid-cols-3'
+                        : 'grid-cols-2'
+                  }`}>
                     {FULFILLMENT_OPTIONS.map((option) => (
                       <button
                         key={option.value}
@@ -296,7 +345,7 @@ export default function Checkout() {
                       >
                         <option value="">Select delivery zone *</option>
                         {zones?.map((item) => (
-                          <option key={item._id} value={item._id}>{item.name} - GHS {item.fee}</option>
+                          <option key={item._id} value={item._id}>{item.name} - {formatMoney(item.fee)}</option>
                         ))}
                       </select>
                       {customer?.savedAddress && (
@@ -325,6 +374,36 @@ export default function Checkout() {
                     </div>
                   )}
 
+                  {fulfillment === 'arranged-delivery' && (
+                    <div className="space-y-3">
+                      <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                        <p className="font-bold text-amber-800 text-sm mb-1">Arrange delivery after payment</p>
+                        <p className="text-amber-700 text-xs leading-relaxed">
+                          This works well if your location is outside our current priced zones or if you want to use your own rider, bus service, courier, or pickup partner. We will prepare a WhatsApp follow-up link for you after payment too.
+                        </p>
+                      </div>
+                      <div className="relative">
+                        <MapPin size={15} className="absolute left-3 top-3.5 text-gray-400" />
+                        <textarea
+                          value={address}
+                          onChange={(event) => setAddress(event.target.value)}
+                          rows={2}
+                          placeholder="Optional city, landmark, country, rider name, or courier note"
+                          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black resize-none"
+                        />
+                      </div>
+                      <a
+                        href={arrangedDeliveryWhatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-3 text-sm font-extrabold text-white hover:bg-green-600"
+                      >
+                        <MessageCircle size={16} />
+                        Message Delivery Details On WhatsApp
+                      </a>
+                    </div>
+                  )}
+
                   {fulfillment === 'international' && (
                     <div className="space-y-3">
                       <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
@@ -347,6 +426,15 @@ export default function Checkout() {
                         <input type="checkbox" checked={saveAddr} onChange={(event) => setSaveAddr(event.target.checked)} className="w-4 h-4 accent-black" />
                         Save this address for next time
                       </label>
+                      <a
+                        href={arrangedDeliveryWhatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-3 text-sm font-extrabold text-white hover:bg-green-600"
+                      >
+                        <MessageCircle size={16} />
+                        Share International Delivery Plan On WhatsApp
+                      </a>
                     </div>
                   )}
                 </>
@@ -365,7 +453,7 @@ export default function Checkout() {
                 <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
                   <p className="text-xs font-bold text-blue-800">Free trial card setup</p>
                   <p className="text-xs text-blue-700 mt-1 leading-relaxed">
-                    Trial digital products need a reusable card authorization now so we can bill the saved amount after the trial ends. {trialSetupCharge > 0 ? `A temporary GHS ${trialSetupCharge.toFixed(2)} card setup charge is used to securely save the card for this trial-only checkout.` : 'Because you already have a payable amount in this checkout, the same card payment can be used for the trial authorization too.'}
+                    Trial digital products need a reusable card authorization now so we can bill the saved amount after the trial ends. {trialSetupCharge > 0 ? `A temporary ${formatBaseMoney(trialSetupCharge, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} card setup charge is used to securely save the card for this trial-only checkout.` : 'Because you already have a payable amount in this checkout, the same card payment can be used for the trial authorization too.'}
                   </p>
                 </div>
               )}
@@ -389,38 +477,50 @@ export default function Checkout() {
                         x{item.qty}{item.isDigital ? ` - ${item.digitalAccessKind === 'free' ? 'Free digital access' : item.digitalAccessKind === 'trial' ? `${item.freeTrialDays || 7}-day trial` : 'Digital access'}` : ''}
                       </p>
                     </div>
-                    <p className="text-xs font-extrabold shrink-0">
-                      {item.isDigital && item.digitalAccessKind === 'free'
-                        ? 'Free'
-                        : item.isDigital && item.digitalAccessKind === 'trial'
-                          ? 'GHS 0 now'
-                          : `GHS ${(item.price * item.qty).toLocaleString()}`}
-                    </p>
-                  </div>
-                ))}
+                      <p className="text-xs font-extrabold shrink-0">
+                        {item.isDigital && item.digitalAccessKind === 'free'
+                          ? 'Free'
+                          : item.isDigital && item.digitalAccessKind === 'trial'
+                            ? 'Free now'
+                            : formatMoney((item.price * item.qty))}
+                      </p>
+                    </div>
+                  ))}
               </div>
 
               <div className="border-t border-gray-100 pt-3 space-y-1.5 mb-4 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Subtotal</span>
-                  <span className="font-bold">GHS {subtotal.toLocaleString()}</span>
+                  <span className="font-bold">{formatMoney(subtotal)}</span>
                 </div>
                 {trialSetupCharge > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Card setup for free trial</span>
-                    <span className="font-bold">GHS {trialSetupCharge.toFixed(2)}</span>
+                    <span className="font-bold">{formatMoney(trialSetupCharge, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-gray-500">{digitalOnly ? 'Access Delivery' : 'Delivery'}</span>
                   <span className="font-bold">
-                    {digitalOnly ? digitalDeliveryLabel : fulfillment === 'pickup' ? 'Free' : fulfillment === 'international' ? 'Quoted after' : `GHS ${deliveryFee}`}
+                    {digitalOnly
+                      ? digitalDeliveryLabel
+                      : fulfillment === 'pickup'
+                        ? 'Free'
+                        : fulfillment === 'arranged-delivery'
+                          ? 'Arrange on WhatsApp'
+                          : fulfillment === 'international'
+                            ? 'Quoted after payment'
+                            : formatMoney(deliveryFee)}
                   </span>
                 </div>
-                {(digitalOnly || fulfillment !== 'international') && (
-                  <div className="flex justify-between font-extrabold text-base border-t border-gray-100 pt-2 mt-1">
-                    <span>Total</span>
-                    <span>GHS {payableNow.toLocaleString()}</span>
+                <div className="flex justify-between font-extrabold text-base border-t border-gray-100 pt-2 mt-1">
+                  <span>Total</span>
+                  <span>{formatMoney(payableNow)}</span>
+                </div>
+                {isConvertedDisplay && (
+                  <div className="flex justify-between pt-1 text-xs text-gray-500">
+                    <span>Paystack charge</span>
+                    <span className="font-bold">{formatBaseMoney(payableNow, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 )}
               </div>
@@ -430,7 +530,7 @@ export default function Checkout() {
                 disabled={loading}
                 className="w-full py-3.5 rounded-2xl bg-[#FDC700] text-black font-extrabold text-sm hover:bg-yellow-300 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : freeOnlyDigital ? 'Get Free Access' : hasTrialItems && total === 0 ? `Start Trial With GHS ${trialSetupCharge.toFixed(2)} Card Setup` : `Pay GHS ${payableNow.toLocaleString()}`}
+                {loading ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : freeOnlyDigital ? 'Get Free Access' : hasTrialItems && total === 0 ? `Start Trial With ${formatMoney(trialSetupCharge, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Card Setup` : `Pay ${formatMoney(payableNow)}`}
               </button>
 
               <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-400">
@@ -440,6 +540,7 @@ export default function Checkout() {
                 </svg>
                 Secured by Paystack - {hasTrialItems ? 'Card required for trial authorization' : 'Card and Mobile Money'}
               </div>
+              <p className="mt-2 text-center text-xs leading-relaxed text-gray-400">{ghanaCheckoutNote}</p>
             </div>
           </div>
         </div>

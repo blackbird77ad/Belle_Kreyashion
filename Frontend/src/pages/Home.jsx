@@ -20,6 +20,7 @@ import {
   getDigitalOptionLabel,
 } from '../data/digitalProductOptions';
 import { useCart } from '../context/CartContext';
+import { useIntlPreferences } from '../context/IntlContext';
 import SEO from '../components/SEO';
 import { getProductPath } from '../utils/seoPaths';
 
@@ -35,6 +36,7 @@ const getCyclicItems = (items = [], start = 0, count = 0) => {
 };
 
 const ProductCard = ({ product, onPartnerClick }) => {
+  const { formatMoney } = useIntlPreferences();
   const discounted = product.discount?.active;
   const finalPrice = calcDiscountedPrice(product);
   const isPartner = product.isPartner;
@@ -79,7 +81,7 @@ const ProductCard = ({ product, onPartnerClick }) => {
         {isPartner && <span className="absolute top-2 left-2 bg-black text-[#FDC700] text-xs font-extrabold px-2 py-0.5 rounded-full">Partner</span>}
         {!isPartner && discounted && (
           <span className="absolute top-2 left-2 bg-[#FDC700] text-black text-xs font-extrabold px-2 py-0.5 rounded-full">
-            -{product.discount.value}{product.discount.type === 'percent' ? '%' : ' GHS'}
+            {product.discount.type === 'percent' ? `-${product.discount.value}%` : `Save ${formatMoney(product.discount.value)}`}
           </span>
         )}
         {product.stock !== null && product.stock <= 5 && product.stock > 0 && (
@@ -103,12 +105,12 @@ const ProductCard = ({ product, onPartnerClick }) => {
           ) : isTrialDigital ? (
             <div>
               <p className="font-extrabold text-sm">{product.freeTrialDays || 7}-day free trial</p>
-              <p className="text-xs text-gray-400">Then GHS {finalPrice?.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">Then {formatMoney(finalPrice)}</p>
             </div>
           ) : (
             <>
-              <p className="font-extrabold text-base">GHS {finalPrice?.toLocaleString()}</p>
-              {discounted && <p className="text-xs text-gray-400 line-through">GHS {product.retailPrice?.toLocaleString()}</p>}
+              <p className="font-extrabold text-base">{formatMoney(finalPrice)}</p>
+              {discounted && <p className="text-xs text-gray-400 line-through">{formatMoney(product.retailPrice)}</p>}
             </>
           )}
         </div>
@@ -142,6 +144,7 @@ const SectionHeader = ({ label, title, cta, to }) => (
 );
 
 export default function Home() {
+  const { formatMoney } = useIntlPreferences();
   const [partnerNotice, setPartnerNotice] = useState(null);
   const [toast, setToast] = useState('');
   const [heroIndex, setHeroIndex] = useState(0);
@@ -308,16 +311,16 @@ export default function Home() {
                                 ? 'Free'
                                 : activeHeroIsTrialDigital
                                   ? `${activeHero.freeTrialDays || 7}-day free trial`
-                                  : `GHS ${activeHeroPrice?.toLocaleString()}`}
+                                  : formatMoney(activeHeroPrice)}
                             </span>
                             {activeHeroIsTrialDigital && (
                               <span className="text-xs text-gray-400 mb-0.5">
-                                Then GHS {activeHeroPrice?.toLocaleString()}
+                                Then {formatMoney(activeHeroPrice)}
                               </span>
                             )}
                             {activeHero.discount?.active && !activeHeroIsTrialDigital && !activeHeroIsFreeDigital && (
                               <span className="text-xs text-gray-400 line-through mb-0.5">
-                                GHS {activeHero.retailPrice?.toLocaleString()}
+                                {formatMoney(activeHero.retailPrice)}
                               </span>
                             )}
                           </div>
@@ -450,14 +453,14 @@ export default function Home() {
                         />
                       )}
                       <span className="absolute top-2 left-2 bg-[#FDC700] text-black text-xs font-extrabold px-2 py-0.5 rounded-full">
-                        -{p.discount.value}{p.discount.type === 'percent' ? '%' : ' GHS'}
+                        {p.discount.type === 'percent' ? `-${p.discount.value}%` : `Save ${formatMoney(p.discount.value)}`}
                       </span>
                     </div>
                     <div className="p-3">
                       <h3 className="font-extrabold text-sm line-clamp-2 mb-1">{p.name}</h3>
                       <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-base">GHS {finalPrice?.toLocaleString()}</span>
-                        <span className="text-xs text-gray-400 line-through">GHS {p.retailPrice?.toLocaleString()}</span>
+                        <span className="font-extrabold text-base">{formatMoney(finalPrice)}</span>
+                        <span className="text-xs text-gray-400 line-through">{formatMoney(p.retailPrice)}</span>
                       </div>
                       {p.discount.label && <p className="text-xs text-[#FDC700] font-bold mt-0.5">{p.discount.label}</p>}
                     </div>
@@ -680,10 +683,10 @@ export default function Home() {
                                     ? 'Free'
                                     : product.digitalAccessKind === 'trial'
                                       ? `${product.freeTrialDays || 7}-day trial`
-                                      : `GHS ${finalPrice?.toLocaleString()}`}
+                                      : formatMoney(finalPrice)}
                                 </p>
                                 {product.digitalAccessKind === 'trial' && (
-                                  <p className="text-xs text-gray-400">Then GHS {finalPrice?.toLocaleString()}</p>
+                                  <p className="text-xs text-gray-400">Then {formatMoney(finalPrice)}</p>
                                 )}
                               </div>
                               <span className="inline-flex items-center gap-2 rounded-full bg-[#FDC700] px-4 py-2 text-xs font-extrabold text-black group-hover:bg-yellow-300">

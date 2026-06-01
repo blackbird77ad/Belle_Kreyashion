@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { CustomerProvider } from './context/CustomerContext';
+import { IntlProvider } from './context/IntlContext';
 import { CartProvider } from './context/CartContext';
 import Navbar     from './components/Navbar';
 import Footer     from './components/Footer';
@@ -99,11 +100,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <CustomerProvider>
-        <CartProvider>
-          <ScrollToTop />
-          <AttributionTracker />
-          <Layout />
-        </CartProvider>
+        <IntlProvider>
+          <CartProvider>
+            <ScrollToTop />
+            <AttributionTracker />
+            <Layout />
+          </CartProvider>
+        </IntlProvider>
       </CustomerProvider>
     </BrowserRouter>
   );

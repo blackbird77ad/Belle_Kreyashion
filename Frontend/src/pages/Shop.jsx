@@ -16,6 +16,7 @@ import {
 import { api } from '../hooks/useApi';
 import { CATEGORIES } from '../data/categories';
 import SEO from '../components/SEO';
+import { useIntlPreferences } from '../context/IntlContext';
 import { buildBreadcrumbSchema, buildCollectionPageSchema, getProductPath } from '../utils/seoPaths';
 
 const calcDiscountedPrice = (p) => {
@@ -42,6 +43,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function Shop() {
+  const { formatMoney, formatBaseMoney } = useIntlPreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -245,7 +247,7 @@ export default function Shop() {
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Min Price</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Min Price (GHS)</span>
                   <input
                     type="number"
                     min="0"
@@ -258,7 +260,7 @@ export default function Shop() {
                 </label>
 
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Max Price</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Max Price (GHS)</span>
                   <input
                     type="number"
                     min="0"
@@ -281,6 +283,10 @@ export default function Shop() {
                   </button>
                 </div>
               </div>
+
+              <p className="text-xs leading-relaxed text-gray-500">
+                Price filters use Ghana cedis (GHS). Product cards below convert automatically to your selected display currency.
+              </p>
 
               <div className="space-y-3">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Quick Filters</p>
@@ -338,8 +344,8 @@ export default function Shop() {
             {category !== 'All' && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Category: {category}</span>}
             {special && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Filter: {SPECIAL_FILTERS.find((item) => item.key === special)?.label}</span>}
             {sort !== 'newest' && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Sort: {SORT_OPTIONS.find((item) => item.value === sort)?.label}</span>}
-            {minPrice && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Min: GHS {Number(minPrice).toLocaleString()}</span>}
-            {maxPrice && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Max: GHS {Number(maxPrice).toLocaleString()}</span>}
+            {minPrice && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Min: {formatBaseMoney(Number(minPrice))}</span>}
+            {maxPrice && <span className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">Max: {formatBaseMoney(Number(maxPrice))}</span>}
           </div>
         )}
 
@@ -403,7 +409,7 @@ export default function Shop() {
                           )}
                           {discounted && (
                             <div className="absolute top-0 left-0 bg-[#FDC700] text-black font-extrabold px-3 py-1 text-xs rounded-br-xl">
-                              -{product.discount.value}{product.discount.type === 'percent' ? '%' : ' GHS'} OFF
+                              {product.discount.type === 'percent' ? `-${product.discount.value}% OFF` : `Save ${formatMoney(product.discount.value)}`}
                             </div>
                           )}
                           {product.isPreOrder && !discounted && (
@@ -435,18 +441,18 @@ export default function Shop() {
                           ) : isTrialDigital ? (
                             <div className="space-y-0.5">
                               <p className="font-extrabold text-base text-black">{product.freeTrialDays || 7}-day free trial</p>
-                              <p className="text-xs text-gray-400">Then GHS {finalPrice?.toLocaleString()}</p>
+                              <p className="text-xs text-gray-400">Then {formatMoney(finalPrice)}</p>
                             </div>
                           ) : discounted ? (
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-extrabold text-base text-black">GHS {finalPrice?.toLocaleString()}</p>
-                              <p className="text-xs text-gray-400 line-through">GHS {product.retailPrice?.toLocaleString()}</p>
+                              <p className="font-extrabold text-base text-black">{formatMoney(finalPrice)}</p>
+                              <p className="text-xs text-gray-400 line-through">{formatMoney(product.retailPrice)}</p>
                               <span className="text-xs bg-[#FDC700] text-black font-extrabold px-1.5 py-0.5 rounded-full">
-                                {product.discount.value}{product.discount.type === 'percent' ? '% off' : ' GHS off'}
+                                {product.discount.type === 'percent' ? `${product.discount.value}% off` : `Save ${formatMoney(product.discount.value)}`}
                               </span>
                             </div>
                           ) : (
-                            <p className="font-extrabold text-base">GHS {product.retailPrice?.toLocaleString()}</p>
+                            <p className="font-extrabold text-base">{formatMoney(product.retailPrice)}</p>
                           )}
                           {product.isDigital ? (
                             <p className="text-xs text-gray-400 mt-0.5">

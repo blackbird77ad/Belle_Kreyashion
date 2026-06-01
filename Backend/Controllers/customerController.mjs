@@ -12,12 +12,22 @@ import {
 } from '../Services/customerMailService.mjs';
 
 const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+const supportedCustomerCurrencies = new Set(['GHS', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NGN', 'ZAR']);
+const supportedCustomerLanguages = new Set(['en', 'fr', 'es', 'pt', 'ar']);
 
 const normalizePhone = (value = '') => {
   const cleaned = String(value || '').replace(/[\s\-().]/g, '');
   if (!cleaned) return '';
   if (cleaned.startsWith('233') && !cleaned.startsWith('+')) return `+${cleaned}`;
   return cleaned;
+};
+const normalizeCustomerCurrency = (value = '') => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return supportedCustomerCurrencies.has(normalized) ? normalized : 'GHS';
+};
+const normalizeCustomerLanguage = (value = '') => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return supportedCustomerLanguages.has(normalized) ? normalized : 'en';
 };
 
 const hashText = (value = '') => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -31,6 +41,8 @@ const serializeCustomer = (customer) => ({
   phone: customer.phone || '',
   email: customer.email || '',
   paystackCustomerCode: customer.paystackCustomerCode || '',
+  preferredCurrency: normalizeCustomerCurrency(customer.preferredCurrency),
+  preferredLanguage: normalizeCustomerLanguage(customer.preferredLanguage),
   emailVerified: !!customer.emailVerified,
   hasPassword: !!customer.passwordHash,
   lastLoginAt: customer.lastLoginAt || null,
@@ -247,6 +259,8 @@ export const signupCustomer = async (req, res) => {
     const phone = normalizePhone(req.body.phone);
     const email = normalizeEmail(req.body.email);
     const password = String(req.body.password || '');
+    const preferredCurrency = normalizeCustomerCurrency(req.body.preferredCurrency);
+    const preferredLanguage = normalizeCustomerLanguage(req.body.preferredLanguage);
 
     if (!name || !phone || !email || !password) {
       return res.status(400).json({ message: 'Name, phone, email and password are required' });
@@ -272,6 +286,8 @@ export const signupCustomer = async (req, res) => {
     customer.name = name;
     customer.phone = phone;
     customer.email = email;
+    customer.preferredCurrency = preferredCurrency;
+    customer.preferredLanguage = preferredLanguage;
     customer.passwordHash = await bcrypt.hash(password, 10);
     customer.lastLoginAt = new Date();
 
@@ -334,6 +350,21 @@ export const getCurrentCustomer = async (req, res) => {
     res.json({ customer: serializeCustomer(customer) });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Could not load your account right now' });
+  }
+};
+
+export const updateCustomerPreferences = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.status(404).json({ message: 'Customer account not found' });
+
+    customer.preferredCurrency = normalizeCustomerCurrency(req.body.preferredCurrency || customer.preferredCurrency);
+    customer.preferredLanguage = normalizeCustomerLanguage(req.body.preferredLanguage || customer.preferredLanguage);
+    await customer.save();
+
+    res.json({ customer: serializeCustomer(customer) });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not update customer preferences right now' });
   }
 };
 

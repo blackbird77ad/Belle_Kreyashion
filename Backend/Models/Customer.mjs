@@ -12,6 +12,8 @@ const customerSchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true, trim: true },
   email: { type: String, unique: true, sparse: true, trim: true, lowercase: true, default: null },
   paystackCustomerCode: { type: String, default: '' },
+  preferredCurrency: { type: String, default: 'GHS', trim: true, uppercase: true },
+  preferredLanguage: { type: String, default: 'en', trim: true, lowercase: true },
   passwordHash: { type: String, default: '' },
   emailVerified: { type: Boolean, default: false },
   emailVerificationTokenHash: { type: String, default: '' },

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ShoppingBag, Menu, X, User, Search, ChevronRight, LayoutDashboard, LogOut, BookOpen } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
+import { useIntlPreferences } from '../context/IntlContext';
 import CustomerModal from './CustomerModal';
 
 const links = [
@@ -24,6 +25,16 @@ export default function Navbar({ onCartOpen }) {
   const { pathname }  = useLocation();
   const { cartCount } = useCart();
   const { customer, logout }  = useCustomer();
+  const {
+    currencyOptions,
+    languageOptions,
+    selectedCurrency,
+    selectedLanguage,
+    setSelectedCurrency,
+    setSelectedLanguage,
+    translationStatus,
+    ghanaCheckoutNote,
+  } = useIntlPreferences();
   const accountMenuRef = useRef(null);
   const isSignedIn = Boolean(customer?.accessToken);
   const customerLabel = customer?.name?.trim() || 'My Account';
@@ -113,6 +124,33 @@ export default function Navbar({ onCartOpen }) {
 
           {/* Actions */}
           <div className="flex items-center gap-1.5">
+            <div className="hidden xl:flex items-center gap-2 rounded-2xl bg-white/5 px-2 py-1.5" style={{ border: '1px solid #222' }}>
+              <select
+                value={selectedCurrency}
+                onChange={(event) => setSelectedCurrency(event.target.value)}
+                className="rounded-xl bg-transparent px-2 py-1 text-[11px] font-bold text-gray-300 outline-none"
+                aria-label="Choose display currency"
+              >
+                {currencyOptions.map((option) => (
+                  <option key={option.code} value={option.code} className="text-black">
+                    {option.code}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedLanguage}
+                onChange={(event) => setSelectedLanguage(event.target.value)}
+                className="rounded-xl bg-transparent px-2 py-1 text-[11px] font-bold text-gray-300 outline-none"
+                aria-label="Choose language"
+              >
+                {languageOptions.map((option) => (
+                  <option key={option.code} value={option.code} className="text-black">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Search */}
             <button onClick={() => { setShowSearch(s => !s); setOpen(false); }}
               className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${showSearch ? 'bg-[#FDC700] text-black' : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'}`}
@@ -297,6 +335,49 @@ export default function Navbar({ onCartOpen }) {
                       Sign In / Sign Up
                     </button>
                   </>
+                )}
+              </div>
+            </div>
+
+            <div className="px-3 pt-3 mt-3 border-t" style={{ borderColor: '#1a1a1a' }}>
+              <div className="w-full rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d] p-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#FDC700]">International Preferences</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold text-gray-500">Currency</span>
+                    <select
+                      value={selectedCurrency}
+                      onChange={(event) => setSelectedCurrency(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-gray-200 outline-none"
+                    >
+                      {currencyOptions.map((option) => (
+                        <option key={option.code} value={option.code} className="text-black">
+                          {option.code}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-bold text-gray-500">Language</span>
+                    <select
+                      value={selectedLanguage}
+                      onChange={(event) => setSelectedLanguage(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-gray-200 outline-none"
+                    >
+                      {languageOptions.map((option) => (
+                        <option key={option.code} value={option.code} className="text-black">
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="mt-3 text-xs leading-relaxed text-gray-400">{ghanaCheckoutNote}</p>
+                {selectedLanguage !== 'en' && translationStatus === 'loading' && (
+                  <p className="mt-2 text-[11px] font-bold text-[#FDC700]">Preparing automatic translation...</p>
+                )}
+                {selectedLanguage !== 'en' && translationStatus === 'error' && (
+                  <p className="mt-2 text-[11px] font-bold text-amber-300">Translation helper could not load on this connection. You can still continue in English.</p>
                 )}
               </div>
             </div>

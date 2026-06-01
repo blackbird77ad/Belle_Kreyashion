@@ -16,6 +16,7 @@ import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
+import { useIntlPreferences } from '../context/IntlContext';
 import { api } from '../hooks/useApi';
 import { buildBreadcrumbSchema, buildCollectionPageSchema, getProductPath } from '../utils/seoPaths';
 import {
@@ -125,6 +126,7 @@ const FilterPanel = ({ title, subtitle, children }) => (
 export default function DigitalProducts() {
   const { customer } = useCustomer();
   const { removeOwnedDigitalItems } = useCart();
+  const { formatMoney, formatBaseMoney } = useIntlPreferences();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
@@ -386,10 +388,10 @@ export default function DigitalProducts() {
   const activeDurationLabel = getDigitalOptionLabel(durationOptions, durationFilter) || 'Any Duration';
   const activePriceTypeLabel = getDigitalOptionLabel(DIGITAL_PRICE_TYPE_OPTIONS, priceType) || 'Any Price Type';
   const activeTopicSummary = topics.length
-    ? topics.slice(0, 2).map((topic) => getDigitalOptionLabel(topicOptions, topic)).join(' • ')
+    ? topics.slice(0, 2).map((topic) => getDigitalOptionLabel(topicOptions, topic)).join(' | ')
     : 'Filter by subject';
   const activeInclusionSummary = inclusions.length
-    ? inclusions.slice(0, 2).map((inclusion) => getDigitalOptionLabel(inclusionOptions, inclusion)).join(' • ')
+    ? inclusions.slice(0, 2).map((inclusion) => getDigitalOptionLabel(inclusionOptions, inclusion)).join(' | ')
     : 'Filter by what is included';
 
   const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -606,7 +608,7 @@ export default function DigitalProducts() {
                   {openFilterPanels.basics && (
                     <FilterPanel
                       title="Core Filters"
-                      subtitle={`Type: ${activeTypeLabel} • Level: ${activeSkillLevelLabel} • Format: ${activeFormatLabel}`}
+                      subtitle={`Type: ${activeTypeLabel} | Level: ${activeSkillLevelLabel} | Format: ${activeFormatLabel}`}
                     >
                       <div className="grid gap-3 md:grid-cols-3">
                         <label className="flex flex-col gap-1.5">
@@ -654,7 +656,7 @@ export default function DigitalProducts() {
                   {openFilterPanels.sortPrice && (
                     <FilterPanel
                       title="Sort & Price"
-                      subtitle={`Sort: ${activeSortLabel} • Duration: ${activeDurationLabel} • Price: ${activePriceTypeLabel}`}
+                      subtitle={`Sort: ${activeSortLabel} | Duration: ${activeDurationLabel} | Price: ${activePriceTypeLabel}`}
                     >
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                         <label className="flex flex-col gap-1.5">
@@ -697,7 +699,7 @@ export default function DigitalProducts() {
                         </label>
 
                         <label className="flex flex-col gap-1.5">
-                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Min Price</span>
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Min Price (GHS)</span>
                           <input
                             type="number"
                             min="0"
@@ -710,7 +712,7 @@ export default function DigitalProducts() {
                         </label>
 
                         <label className="flex flex-col gap-1.5">
-                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Max Price</span>
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400">Max Price (GHS)</span>
                           <input
                             type="number"
                             min="0"
@@ -722,6 +724,9 @@ export default function DigitalProducts() {
                           />
                         </label>
                       </div>
+                      <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                        Price filters use Ghana cedis (GHS). Product cards below convert automatically to your selected display currency.
+                      </p>
                     </FilterPanel>
                   )}
 
@@ -798,8 +803,8 @@ export default function DigitalProducts() {
             {inclusions.map((inclusion) => <span key={inclusion} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Inclusion: {getDigitalOptionLabel(inclusionOptions, inclusion)}</span>)}
             {special && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Filter: {SPECIAL_FILTERS.find((item) => item.key === special)?.label}</span>}
             {sort !== 'newest' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Sort: {SORT_OPTIONS.find((item) => item.value === sort)?.label}</span>}
-            {minPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Min: GHS {Number(minPrice).toLocaleString()}</span>}
-            {maxPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Max: GHS {Number(maxPrice).toLocaleString()}</span>}
+            {minPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Min: {formatBaseMoney(Number(minPrice))}</span>}
+            {maxPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Max: {formatBaseMoney(Number(maxPrice))}</span>}
           </div>
         )}
 
@@ -970,14 +975,14 @@ export default function DigitalProducts() {
                           ) : isTrialDigital ? (
                             <div className="space-y-0.5">
                               <span className="text-lg font-extrabold text-black">{product.freeTrialDays || 7}-day free trial</span>
-                              <p className="text-xs text-gray-500">Then GHS {finalPrice?.toLocaleString()}</p>
+                              <p className="text-xs text-gray-500">Then {formatMoney(finalPrice)}</p>
                             </div>
                           ) : (
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xl font-extrabold text-black">GHS {finalPrice?.toLocaleString()}</span>
+                              <span className="text-xl font-extrabold text-black">{formatMoney(finalPrice)}</span>
                               {discounted && (
                                 <span className="text-xs text-gray-400 line-through">
-                                  GHS {product.retailPrice?.toLocaleString()}
+                                  {formatMoney(product.retailPrice)}
                                 </span>
                               )}
                             </div>

@@ -1,4 +1,5 @@
 const SITE_URL = 'https://bellekreyashon.com';
+const PUBLIC_CONTACT_EMAIL = String(import.meta.env.VITE_PUBLIC_CONTACT_EMAIL || 'dampon@scaled-solutions.ai').trim().toLowerCase();
 
 const ensureLeadingSlash = (value = '/') => (
   value.startsWith('/') ? value : `/${value}`
@@ -43,5 +44,41 @@ export const buildCollectionPageSchema = ({ name, description, path }) => ({
     '@type': 'WebSite',
     name: 'Belle Kreyashon',
     url: SITE_URL,
+  },
+});
+
+export const buildSiteOrganizationSchema = ({
+  name = 'Belle Kreyashon',
+  url = SITE_URL,
+  logo = '/og-image.svg',
+  email = PUBLIC_CONTACT_EMAIL,
+} = {}) => ({
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name,
+  url,
+  logo: toAbsoluteUrl(logo),
+  email,
+  contactPoint: email ? [{
+    '@type': 'ContactPoint',
+    contactType: 'customer support',
+    email,
+    availableLanguage: ['English'],
+  }] : undefined,
+});
+
+export const buildWebsiteSchema = ({
+  name = 'Belle Kreyashon',
+  url = SITE_URL,
+  searchPath = '/shop?search={search_term_string}',
+} = {}) => ({
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name,
+  url,
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: `${url}${searchPath}`,
+    'query-input': 'required name=search_term_string',
   },
 });
