@@ -60,6 +60,7 @@ const snapshotModules = (product) => resolveProductModules(product).map((module,
                 ? normalizeDigitalWritingBlockPresentation(block.presentation || {})
                 : undefined,
               content: block.kind === 'text' ? String(block.content || '') : '',
+              contentHtml: block.kind === 'text' ? String(block.contentHtml || '') : '',
               url: block.kind === 'link' ? String(block.url || '') : '',
               openInNewTab: block.kind === 'link' ? block.openInNewTab !== false : true,
               allowDownload: block.kind === 'file' ? (!!block.allowDownload || !isPreviewableDigitalFile(block)) : false,

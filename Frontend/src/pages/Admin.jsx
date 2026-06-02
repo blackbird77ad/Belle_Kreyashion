@@ -163,6 +163,162 @@ const buildDigitalWritingBlockInlineStyle = (presentation = {}, { includeHighlig
     ...(includeHighlight && normalized.highlightColor ? { backgroundColor: normalized.highlightColor } : {}),
   };
 };
+const RICH_TEXT_FONT_SIZE_OPTIONS = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48];
+const RICH_TEXT_ALLOWED_TAGS = new Set(['P', 'DIV', 'BR', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'MARK']);
+const RICH_TEXT_STYLE_KEYS = new Set(['color', 'background-color', 'font-family', 'font-size', 'font-style', 'font-weight', 'text-decoration']);
+const LEGACY_FONT_SIZE_TO_PX = {
+  1: '10px',
+  2: '13px',
+  3: '16px',
+  4: '18px',
+  5: '24px',
+  6: '32px',
+  7: '48px',
+};
+const escapeRichTextHtml = (value = '') => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+const decodeRichTextEntities = (value = '') => {
+  if (typeof document === 'undefined') {
+    return String(value || '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, '\'');
+  }
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = String(value || '');
+  return textarea.value;
+};
+const stripRichTextHtmlToPlainText = (html = '') => decodeRichTextEntities(
+  String(html || '')
+    .replace(/<\/(p|div)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+).replace(/\r/g, '')
+  .replace(/[ \t]+\n/g, '\n')
+  .replace(/\n{3,}/g, '\n\n')
+  .replace(/[ \t]{2,}/g, ' ')
+  .trim();
+const convertPlainTextToRichTextHtml = (value = '') => {
+  const plainText = String(value || '').trim();
+  if (!plainText) return '';
+  return plainText
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeRichTextHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+};
+const sanitizeRichTextStyleValue = (key = '', value = '') => {
+  const normalizedKey = String(key || '').trim().toLowerCase();
+  const normalizedValue = String(value || '').trim();
+  if (!RICH_TEXT_STYLE_KEYS.has(normalizedKey) || !normalizedValue) return '';
+  if (normalizedKey === 'color' || normalizedKey === 'background-color') {
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalizedValue)
+      || /^rgb(a)?\([\d\s.,%]+\)$/i.test(normalizedValue)
+      || /^[a-z]+$/i.test(normalizedValue)
+      ? normalizedValue
+      : '';
+  }
+  if (normalizedKey === 'font-family') {
+    return /^[\w\s"',-]+$/.test(normalizedValue) ? normalizedValue : '';
+  }
+  if (normalizedKey === 'font-size') {
+    return /^\d+(px|pt|em|rem|%)$/i.test(normalizedValue) ? normalizedValue : '';
+  }
+  if (normalizedKey === 'font-style') {
+    return /^(normal|italic)$/i.test(normalizedValue) ? normalizedValue : '';
+  }
+  if (normalizedKey === 'font-weight') {
+    return /^(normal|bold|[1-9]00)$/i.test(normalizedValue) ? normalizedValue : '';
+  }
+  if (normalizedKey === 'text-decoration') {
+    return /^(none|underline)$/i.test(normalizedValue) ? normalizedValue : '';
+  }
+  return '';
+};
+const sanitizeRichTextHtml = (html = '') => {
+  const source = String(html || '').trim();
+  if (!source) return '';
+  if (typeof DOMParser === 'undefined') return source;
+
+  const parser = new DOMParser();
+  const documentRoot = parser.parseFromString(`<div>${source}</div>`, 'text/html');
+  const root = documentRoot.body.firstElementChild || documentRoot.body;
+  const unwrapElement = (element) => {
+    if (!element?.parentNode) return;
+    while (element.firstChild) element.parentNode.insertBefore(element.firstChild, element);
+    element.remove();
+  };
+  const convertFontElement = (fontElement) => {
+    const span = documentRoot.createElement('span');
+    const face = fontElement.getAttribute('face');
+    const color = fontElement.getAttribute('color');
+    const size = fontElement.getAttribute('size');
+    if (face) span.style.fontFamily = face;
+    if (color) span.style.color = color;
+    if (size && LEGACY_FONT_SIZE_TO_PX[size]) span.style.fontSize = LEGACY_FONT_SIZE_TO_PX[size];
+    while (fontElement.firstChild) span.appendChild(fontElement.firstChild);
+    fontElement.replaceWith(span);
+    return span;
+  };
+  const sanitizeNode = (node) => {
+    if (!node) return;
+    if (node.nodeType === 3) return;
+    if (node.nodeType !== 1) {
+      node.remove();
+      return;
+    }
+
+    let element = node;
+    if (element.tagName === 'FONT') {
+      element = convertFontElement(element);
+    }
+
+    if (!RICH_TEXT_ALLOWED_TAGS.has(element.tagName)) {
+      const childNodes = Array.from(element.childNodes);
+      unwrapElement(element);
+      childNodes.forEach(sanitizeNode);
+      return;
+    }
+
+    Array.from(element.attributes).forEach((attribute) => {
+      if (attribute.name !== 'style') element.removeAttribute(attribute.name);
+    });
+
+    if (element.hasAttribute('style')) {
+      const nextStyle = String(element.getAttribute('style') || '')
+        .split(';')
+        .map((rule) => rule.trim())
+        .filter(Boolean)
+        .map((rule) => {
+          const [rawKey, ...rawValueParts] = rule.split(':');
+          const cleanKey = String(rawKey || '').trim().toLowerCase();
+          const cleanValue = sanitizeRichTextStyleValue(cleanKey, rawValueParts.join(':'));
+          return cleanValue ? `${cleanKey}:${cleanValue}` : '';
+        })
+        .filter(Boolean)
+        .join(';');
+      if (nextStyle) {
+        element.setAttribute('style', nextStyle);
+      } else {
+        element.removeAttribute('style');
+      }
+    }
+
+    Array.from(element.childNodes).forEach(sanitizeNode);
+  };
+
+  Array.from(root.childNodes).forEach(sanitizeNode);
+  return root.innerHTML.trim();
+};
+const buildRichTextEditorInitialHtml = (contentHtml = '', plainText = '') => sanitizeRichTextHtml(
+  contentHtml || convertPlainTextToRichTextHtml(plainText)
+);
 const parseDigitalWritingBlockTitleLines = (title = '') => String(title || '')
   .split(/\r?\n/)
   .map((line) => line.trim())
@@ -178,9 +334,241 @@ const resolveDigitalWritingBlockLessonNumber = (blocks = [], blockIndex = 0) => 
 );
 const digitalWritingBlockHasVisibleContent = (block = {}) => {
   const normalizedPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
-  return !!String(block.content || block.title || block.description || '').trim()
+  return !!String(block.content || block.contentHtml || block.title || block.description || '').trim()
     || normalizedPresentation.labelMode === 'lesson';
 };
+
+function RichTextEditor({
+  value = '',
+  plainTextValue = '',
+  placeholder = '',
+  onChange,
+}) {
+  const editorRef = useRef(null);
+  const selectionRef = useRef(null);
+  const [editorHtml, setEditorHtml] = useState(() => buildRichTextEditorInitialHtml(value, plainTextValue));
+
+  const syncExternalValue = useCallback(() => {
+    const nextHtml = buildRichTextEditorInitialHtml(value, plainTextValue);
+    setEditorHtml((current) => (current === nextHtml ? current : nextHtml));
+    if (editorRef.current && editorRef.current.innerHTML !== nextHtml) {
+      editorRef.current.innerHTML = nextHtml;
+    }
+  }, [plainTextValue, value]);
+
+  useEffect(() => {
+    syncExternalValue();
+  }, [syncExternalValue]);
+
+  const saveSelection = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    selectionRef.current = range.cloneRange();
+  }, []);
+
+  const restoreSelection = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const editor = editorRef.current;
+    const range = selectionRef.current;
+    const selection = window.getSelection();
+    if (!editor || !range || !selection) return false;
+    editor.focus();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }, []);
+
+  const emitChange = useCallback((rawHtml = '') => {
+    const sanitizedHtml = sanitizeRichTextHtml(rawHtml);
+    const plainText = stripRichTextHtmlToPlainText(sanitizedHtml);
+    const contentHtml = plainText ? sanitizedHtml : '';
+    setEditorHtml(sanitizedHtml);
+    if (editorRef.current && editorRef.current.innerHTML !== sanitizedHtml) {
+      editorRef.current.innerHTML = sanitizedHtml;
+    }
+    onChange?.({
+      content: plainText,
+      contentHtml,
+      editorHtml: sanitizedHtml,
+    });
+  }, [onChange]);
+
+  const syncFromEditor = useCallback(() => {
+    if (!editorRef.current) return;
+    emitChange(editorRef.current.innerHTML);
+    saveSelection();
+  }, [emitChange, saveSelection]);
+
+  const replaceLegacyFontTags = useCallback((fontSize = '') => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    Array.from(editor.querySelectorAll('font')).forEach((fontElement) => {
+      const span = editor.ownerDocument.createElement('span');
+      const face = fontElement.getAttribute('face');
+      const color = fontElement.getAttribute('color');
+      const size = fontElement.getAttribute('size');
+      if (face) span.style.fontFamily = face;
+      if (color) span.style.color = color;
+      if (fontSize) {
+        span.style.fontSize = fontSize;
+      } else if (size && LEGACY_FONT_SIZE_TO_PX[size]) {
+        span.style.fontSize = LEGACY_FONT_SIZE_TO_PX[size];
+      }
+      while (fontElement.firstChild) span.appendChild(fontElement.firstChild);
+      fontElement.replaceWith(span);
+    });
+  }, []);
+
+  const runCommand = useCallback((command, commandValue = '') => {
+    if (typeof document === 'undefined') return;
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, true);
+    document.execCommand(command, false, commandValue);
+    syncFromEditor();
+  }, [restoreSelection, syncFromEditor]);
+
+  const applyFontSize = useCallback((fontSize) => {
+    if (typeof document === 'undefined') return;
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, false);
+    document.execCommand('fontSize', false, '7');
+    replaceLegacyFontTags(`${fontSize}px`);
+    document.execCommand('styleWithCSS', false, true);
+    syncFromEditor();
+  }, [replaceLegacyFontTags, restoreSelection, syncFromEditor]);
+
+  const editorIsEmpty = !stripRichTextHtmlToPlainText(editorHtml);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-3">
+        <select
+          defaultValue=""
+          onMouseDown={saveSelection}
+          onChange={(event) => {
+            if (!event.target.value) return;
+            runCommand('fontName', event.target.value);
+            event.target.value = '';
+          }}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none focus:border-black"
+        >
+          <option value="">Font</option>
+          {DIGITAL_CONTENTS_FONT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+
+        <select
+          defaultValue=""
+          onMouseDown={saveSelection}
+          onChange={(event) => {
+            if (!event.target.value) return;
+            applyFontSize(Number(event.target.value));
+            event.target.value = '';
+          }}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none focus:border-black"
+        >
+          <option value="">Size</option>
+          {RICH_TEXT_FONT_SIZE_OPTIONS.map((fontSize) => (
+            <option key={fontSize} value={fontSize}>{fontSize}px</option>
+          ))}
+        </select>
+
+        <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700">
+          <span>Text</span>
+          <input
+            type="color"
+            onMouseDown={saveSelection}
+            onChange={(event) => runCommand('foreColor', event.target.value.toUpperCase())}
+            className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+          />
+        </label>
+
+        <select
+          defaultValue=""
+          onMouseDown={saveSelection}
+          onChange={(event) => {
+            if (!event.target.value) return;
+            runCommand('hiliteColor', event.target.value.toUpperCase());
+            event.target.value = '';
+          }}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none focus:border-black"
+        >
+          <option value="">Highlight</option>
+          {DIGITAL_WRITING_BLOCK_HIGHLIGHT_OPTIONS.filter((option) => option.value).map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+
+        <div className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1">
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              runCommand('bold');
+            }}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-extrabold text-gray-700 hover:bg-gray-100"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              runCommand('italic');
+            }}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-bold italic text-gray-700 hover:bg-gray-100"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              runCommand('underline');
+            }}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-bold underline text-gray-700 hover:bg-gray-100"
+          >
+            U
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            runCommand('removeFormat');
+          }}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+        >
+          Clear Format
+        </button>
+      </div>
+
+      <div className="relative">
+        {editorIsEmpty && (
+          <div className="pointer-events-none absolute left-3 top-3 right-3 whitespace-pre-line text-sm leading-relaxed text-gray-400">
+            {placeholder}
+          </div>
+        )}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={syncFromEditor}
+          onBlur={syncFromEditor}
+          onMouseUp={saveSelection}
+          onKeyUp={saveSelection}
+          className="min-h-[180px] w-full rounded-2xl border border-gray-200 bg-white px-3 py-3 text-sm leading-relaxed outline-none focus:border-black"
+        />
+      </div>
+    </div>
+  );
+}
 
 const convertDrive = (url) => {
   if (!url) return url;
@@ -329,7 +717,7 @@ const getModuleItemUiKey = (item = {}, moduleKey = 'module', index = 0) => Strin
 const buildTextLessonContentFromBlocks = (blocks = []) => (
   (Array.isArray(blocks) ? blocks : [])
     .filter((block) => block?.kind === 'text')
-    .map((block) => String(block?.content || '').trim())
+    .map((block) => String(block?.content || '').trim() || stripRichTextHtmlToPlainText(block?.contentHtml || ''))
     .filter(Boolean)
     .join('\n\n')
 );
@@ -397,6 +785,7 @@ const createEmptyDigitalTextBlock = (order = 1) => ({
   title: '',
   presentation: createDefaultDigitalWritingBlockPresentation(),
   content: '',
+  contentHtml: '',
 });
 
 const createEmptyDigitalLinkBlock = (order = 1) => ({
@@ -470,7 +859,8 @@ const normalizeTextLessonBlockForForm = (block = {}, index = 0) => {
     clientKey: block.clientKey || createClientKey('text-block'),
     title: block.title || '',
     presentation: normalizeDigitalWritingBlockPresentationForForm(block.presentation || {}),
-    content: block.content || '',
+    content: block.content || stripRichTextHtmlToPlainText(block.contentHtml || ''),
+    contentHtml: buildRichTextEditorInitialHtml(block.contentHtml || '', block.content || ''),
   };
 };
 
@@ -2962,6 +3352,20 @@ export default function Admin() {
       currentBlockIndex === blockIndex ? { ...block, [key]: value } : block
     ))
   ));
+  const updateTextLessonBlockRichContent = (moduleIndex, itemIndex, blockIndex, payload = {}) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => (blocks || []).map((block, currentBlockIndex) => (
+      currentBlockIndex === blockIndex
+        ? {
+            ...block,
+            content: payload.content || '',
+            contentHtml: payload.contentHtml || '',
+          }
+        : block
+    ))
+  ));
   const toggleDigitalWritingBlockTitleEditor = (blockKey, value) => setVisibleDigitalWritingBlockTitles((current) => ({
     ...current,
     [blockKey]: value,
@@ -3223,7 +3627,8 @@ export default function Admin() {
                           title: block.title || '',
                           description: '',
                           presentation: normalizeDigitalWritingBlockPresentationForForm(block.presentation || {}),
-                          content: block.content || '',
+                          content: block.content || stripRichTextHtmlToPlainText(block.contentHtml || ''),
+                          contentHtml: sanitizeRichTextHtml(block.contentHtml || ''),
                           url: '',
                           openInNewTab: true,
                           allowDownload: false,
@@ -4781,23 +5186,35 @@ const buildTrainingBody = (f) => ({
                                                     ))}
                                                   </div>
                                                 )}
-                                                <p
-                                                  className="mt-2 whitespace-pre-line break-words rounded-2xl px-3 py-2 leading-relaxed"
-                                                  style={writingBlockPreviewStyle}
-                                                >
-                                                  {block.content || 'Writing preview will appear here as you type.'}
-                                                </p>
+                                                {block.contentHtml ? (
+                                                  <div
+                                                    className="mt-2 break-words rounded-2xl px-3 py-2 leading-relaxed"
+                                                    style={writingBlockPreviewStyle}
+                                                    dangerouslySetInnerHTML={{ __html: sanitizeRichTextHtml(block.contentHtml) }}
+                                                  />
+                                                ) : (
+                                                  <p
+                                                    className="mt-2 whitespace-pre-line break-words rounded-2xl px-3 py-2 leading-relaxed"
+                                                    style={writingBlockPreviewStyle}
+                                                  >
+                                                    {block.content || 'Writing preview will appear here as you type.'}
+                                                  </p>
+                                                )}
                                               </div>
                                             </div>
 
-                                            <textarea
-                                              value={block.content || ''}
-                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'content', e.target.value)}
+                                            <RichTextEditor
+                                              value={block.contentHtml || ''}
+                                              plainTextValue={block.content || ''}
+                                              onChange={(payload) => updateTextLessonBlockRichContent(moduleIndex, itemIndex, blockIndex, payload)}
                                               placeholder={'Type the lesson text for this block.\nUse blank lines for paragraphs.\nUse separate blocks when you want the learner to stop and watch, listen, or open something between written parts.'}
-                                              rows={6}
-                                              className={inp + ' resize-y'}
-                                              style={writingBlockEditorStyle}
                                             />
+                                            <div
+                                              className="rounded-2xl border border-dashed border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-500"
+                                              style={writingBlockEditorStyle}
+                                            >
+                                              Select part of the writing above, then use the toolbar to change its font, size, colour, highlight, bold, italic, underline, or clear the formatting.
+                                            </div>
                                           </div>
                                         ) : block.kind === 'link' ? (
                                           <div className="space-y-3">

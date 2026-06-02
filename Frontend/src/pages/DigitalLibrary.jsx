@@ -212,6 +212,117 @@ const parseWritingBlockTitleLines = (title = '') => String(title || '')
   .map((line) => line.trim())
   .filter(Boolean);
 
+const stripRichTextHtmlToPlainText = (html = '') => {
+  const source = String(html || '');
+  if (!source.trim()) return '';
+  if (typeof document === 'undefined') {
+    return source
+      .replace(/<\/(p|div)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\r/g, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = source
+    .replace(/<\/(p|div)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ');
+  return String(textarea.value || '')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+};
+
+const sanitizeRichTextHtml = (html = '') => {
+  const source = String(html || '').trim();
+  if (!source || typeof DOMParser === 'undefined') return source;
+  const parser = new DOMParser();
+  const documentRoot = parser.parseFromString(`<div>${source}</div>`, 'text/html');
+  const root = documentRoot.body.firstElementChild || documentRoot.body;
+  const allowedTags = new Set(['P', 'DIV', 'BR', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'MARK']);
+  const allowedStyleKeys = new Set(['color', 'background-color', 'font-family', 'font-size', 'font-style', 'font-weight', 'text-decoration']);
+  const unwrapElement = (element) => {
+    if (!element?.parentNode) return;
+    while (element.firstChild) element.parentNode.insertBefore(element.firstChild, element);
+    element.remove();
+  };
+  const sanitizeStyleValue = (key = '', value = '') => {
+    const normalizedKey = String(key || '').trim().toLowerCase();
+    const normalizedValue = String(value || '').trim();
+    if (!allowedStyleKeys.has(normalizedKey) || !normalizedValue) return '';
+    if (normalizedKey === 'color' || normalizedKey === 'background-color') {
+      return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalizedValue)
+        || /^rgb(a)?\([\d\s.,%]+\)$/i.test(normalizedValue)
+        || /^[a-z]+$/i.test(normalizedValue)
+        ? normalizedValue
+        : '';
+    }
+    if (normalizedKey === 'font-family') {
+      return /^[\w\s"',-]+$/.test(normalizedValue) ? normalizedValue : '';
+    }
+    if (normalizedKey === 'font-size') {
+      return /^\d+(px|pt|em|rem|%)$/i.test(normalizedValue) ? normalizedValue : '';
+    }
+    if (normalizedKey === 'font-style') {
+      return /^(normal|italic)$/i.test(normalizedValue) ? normalizedValue : '';
+    }
+    if (normalizedKey === 'font-weight') {
+      return /^(normal|bold|[1-9]00)$/i.test(normalizedValue) ? normalizedValue : '';
+    }
+    if (normalizedKey === 'text-decoration') {
+      return /^(none|underline)$/i.test(normalizedValue) ? normalizedValue : '';
+    }
+    return '';
+  };
+  const sanitizeNode = (node) => {
+    if (!node) return;
+    if (node.nodeType === 3) return;
+    if (node.nodeType !== 1) {
+      node.remove();
+      return;
+    }
+    if (!allowedTags.has(node.tagName)) {
+      const childNodes = Array.from(node.childNodes);
+      unwrapElement(node);
+      childNodes.forEach(sanitizeNode);
+      return;
+    }
+    Array.from(node.attributes).forEach((attribute) => {
+      if (attribute.name !== 'style') node.removeAttribute(attribute.name);
+    });
+    if (node.hasAttribute('style')) {
+      const nextStyle = String(node.getAttribute('style') || '')
+        .split(';')
+        .map((rule) => rule.trim())
+        .filter(Boolean)
+        .map((rule) => {
+          const [rawKey, ...rawValueParts] = rule.split(':');
+          const cleanKey = String(rawKey || '').trim().toLowerCase();
+          const cleanValue = sanitizeStyleValue(cleanKey, rawValueParts.join(':'));
+          return cleanValue ? `${cleanKey}:${cleanValue}` : '';
+        })
+        .filter(Boolean)
+        .join(';');
+      if (nextStyle) {
+        node.setAttribute('style', nextStyle);
+      } else {
+        node.removeAttribute('style');
+      }
+    }
+    Array.from(node.childNodes).forEach(sanitizeNode);
+  };
+  Array.from(root.childNodes).forEach(sanitizeNode);
+  return root.innerHTML.trim();
+};
+const richTextHtmlHasFormatting = (html = '') => /<(strong|b|em|i|u|mark|span|font)\b/i.test(String(html || ''))
+  || /style\s*=/i.test(String(html || ''));
+
 const splitLessonTextIntoSentences = (content = '') => {
   const source = String(content || '').trim();
   if (!source) return [];
@@ -267,13 +378,19 @@ const buildTextLessonReaderBlocks = (blocks = [], fallbackContent = '') => {
       };
     }
 
-    const paragraphGroups = splitLessonTextIntoSentences(block.content || '');
+    const contentHtml = sanitizeRichTextHtml(block.contentHtml || '');
+    const plainTextContent = String(block.content || '').trim() || stripRichTextHtmlToPlainText(contentHtml || '');
+    const paragraphGroups = splitLessonTextIntoSentences(plainTextContent);
     const paragraphs = paragraphGroups.map((paragraph) => paragraph.map((sentence) => ({
       ...sentence,
       sentenceIndex: sentenceIndex++,
     })));
     textBlockIndex += 1;
     const presentation = normalizeWritingBlockPresentation(block.presentation || {});
+    const markerIndex = 100000 + textBlockIndex;
+    const markerLabel = parseWritingBlockTitleLines(block.title || '')[0]
+      || plainTextContent.slice(0, 120)
+      || `Lesson block ${textBlockIndex}`;
     return {
       blockId: block.blockId || `block-${blockIndex + 1}`,
       order: block.order ?? blockIndex + 1,
@@ -281,8 +398,12 @@ const buildTextLessonReaderBlocks = (blocks = [], fallbackContent = '') => {
       titleLines: parseWritingBlockTitleLines(block.title || ''),
       presentation,
       lessonLabel: presentation.labelMode === 'lesson' ? `LESSON ${textBlockIndex}` : '',
+      contentHtml,
+      usesRichText: richTextHtmlHasFormatting(contentHtml),
+      markerIndex,
+      markerLabel,
       paragraphs,
-      content: block.content || '',
+      content: plainTextContent,
     };
   });
 };
@@ -1756,6 +1877,8 @@ export default function DigitalLibrary() {
                           });
                           const textFallbackStyle = buildWritingBlockInlineStyle(block.presentation || {});
                           const titleStyle = buildWritingBlockTitleStyle(block.presentation || {});
+                          const richTextMarkerKey = `${manualReader.grantId}-${manualReader.itemId}-marker-${block.markerIndex}`;
+                          const isSavedRichTextBlock = manualReader.savedSentenceIndex === block.markerIndex;
                           return (
                             <div key={block.blockId || `text-block-${blockIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
                               {block.lessonLabel && (
@@ -1776,7 +1899,40 @@ export default function DigitalLibrary() {
                                   ))}
                                 </div>
                               )}
-                              {block.paragraphs?.length ? block.paragraphs.map((paragraph, paragraphIndex) => (
+                              {block.usesRichText ? (
+                                <div className="space-y-3">
+                                  <div
+                                    className="overflow-hidden rounded-2xl px-3 py-2 leading-relaxed text-gray-700"
+                                    style={textFallbackStyle}
+                                    dangerouslySetInnerHTML={{ __html: block.contentHtml }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => saveTextMarker(
+                                      manualReader.grantId,
+                                      manualReader.moduleId,
+                                      manualReader.itemId,
+                                      block.markerIndex,
+                                      block.markerLabel
+                                    )}
+                                    disabled={actioning === richTextMarkerKey}
+                                    className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold transition-all ${
+                                      isSavedRichTextBlock
+                                        ? 'bg-[#FDC700] text-black shadow-sm'
+                                        : 'border border-gray-200 bg-[#fcfbf7] text-gray-700 hover:border-black hover:text-black'
+                                    } ${actioning === richTextMarkerKey ? 'opacity-60' : ''}`}
+                                  >
+                                    {actioning === richTextMarkerKey ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : isSavedRichTextBlock ? (
+                                      <CheckCircle2 size={14} />
+                                    ) : (
+                                      <Circle size={14} className="text-gray-300" />
+                                    )}
+                                    <span>{isSavedRichTextBlock ? 'Continue here next time' : 'Mark this block to continue here'}</span>
+                                  </button>
+                                </div>
+                              ) : block.paragraphs?.length ? block.paragraphs.map((paragraph, paragraphIndex) => (
                                 <div key={`${block.blockId || blockIndex}-paragraph-${paragraphIndex}`} className="leading-8 text-gray-700">
                                   {paragraph.map((sentence) => {
                                     const markerKey = `${manualReader.grantId}-${manualReader.itemId}-marker-${sentence.sentenceIndex}`;

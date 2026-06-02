@@ -80,6 +80,23 @@ const normalizeOptionalHexColor = (value = '') => {
   return HEX_COLOR_RE.test(normalized) ? normalized : '';
 };
 
+const stripRichTextHtmlToPlainText = (html = '') => trimText(
+  String(html || '')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+);
+
 const normalizeChoice = (value = '', allowed = new Set(), fallback = '') => {
   const normalized = trimText(value);
   return allowed.has(normalized) ? normalized : fallback;
@@ -124,7 +141,7 @@ export const buildModuleBlockAssetId = (itemId = '', blockId = '') => {
 export const flattenTextBlocksToContent = (blocks = []) => (
   (Array.isArray(blocks) ? blocks : [])
     .filter((block) => String(block?.kind || '').trim().toLowerCase() === 'text')
-    .map((block) => String(block?.content || '').trim())
+    .map((block) => trimText(block?.content || '') || stripRichTextHtmlToPlainText(block?.contentHtml || ''))
     .filter(Boolean)
     .join('\n\n')
 );
@@ -151,7 +168,8 @@ export const normalizeDigitalLessonBlock = (block = {}, index = 0) => {
     return {
       ...base,
       presentation: normalizeDigitalWritingBlockPresentation(block.presentation || {}),
-      content: String(block.content || ''),
+      content: trimText(block.content || '') || stripRichTextHtmlToPlainText(block.contentHtml || ''),
+      contentHtml: String(block.contentHtml || ''),
       url: '',
       openInNewTab: true,
       allowDownload: false,
@@ -206,7 +224,7 @@ export const digitalLessonBlockHasContent = (block = {}) => {
   const kind = String(block.kind || 'text').trim().toLowerCase();
   if (kind === 'file') return !!trimText(block.secureUrl || '');
   if (kind === 'link') return !!trimText(block.url || block.title || block.description || '');
-  return !!trimText(block.content || block.title || block.description || '')
+  return !!trimText(block.content || block.contentHtml || block.title || block.description || '')
     || String(block?.presentation?.labelMode || '').trim().toLowerCase() === 'lesson';
 };
 

@@ -72,6 +72,7 @@ const moduleItemBlockSchema = new mongoose.Schema({
   description: { type: String, default: '' },
   presentation: { type: digitalWritingBlockPresentationSchema, default: undefined },
   content: { type: String, default: '' },
+  contentHtml: { type: String, default: '' },
   url: { type: String, default: '' },
   openInNewTab: { type: Boolean, default: true },
   allowDownload: { type: Boolean, default: false },

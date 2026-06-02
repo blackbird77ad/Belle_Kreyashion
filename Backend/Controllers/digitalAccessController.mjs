@@ -477,7 +477,10 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
                   blockId,
                   order: block.order ?? blockIndex + 1,
                   kind: 'text',
+                  title: block.title || '',
+                  presentation: block.presentation || undefined,
                   content: block.content || '',
+                  contentHtml: block.contentHtml || '',
                 };
               }),
               isResumeTarget: moduleProgress?.lastItemId === itemId,
