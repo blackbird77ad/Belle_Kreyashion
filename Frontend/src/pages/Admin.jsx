@@ -80,6 +80,32 @@ const DEFAULT_DIGITAL_CONTENTS_SUBTITLE_STYLE = Object.freeze({
   textTransform:'none',
   textDecoration:'none',
 });
+const DIGITAL_WRITING_BLOCK_LABEL_OPTIONS = [
+  { value:'none', label:'No Top Label' },
+  { value:'lesson', label:'LESSON Auto Number' },
+];
+const DIGITAL_WRITING_BLOCK_HIGHLIGHT_OPTIONS = [
+  { value:'', label:'No Highlight' },
+  { value:'#FEF3C7', label:'Soft Yellow' },
+  { value:'#DCFCE7', label:'Fresh Green' },
+  { value:'#DBEAFE', label:'Sky Blue' },
+  { value:'#FCE7F3', label:'Rose Pink' },
+  { value:'#EDE9FE', label:'Lavender' },
+];
+const DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE = Object.freeze({
+  color:'#374151',
+  fontSize:16,
+  fontFamily:'Arial, sans-serif',
+  fontWeight:'400',
+  fontStyle:'normal',
+  textTransform:'none',
+  textDecoration:'none',
+});
+const createDefaultDigitalWritingBlockPresentation = () => ({
+  labelMode:'none',
+  highlightColor:'',
+  textStyle:{ ...DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE },
+});
 const createDefaultDigitalContentsPage = () => ({
   title:'Table of Contents',
   subtitle:'Choose any module or lesson below to continue from the right place.',
@@ -117,6 +143,43 @@ const buildDigitalContentsInlineStyle = (style = {}, fallback = DEFAULT_DIGITAL_
     textTransform: normalized.textTransform,
     textDecoration: normalized.textDecoration,
   };
+};
+const normalizeDigitalWritingBlockPresentationForForm = (presentation = {}) => ({
+  labelMode: DIGITAL_WRITING_BLOCK_LABEL_OPTIONS.some((option) => option.value === presentation.labelMode)
+    ? presentation.labelMode
+    : 'none',
+  highlightColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(presentation.highlightColor || '').trim())
+    ? String(presentation.highlightColor).trim().toUpperCase()
+    : '',
+  textStyle: normalizeDigitalContentsTextStyleForForm(
+    presentation.textStyle || {},
+    DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE
+  ),
+});
+const buildDigitalWritingBlockInlineStyle = (presentation = {}, { includeHighlight = true } = {}) => {
+  const normalized = normalizeDigitalWritingBlockPresentationForForm(presentation);
+  return {
+    ...buildDigitalContentsInlineStyle(normalized.textStyle, DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE),
+    ...(includeHighlight && normalized.highlightColor ? { backgroundColor: normalized.highlightColor } : {}),
+  };
+};
+const parseDigitalWritingBlockTitleLines = (title = '') => String(title || '')
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean);
+const resolveDigitalWritingBlockLessonNumber = (blocks = [], blockIndex = 0) => (
+  Math.max(
+    1,
+    (Array.isArray(blocks) ? blocks : [])
+      .slice(0, blockIndex + 1)
+      .filter((block) => String(block?.kind || '').trim().toLowerCase() === 'text')
+      .length
+  )
+);
+const digitalWritingBlockHasVisibleContent = (block = {}) => {
+  const normalizedPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
+  return !!String(block.content || block.title || block.description || '').trim()
+    || normalizedPresentation.labelMode === 'lesson';
 };
 
 const convertDrive = (url) => {
@@ -331,6 +394,8 @@ const createEmptyDigitalTextBlock = (order = 1) => ({
   blockId: createClientKey('block-id'),
   kind: 'text',
   order,
+  title: '',
+  presentation: createDefaultDigitalWritingBlockPresentation(),
   content: '',
 });
 
@@ -403,6 +468,8 @@ const normalizeTextLessonBlockForForm = (block = {}, index = 0) => {
     _id: block._id,
     blockId: block.blockId || createClientKey('block-id'),
     clientKey: block.clientKey || createClientKey('text-block'),
+    title: block.title || '',
+    presentation: normalizeDigitalWritingBlockPresentationForForm(block.presentation || {}),
     content: block.content || '',
   };
 };
@@ -486,7 +553,7 @@ const normalizeDigitalModuleItemForForm = (item = {}, index = 0) => {
         .filter((block) => {
           if (block.kind === 'file') return !!block.secureUrl;
           if (block.kind === 'link') return !!String(block.url || block.title || block.description || '').trim();
-          return !!String(block.content || '').trim();
+          return digitalWritingBlockHasVisibleContent(block);
         })
     ),
     content: item.content || buildTextLessonContentFromBlocks(item.blocks || []) || '',
@@ -2175,6 +2242,7 @@ export default function Admin() {
   const [expandedDigitalModules, setExpandedDigitalModules] = useState({});
   const [expandedDigitalModuleSections, setExpandedDigitalModuleSections] = useState({});
   const [expandedDigitalModuleItems, setExpandedDigitalModuleItems] = useState({});
+  const [visibleDigitalWritingBlockTitles, setVisibleDigitalWritingBlockTitles] = useState({});
   const [showDigitalCustomerPreview, setShowDigitalCustomerPreview] = useState(false);
   const [expandedPreviewModules, setExpandedPreviewModules] = useState({});
   const draggedModuleRef = useRef(null);
@@ -2894,6 +2962,71 @@ export default function Admin() {
       currentBlockIndex === blockIndex ? { ...block, [key]: value } : block
     ))
   ));
+  const toggleDigitalWritingBlockTitleEditor = (blockKey, value) => setVisibleDigitalWritingBlockTitles((current) => ({
+    ...current,
+    [blockKey]: value,
+  }));
+  const updateTextLessonBlockPresentation = (moduleIndex, itemIndex, blockIndex, key, value) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => (blocks || []).map((block, currentBlockIndex) => {
+      if (currentBlockIndex !== blockIndex) return block;
+      const nextPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
+      return {
+        ...block,
+        presentation: {
+          ...nextPresentation,
+          [key]: value,
+        },
+      };
+    })
+  ));
+  const updateTextLessonBlockTextStyle = (moduleIndex, itemIndex, blockIndex, key, value) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => (blocks || []).map((block, currentBlockIndex) => {
+      if (currentBlockIndex !== blockIndex) return block;
+      const nextPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
+      return {
+        ...block,
+        presentation: {
+          ...nextPresentation,
+          textStyle: {
+            ...nextPresentation.textStyle,
+            [key]: value,
+          },
+        },
+      };
+    })
+  ));
+  const toggleTextLessonBlockTextFormat = (moduleIndex, itemIndex, blockIndex, formatKey) => setForm((current) => updateTextLessonBlocks(
+    current,
+    moduleIndex,
+    itemIndex,
+    (blocks) => (blocks || []).map((block, currentBlockIndex) => {
+      if (currentBlockIndex !== blockIndex) return block;
+      const nextPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
+      const nextTextStyle = { ...nextPresentation.textStyle };
+
+      if (formatKey === 'bold') {
+        nextTextStyle.fontWeight = nextTextStyle.fontWeight === '700' ? DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontWeight : '700';
+      } else if (formatKey === 'italic') {
+        nextTextStyle.fontStyle = nextTextStyle.fontStyle === 'italic' ? 'normal' : 'italic';
+      } else if (formatKey === 'underline') {
+        nextTextStyle.textDecoration = nextTextStyle.textDecoration === 'underline' ? 'none' : 'underline';
+      }
+
+      return {
+        ...block,
+        presentation: {
+          ...nextPresentation,
+          textStyle: nextTextStyle,
+        },
+      };
+    })
+  ));
   const removeTextLessonBlock = (moduleIndex, itemIndex, blockIndex) => setForm((current) => updateTextLessonBlocks(
     current,
     moduleIndex,
@@ -3087,8 +3220,9 @@ export default function Admin() {
                           blockId: block.blockId || '',
                           kind: 'text',
                           order: block.order || blockIndex + 1,
-                          title: '',
+                          title: block.title || '',
                           description: '',
+                          presentation: normalizeDigitalWritingBlockPresentationForForm(block.presentation || {}),
                           content: block.content || '',
                           url: '',
                           openInNewTab: true,
@@ -3107,7 +3241,7 @@ export default function Admin() {
                     ? !!block.secureUrl
                     : block.kind === 'link'
                       ? !!String(block.url || block.title || block.description || '').trim()
-                      : !!String(block.content || '').trim()
+                      : digitalWritingBlockHasVisibleContent(block)
                 )),
               }
         )).filter((item) => (
@@ -4430,9 +4564,19 @@ const buildTrainingBody = (f) => ({
                                   )}
 
                                   <div className="space-y-3">
-                                    {(item.blocks || []).map((block, blockIndex) => (
+                                    {(item.blocks || []).map((block, blockIndex) => {
+                                      const textBlockKey = String(block.clientKey || block.blockId || block._id || `${moduleIndex}-${itemIndex}-${blockIndex}`);
+                                      const writingBlockPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
+                                      const writingBlockTitleLines = parseDigitalWritingBlockTitleLines(block.title || '');
+                                      const writingBlockLessonNumber = resolveDigitalWritingBlockLessonNumber(item.blocks || [], blockIndex);
+                                      const writingBlockTitleEditorVisible = block.kind === 'text'
+                                        && (visibleDigitalWritingBlockTitles[textBlockKey] ?? writingBlockTitleLines.length > 0);
+                                      const writingBlockPreviewStyle = buildDigitalWritingBlockInlineStyle(writingBlockPresentation);
+                                      const writingBlockEditorStyle = buildDigitalWritingBlockInlineStyle(writingBlockPresentation, { includeHighlight: false });
+
+                                      return (
                                       <div
-                                        key={block.clientKey || block._id || `${moduleIndex}-${itemIndex}-${blockIndex}`}
+                                        key={textBlockKey}
                                         draggable
                                         onDragStart={() => startLessonBlockDrag(moduleIndex, itemIndex, blockIndex)}
                                         onDragEnd={() => { draggedLessonBlockRef.current = null; }}
@@ -4500,13 +4644,161 @@ const buildTrainingBody = (f) => ({
                                         </div>
 
                                         {block.kind === 'text' ? (
-                                          <textarea
-                                            value={block.content || ''}
-                                            onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'content', e.target.value)}
-                                            placeholder={'Type the lesson text for this block.\nUse blank lines for paragraphs.\nUse separate blocks when you want the learner to stop and watch, listen, or open something between written parts.'}
-                                            rows={6}
-                                            className={inp + ' resize-y'}
-                                          />
+                                          <div className="space-y-3">
+                                            <div className="rounded-2xl border border-[#efe4bf] bg-[#fffaf0] p-3 space-y-3">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    if (writingBlockTitleEditorVisible) {
+                                                      updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', '');
+                                                      toggleDigitalWritingBlockTitleEditor(textBlockKey, false);
+                                                      return;
+                                                    }
+                                                    toggleDigitalWritingBlockTitleEditor(textBlockKey, true);
+                                                  }}
+                                                  className={`inline-flex items-center justify-center rounded-2xl border px-3 py-2 text-[11px] font-bold transition-colors ${
+                                                    writingBlockTitleEditorVisible
+                                                      ? 'border-red-200 bg-red-50 text-red-700 hover:border-red-300'
+                                                      : 'border-gray-200 bg-white text-gray-700 hover:border-black hover:text-black'
+                                                  }`}
+                                                >
+                                                  {writingBlockTitleEditorVisible ? 'Remove Title(s)' : 'Add Title(s)'}
+                                                </button>
+                                                <select
+                                                  value={writingBlockPresentation.labelMode}
+                                                  onChange={(event) => updateTextLessonBlockPresentation(moduleIndex, itemIndex, blockIndex, 'labelMode', event.target.value)}
+                                                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 outline-none focus:border-black"
+                                                >
+                                                  {DIGITAL_WRITING_BLOCK_LABEL_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                  ))}
+                                                </select>
+                                                <select
+                                                  value={writingBlockPresentation.textStyle.fontFamily}
+                                                  onChange={(event) => updateTextLessonBlockTextStyle(moduleIndex, itemIndex, blockIndex, 'fontFamily', event.target.value)}
+                                                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 outline-none focus:border-black"
+                                                >
+                                                  {DIGITAL_CONTENTS_FONT_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                  ))}
+                                                </select>
+                                                <div className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2">
+                                                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500">Size</span>
+                                                  <input
+                                                    value={writingBlockPresentation.textStyle.fontSize}
+                                                    onChange={(event) => updateTextLessonBlockTextStyle(moduleIndex, itemIndex, blockIndex, 'fontSize', Math.min(64, Math.max(12, Number(event.target.value) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize)))}
+                                                    type="number"
+                                                    min="12"
+                                                    max="64"
+                                                    className="w-16 border-0 bg-transparent p-0 text-[11px] font-bold text-gray-700 outline-none"
+                                                  />
+                                                </div>
+                                                <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700">
+                                                  <span>Text Color</span>
+                                                  <input
+                                                    value={writingBlockPresentation.textStyle.color}
+                                                    onChange={(event) => updateTextLessonBlockTextStyle(moduleIndex, itemIndex, blockIndex, 'color', event.target.value.toUpperCase())}
+                                                    type="color"
+                                                    className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                                                  />
+                                                </label>
+                                                <select
+                                                  value={writingBlockPresentation.highlightColor}
+                                                  onChange={(event) => updateTextLessonBlockPresentation(moduleIndex, itemIndex, blockIndex, 'highlightColor', event.target.value)}
+                                                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 outline-none focus:border-black"
+                                                >
+                                                  {DIGITAL_WRITING_BLOCK_HIGHLIGHT_OPTIONS.map((option) => (
+                                                    <option key={option.value || 'none'} value={option.value}>{option.label}</option>
+                                                  ))}
+                                                </select>
+                                                <div className="inline-flex items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => toggleTextLessonBlockTextFormat(moduleIndex, itemIndex, blockIndex, 'bold')}
+                                                    className={`rounded-xl px-2.5 py-1.5 text-[11px] font-extrabold transition-colors ${
+                                                      writingBlockPresentation.textStyle.fontWeight === '700'
+                                                        ? 'bg-black text-white'
+                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                    }`}
+                                                  >
+                                                    B
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => toggleTextLessonBlockTextFormat(moduleIndex, itemIndex, blockIndex, 'italic')}
+                                                    className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold italic transition-colors ${
+                                                      writingBlockPresentation.textStyle.fontStyle === 'italic'
+                                                        ? 'bg-black text-white'
+                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                    }`}
+                                                  >
+                                                    I
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => toggleTextLessonBlockTextFormat(moduleIndex, itemIndex, blockIndex, 'underline')}
+                                                    className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold underline transition-colors ${
+                                                      writingBlockPresentation.textStyle.textDecoration === 'underline'
+                                                        ? 'bg-black text-white'
+                                                        : 'text-gray-700 hover:bg-gray-100'
+                                                    }`}
+                                                  >
+                                                    U
+                                                  </button>
+                                                </div>
+                                              </div>
+
+                                              {writingBlockTitleEditorVisible && (
+                                                <textarea
+                                                  value={block.title || ''}
+                                                  onChange={(event) => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', event.target.value)}
+                                                  placeholder={'Add one or more title lines for this writing block.\nUse a new line for each title.'}
+                                                  rows={2}
+                                                  className={inp + ' resize-y'}
+                                                />
+                                              )}
+
+                                              <div className="rounded-2xl border border-[#f0e7cf] bg-white px-4 py-3">
+                                                {writingBlockPresentation.labelMode === 'lesson' && (
+                                                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">
+                                                    LESSON {writingBlockLessonNumber}
+                                                  </p>
+                                                )}
+                                                {!!writingBlockTitleLines.length && (
+                                                  <div className="space-y-1">
+                                                    {writingBlockTitleLines.map((titleLine, titleLineIndex) => (
+                                                      <p
+                                                        key={`${textBlockKey}-title-line-${titleLineIndex}`}
+                                                        className="break-words font-extrabold"
+                                                        style={{
+                                                          ...writingBlockPreviewStyle,
+                                                          fontSize: `${Math.min(72, (Number(writingBlockPresentation.textStyle.fontSize) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize) + 4)}px`,
+                                                        }}
+                                                      >
+                                                        {titleLine}
+                                                      </p>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                                <p
+                                                  className="mt-2 whitespace-pre-line break-words rounded-2xl px-3 py-2 leading-relaxed"
+                                                  style={writingBlockPreviewStyle}
+                                                >
+                                                  {block.content || 'Writing preview will appear here as you type.'}
+                                                </p>
+                                              </div>
+                                            </div>
+
+                                            <textarea
+                                              value={block.content || ''}
+                                              onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'content', e.target.value)}
+                                              placeholder={'Type the lesson text for this block.\nUse blank lines for paragraphs.\nUse separate blocks when you want the learner to stop and watch, listen, or open something between written parts.'}
+                                              rows={6}
+                                              className={inp + ' resize-y'}
+                                              style={writingBlockEditorStyle}
+                                            />
+                                          </div>
                                         ) : block.kind === 'link' ? (
                                           <div className="space-y-3">
                                             <input
@@ -4590,7 +4882,7 @@ const buildTrainingBody = (f) => ({
                                           </div>
                                         )}
                                       </div>
-                                    ))}
+                                    )})}
                                   </div>
                                 </div>
                               ) : (

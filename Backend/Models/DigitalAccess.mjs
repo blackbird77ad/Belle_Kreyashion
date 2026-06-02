@@ -37,12 +37,40 @@ const textMarkerSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: null },
 }, { _id: false });
 
+const digitalWritingBlockTextStyleSchema = new mongoose.Schema({
+  color: { type: String, default: '#374151' },
+  fontSize: { type: Number, default: 16 },
+  fontFamily: { type: String, default: 'Arial, sans-serif' },
+  fontWeight: { type: String, default: '400' },
+  fontStyle: { type: String, default: 'normal' },
+  textTransform: { type: String, default: 'none' },
+  textDecoration: { type: String, default: 'none' },
+}, { _id: false });
+
+const digitalWritingBlockPresentationSchema = new mongoose.Schema({
+  labelMode: { type: String, enum: ['none', 'lesson'], default: 'none' },
+  highlightColor: { type: String, default: '' },
+  textStyle: {
+    type: digitalWritingBlockTextStyleSchema,
+    default: () => ({
+      color: '#374151',
+      fontSize: 16,
+      fontFamily: 'Arial, sans-serif',
+      fontWeight: '400',
+      fontStyle: 'normal',
+      textTransform: 'none',
+      textDecoration: 'none',
+    }),
+  },
+}, { _id: false });
+
 const moduleItemBlockSchema = new mongoose.Schema({
   blockId: { type: String, default: '' },
   order: { type: Number, default: null },
   kind: { type: String, enum: ['text', 'file', 'link'], default: 'text' },
   title: { type: String, default: '' },
   description: { type: String, default: '' },
+  presentation: { type: digitalWritingBlockPresentationSchema, default: undefined },
   content: { type: String, default: '' },
   url: { type: String, default: '' },
   openInNewTab: { type: Boolean, default: true },

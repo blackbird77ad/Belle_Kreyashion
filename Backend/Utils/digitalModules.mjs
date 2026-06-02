@@ -12,6 +12,7 @@ const DIGITAL_TEXT_FONT_WEIGHTS = new Set(['400', '500', '600', '700', '800']);
 const DIGITAL_TEXT_FONT_STYLES = new Set(['normal', 'italic']);
 const DIGITAL_TEXT_TRANSFORMS = new Set(['none', 'uppercase', 'capitalize']);
 const DIGITAL_TEXT_DECORATIONS = new Set(['none', 'underline']);
+const DIGITAL_WRITING_BLOCK_LABEL_MODES = new Set(['none', 'lesson']);
 
 const trimText = (value = '') => String(value || '').trim();
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -53,9 +54,30 @@ export const DIGITAL_CONTENTS_PAGE_DEFAULTS = Object.freeze({
   subtitleStyle: DIGITAL_CONTENTS_SUBTITLE_STYLE_DEFAULTS,
 });
 
+export const DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS = Object.freeze({
+  color: '#374151',
+  fontSize: 16,
+  fontFamily: 'Arial, sans-serif',
+  fontWeight: '400',
+  fontStyle: 'normal',
+  textTransform: 'none',
+  textDecoration: 'none',
+});
+
+export const DIGITAL_WRITING_BLOCK_PRESENTATION_DEFAULTS = Object.freeze({
+  labelMode: 'none',
+  highlightColor: '',
+  textStyle: DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS,
+});
+
 const normalizeHexColor = (value = '', fallback = '#111827') => {
   const normalized = trimText(value).toUpperCase();
   return HEX_COLOR_RE.test(normalized) ? normalized : fallback;
+};
+
+const normalizeOptionalHexColor = (value = '') => {
+  const normalized = trimText(value).toUpperCase();
+  return HEX_COLOR_RE.test(normalized) ? normalized : '';
 };
 
 const normalizeChoice = (value = '', allowed = new Set(), fallback = '') => {
@@ -81,6 +103,15 @@ export const normalizeDigitalContentsPage = (page = {}) => ({
   subtitle: trimText(page?.subtitle || '') || DIGITAL_CONTENTS_PAGE_DEFAULTS.subtitle,
   titleStyle: normalizeDigitalTextStyle(page?.titleStyle || {}, DIGITAL_CONTENTS_TITLE_STYLE_DEFAULTS),
   subtitleStyle: normalizeDigitalTextStyle(page?.subtitleStyle || {}, DIGITAL_CONTENTS_SUBTITLE_STYLE_DEFAULTS),
+});
+
+export const normalizeDigitalWritingBlockPresentation = (presentation = {}) => ({
+  labelMode: normalizeChoice(presentation?.labelMode, DIGITAL_WRITING_BLOCK_LABEL_MODES, DIGITAL_WRITING_BLOCK_PRESENTATION_DEFAULTS.labelMode),
+  highlightColor: normalizeOptionalHexColor(presentation?.highlightColor || ''),
+  textStyle: normalizeDigitalTextStyle(
+    presentation?.textStyle || {},
+    DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS
+  ),
 });
 
 export const buildModuleBlockAssetId = (itemId = '', blockId = '') => {
@@ -119,6 +150,7 @@ export const normalizeDigitalLessonBlock = (block = {}, index = 0) => {
   if (kind === 'text') {
     return {
       ...base,
+      presentation: normalizeDigitalWritingBlockPresentation(block.presentation || {}),
       content: String(block.content || ''),
       url: '',
       openInNewTab: true,
@@ -174,7 +206,8 @@ export const digitalLessonBlockHasContent = (block = {}) => {
   const kind = String(block.kind || 'text').trim().toLowerCase();
   if (kind === 'file') return !!trimText(block.secureUrl || '');
   if (kind === 'link') return !!trimText(block.url || block.title || block.description || '');
-  return !!trimText(block.content || block.title || block.description || '');
+  return !!trimText(block.content || block.title || block.description || '')
+    || String(block?.presentation?.labelMode || '').trim().toLowerCase() === 'lesson';
 };
 
 export const sortDigitalLessonBlocks = (blocks = []) => [...blocks].sort((a, b) => {

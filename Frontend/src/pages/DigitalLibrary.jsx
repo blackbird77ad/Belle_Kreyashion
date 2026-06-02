@@ -134,6 +134,16 @@ const DEFAULT_CONTENTS_SUBTITLE_STYLE = {
   textDecoration: 'none',
 };
 
+const DEFAULT_WRITING_BLOCK_TEXT_STYLE = {
+  color: '#374151',
+  fontSize: 16,
+  fontFamily: 'Arial, sans-serif',
+  fontWeight: '400',
+  fontStyle: 'normal',
+  textTransform: 'none',
+  textDecoration: 'none',
+};
+
 const buildTextPresentationStyle = (style = {}, defaults = {}) => {
   const merged = { ...defaults, ...(style || {}) };
   const fontSize = Number(merged.fontSize);
@@ -147,6 +157,60 @@ const buildTextPresentationStyle = (style = {}, defaults = {}) => {
     textDecoration: merged.textDecoration || undefined,
   };
 };
+
+const normalizeWritingBlockTextStyle = (style = {}) => {
+  const fontSize = Number(style?.fontSize);
+  const color = String(style?.color || '').trim();
+  return {
+    color: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color.toUpperCase() : DEFAULT_WRITING_BLOCK_TEXT_STYLE.color,
+    fontSize: Number.isFinite(fontSize) ? Math.min(64, Math.max(12, Math.round(fontSize))) : DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontSize,
+    fontFamily: style?.fontFamily || DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontFamily,
+    fontWeight: style?.fontWeight || DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontWeight,
+    fontStyle: style?.fontStyle === 'italic' ? 'italic' : 'normal',
+    textTransform: style?.textTransform || DEFAULT_WRITING_BLOCK_TEXT_STYLE.textTransform,
+    textDecoration: style?.textDecoration === 'underline' ? 'underline' : 'none',
+  };
+};
+
+const normalizeWritingBlockPresentation = (presentation = {}) => {
+  const highlightColor = String(presentation?.highlightColor || '').trim();
+  return {
+    labelMode: presentation?.labelMode === 'lesson' ? 'lesson' : 'none',
+    highlightColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(highlightColor) ? highlightColor.toUpperCase() : '',
+    textStyle: normalizeWritingBlockTextStyle(presentation?.textStyle || {}),
+  };
+};
+
+const buildWritingBlockInlineStyle = (
+  presentation = {},
+  { includeHighlight = true, includeColor = true, includeWeight = true } = {}
+) => {
+  const normalized = normalizeWritingBlockPresentation(presentation);
+  return {
+    ...(includeColor ? { color: normalized.textStyle.color } : {}),
+    fontSize: `${normalized.textStyle.fontSize}px`,
+    fontFamily: normalized.textStyle.fontFamily,
+    ...(includeWeight ? { fontWeight: normalized.textStyle.fontWeight } : {}),
+    fontStyle: normalized.textStyle.fontStyle,
+    textTransform: normalized.textStyle.textTransform,
+    textDecoration: normalized.textStyle.textDecoration,
+    ...(includeHighlight && normalized.highlightColor ? { backgroundColor: normalized.highlightColor } : {}),
+  };
+};
+
+const buildWritingBlockTitleStyle = (presentation = {}) => {
+  const normalized = normalizeWritingBlockPresentation(presentation);
+  return {
+    ...buildWritingBlockInlineStyle(normalized, { includeHighlight: false }),
+    fontSize: `${Math.min(72, normalized.textStyle.fontSize + 4)}px`,
+    fontWeight: Number(normalized.textStyle.fontWeight) >= 600 ? normalized.textStyle.fontWeight : '600',
+  };
+};
+
+const parseWritingBlockTitleLines = (title = '') => String(title || '')
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter(Boolean);
 
 const splitLessonTextIntoSentences = (content = '') => {
   const source = String(content || '').trim();
@@ -173,6 +237,7 @@ const buildTextLessonReaderBlocks = (blocks = [], fallbackContent = '') => {
     ? blocks
     : [{ kind: 'text', order: 1, content: fallbackContent }];
   let sentenceIndex = 0;
+  let textBlockIndex = 0;
 
   return sourceBlocks.map((block, blockIndex) => {
     if (block.kind === 'file') {
@@ -207,10 +272,15 @@ const buildTextLessonReaderBlocks = (blocks = [], fallbackContent = '') => {
       ...sentence,
       sentenceIndex: sentenceIndex++,
     })));
+    textBlockIndex += 1;
+    const presentation = normalizeWritingBlockPresentation(block.presentation || {});
     return {
       blockId: block.blockId || `block-${blockIndex + 1}`,
       order: block.order ?? blockIndex + 1,
       kind: 'text',
+      titleLines: parseWritingBlockTitleLines(block.title || ''),
+      presentation,
+      lessonLabel: presentation.labelMode === 'lesson' ? `LESSON ${textBlockIndex}` : '',
       paragraphs,
       content: block.content || '',
     };
@@ -1689,8 +1759,38 @@ export default function DigitalLibrary() {
                             );
                           }
 
+                          const sentenceButtonStyle = buildWritingBlockInlineStyle(block.presentation || {}, {
+                            includeHighlight: false,
+                            includeColor: false,
+                            includeWeight: false,
+                          });
+                          const unsavedSentenceStyle = buildWritingBlockInlineStyle(block.presentation || {}, {
+                            includeHighlight: true,
+                            includeColor: true,
+                            includeWeight: true,
+                          });
+                          const textFallbackStyle = buildWritingBlockInlineStyle(block.presentation || {});
+                          const titleStyle = buildWritingBlockTitleStyle(block.presentation || {});
                           return (
                             <div key={block.blockId || `text-block-${blockIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
+                              {block.lessonLabel && (
+                                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">
+                                  {block.lessonLabel}
+                                </p>
+                              )}
+                              {!!block.titleLines?.length && (
+                                <div className="space-y-1">
+                                  {block.titleLines.map((titleLine, titleLineIndex) => (
+                                    <p
+                                      key={`${block.blockId || blockIndex}-title-${titleLineIndex}`}
+                                      className="break-words font-extrabold"
+                                      style={titleStyle}
+                                    >
+                                      {titleLine}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
                               {block.paragraphs?.length ? block.paragraphs.map((paragraph, paragraphIndex) => (
                                 <div key={`${block.blockId || blockIndex}-paragraph-${paragraphIndex}`} className="leading-8 text-gray-700">
                                   {paragraph.map((sentence) => {
@@ -1713,6 +1813,7 @@ export default function DigitalLibrary() {
                                               ? 'bg-[#FDC700] font-bold text-black shadow-sm'
                                               : 'bg-[#fcfbf7] text-gray-700 hover:bg-amber-50'
                                           } ${actioning === markerKey ? 'opacity-60' : ''}`}
+                                          style={isSavedSentence ? sentenceButtonStyle : unsavedSentenceStyle}
                                         >
                                           <span className="inline-flex items-start gap-2">
                                             {actioning === markerKey ? (
@@ -1730,7 +1831,7 @@ export default function DigitalLibrary() {
                                   })}
                                 </div>
                               )) : (
-                                <div className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                                <div className="whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-7 text-gray-700" style={textFallbackStyle}>
                                   {block.content || 'No written content was added to this block yet.'}
                                 </div>
                               )}

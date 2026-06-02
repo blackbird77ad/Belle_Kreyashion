@@ -8,6 +8,7 @@ import {
   flattenTextBlocksToContent,
   isPreviewableDigitalFile,
   normalizeDigitalContentsPage,
+  normalizeDigitalWritingBlockPresentation,
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
 } from '../Utils/digitalModules.mjs';
@@ -55,6 +56,9 @@ const snapshotModules = (product) => resolveProductModules(product).map((module,
               kind: block.kind || 'text',
               title: block.title || block.originalFilename || '',
               description: block.description || '',
+              presentation: block.kind === 'text'
+                ? normalizeDigitalWritingBlockPresentation(block.presentation || {})
+                : undefined,
               content: block.kind === 'text' ? String(block.content || '') : '',
               url: block.kind === 'link' ? String(block.url || '') : '',
               openInNewTab: block.kind === 'link' ? block.openInNewTab !== false : true,
