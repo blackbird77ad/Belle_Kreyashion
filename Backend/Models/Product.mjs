@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import {
   isPreviewableDigitalFile,
+  normalizeDigitalContentsPage,
   normalizeDigitalModules,
 } from '../Utils/digitalModules.mjs';
 
@@ -101,6 +102,27 @@ const digitalModuleSchema = new mongoose.Schema({
   items: { type: [digitalModuleItemSchema], default: [] },
 });
 
+const digitalTextStyleSchema = new mongoose.Schema({
+  color: { type: String, default: '#111827' },
+  fontSize: { type: Number, default: 16 },
+  fontFamily: { type: String, default: 'Arial, sans-serif' },
+  fontWeight: { type: String, default: '500' },
+  fontStyle: { type: String, default: 'normal' },
+  textTransform: { type: String, default: 'none' },
+  textDecoration: { type: String, default: 'none' },
+}, { _id: false });
+
+const digitalContentsPageSchema = new mongoose.Schema({
+  title: { type: String, trim: true, default: 'Table of Contents' },
+  subtitle: {
+    type: String,
+    trim: true,
+    default: 'Choose any module or lesson below to continue from the right place.',
+  },
+  titleStyle: { type: digitalTextStyleSchema, default: () => ({ color: '#111827', fontSize: 32, fontFamily: 'Georgia, serif', fontWeight: '700', fontStyle: 'normal', textTransform: 'none', textDecoration: 'none' }) },
+  subtitleStyle: { type: digitalTextStyleSchema, default: () => ({ color: '#4B5563', fontSize: 16, fontFamily: 'Arial, sans-serif', fontWeight: '500', fontStyle: 'normal', textTransform: 'none', textDecoration: 'none' }) },
+}, { _id: false });
+
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   slug: { type: String, unique: true, sparse: true },
@@ -174,6 +196,7 @@ const productSchema = new mongoose.Schema({
   accessNote: { type: String, default: '' },
   supportEmail: { type: String, default: '' },
   supportWhatsApp: { type: String, default: '' },
+  digitalContentsPage: { type: digitalContentsPageSchema, default: () => ({}) },
   digitalModules: { type: [digitalModuleSchema], default: [] },
   digitalManualPages: { type: [digitalManualPageSchema], default: [] },
   digitalFiles: { type: [digitalFileSchema], default: [] },
@@ -224,6 +247,7 @@ productSchema.pre('save', function () {
     }
     this.supportEmail = String(this.supportEmail || '').trim().toLowerCase();
     this.supportWhatsApp = String(this.supportWhatsApp || '').trim();
+    this.digitalContentsPage = normalizeDigitalContentsPage(this.digitalContentsPage || {});
     this.digitalModules = normalizeDigitalModules(Array.isArray(this.digitalModules) ? this.digitalModules : []);
     this.digitalFiles = (Array.isArray(this.digitalFiles) ? this.digitalFiles : [])
       .map((file, index) => ({
@@ -280,6 +304,7 @@ productSchema.pre('save', function () {
     this.accessNote = '';
     this.supportEmail = '';
     this.supportWhatsApp = '';
+    this.digitalContentsPage = undefined;
     this.digitalModules = [];
     this.digitalManualPages = [];
     this.digitalFiles = [];

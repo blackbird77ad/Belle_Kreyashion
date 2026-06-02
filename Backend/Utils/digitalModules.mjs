@@ -1,6 +1,20 @@
 const PREVIEWABLE_FILE_KINDS = new Set(['document', 'video', 'audio', 'image']);
+const HEX_COLOR_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+const DIGITAL_TEXT_FONT_FAMILIES = new Set([
+  'inherit',
+  'Georgia, serif',
+  '"Times New Roman", serif',
+  'Arial, sans-serif',
+  'Verdana, sans-serif',
+  '"Trebuchet MS", sans-serif',
+]);
+const DIGITAL_TEXT_FONT_WEIGHTS = new Set(['400', '500', '600', '700', '800']);
+const DIGITAL_TEXT_FONT_STYLES = new Set(['normal', 'italic']);
+const DIGITAL_TEXT_TRANSFORMS = new Set(['none', 'uppercase', 'capitalize']);
+const DIGITAL_TEXT_DECORATIONS = new Set(['none', 'underline']);
 
 const trimText = (value = '') => String(value || '').trim();
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const toPositiveNumberOrNull = (value) => {
   if (value === '' || value === undefined || value === null) return null;
   const parsed = Number(value);
@@ -11,6 +25,63 @@ const numericSortValue = (value, fallback = Number.MAX_SAFE_INTEGER) => (
 );
 
 export const isPreviewableDigitalFile = (file = {}) => PREVIEWABLE_FILE_KINDS.has(String(file.fileKind || '').trim());
+
+export const DIGITAL_CONTENTS_TITLE_STYLE_DEFAULTS = Object.freeze({
+  color: '#111827',
+  fontSize: 32,
+  fontFamily: 'Georgia, serif',
+  fontWeight: '700',
+  fontStyle: 'normal',
+  textTransform: 'none',
+  textDecoration: 'none',
+});
+
+export const DIGITAL_CONTENTS_SUBTITLE_STYLE_DEFAULTS = Object.freeze({
+  color: '#4B5563',
+  fontSize: 16,
+  fontFamily: 'Arial, sans-serif',
+  fontWeight: '500',
+  fontStyle: 'normal',
+  textTransform: 'none',
+  textDecoration: 'none',
+});
+
+export const DIGITAL_CONTENTS_PAGE_DEFAULTS = Object.freeze({
+  title: 'Table of Contents',
+  subtitle: 'Choose any module or lesson below to continue from the right place.',
+  titleStyle: DIGITAL_CONTENTS_TITLE_STYLE_DEFAULTS,
+  subtitleStyle: DIGITAL_CONTENTS_SUBTITLE_STYLE_DEFAULTS,
+});
+
+const normalizeHexColor = (value = '', fallback = '#111827') => {
+  const normalized = trimText(value).toUpperCase();
+  return HEX_COLOR_RE.test(normalized) ? normalized : fallback;
+};
+
+const normalizeChoice = (value = '', allowed = new Set(), fallback = '') => {
+  const normalized = trimText(value);
+  return allowed.has(normalized) ? normalized : fallback;
+};
+
+export const normalizeDigitalTextStyle = (style = {}, fallback = DIGITAL_CONTENTS_TITLE_STYLE_DEFAULTS) => {
+  const fontSize = Number(style?.fontSize);
+  return {
+    color: normalizeHexColor(style?.color, fallback.color),
+    fontSize: Number.isFinite(fontSize) ? clamp(Math.round(fontSize), 12, 64) : fallback.fontSize,
+    fontFamily: normalizeChoice(style?.fontFamily, DIGITAL_TEXT_FONT_FAMILIES, fallback.fontFamily),
+    fontWeight: normalizeChoice(String(style?.fontWeight || ''), DIGITAL_TEXT_FONT_WEIGHTS, fallback.fontWeight),
+    fontStyle: normalizeChoice(style?.fontStyle, DIGITAL_TEXT_FONT_STYLES, fallback.fontStyle),
+    textTransform: normalizeChoice(style?.textTransform, DIGITAL_TEXT_TRANSFORMS, fallback.textTransform),
+    textDecoration: normalizeChoice(style?.textDecoration, DIGITAL_TEXT_DECORATIONS, fallback.textDecoration),
+  };
+};
+
+export const normalizeDigitalContentsPage = (page = {}) => ({
+  title: trimText(page?.title || '') || DIGITAL_CONTENTS_PAGE_DEFAULTS.title,
+  subtitle: trimText(page?.subtitle || '') || DIGITAL_CONTENTS_PAGE_DEFAULTS.subtitle,
+  titleStyle: normalizeDigitalTextStyle(page?.titleStyle || {}, DIGITAL_CONTENTS_TITLE_STYLE_DEFAULTS),
+  subtitleStyle: normalizeDigitalTextStyle(page?.subtitleStyle || {}, DIGITAL_CONTENTS_SUBTITLE_STYLE_DEFAULTS),
+});
 
 export const buildModuleBlockAssetId = (itemId = '', blockId = '') => {
   const normalizedItemId = trimText(itemId);

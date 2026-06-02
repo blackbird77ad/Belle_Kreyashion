@@ -3,9 +3,17 @@ import nodemailer from 'nodemailer';
 import { buildEmailLayout, buildEmailMetaTable, buildEmailNote, buildEmailText, escapeHtml } from './emailTemplateService.mjs';
 
 let transporter = null;
+const OWNER_NOTIFICATION_RECIPIENTS = Object.freeze([
+  { formatted: 'blackbird77ad@gmail.com', email: 'blackbird77ad@gmail.com' },
+  { formatted: 'bellekreyashon@gmail.com', email: 'bellekreyashon@gmail.com' },
+]);
 
 const normalizeConfiguredValue = (value = '') => String(value || '').trim().replace(/^['"]|['"]$/g, '');
 const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+const splitConfiguredValues = (value = '') => normalizeConfiguredValue(value)
+  .split(/[;,]/)
+  .map((entry) => normalizeConfiguredValue(entry))
+  .filter(Boolean);
 
 const extractEmailAddress = (value = '') => {
   const input = normalizeConfiguredValue(value);
@@ -102,8 +110,8 @@ const resolveSender = () => {
   );
 };
 
-const resolveRecipient = () => {
-  const candidates = [
+const resolveRecipients = () => {
+  const configuredRecipients = [
     process.env.CONTACT_TO_EMAIL,
     process.env.CONTACT_REPLY_TO,
     process.env.CUSTOMER_REPLY_TO,
@@ -112,27 +120,26 @@ const resolveRecipient = () => {
     process.env.MAIL_USER,
     process.env.EMAIL_USER,
   ]
-    .map(normalizeConfiguredValue)
+    .flatMap((value) => splitConfiguredValues(value))
+    .map((value) => {
+      const email = extractEmailAddress(value);
+      if (!email || usesPlaceholderDomain(value)) return null;
+      return {
+        formatted: value,
+        email,
+      };
+    })
     .filter(Boolean);
 
-  const recipient = candidates.find((value) => extractEmailAddress(value) && !usesPlaceholderDomain(value)) || '';
-  if (recipient) {
-    return {
-      formatted: recipient,
-      email: extractEmailAddress(recipient),
-    };
-  }
+  const recipients = [...OWNER_NOTIFICATION_RECIPIENTS, ...configuredRecipients]
+    .filter((recipient) => recipient?.email)
+    .filter((recipient, index, list) => list.findIndex((entry) => entry.email === recipient.email) === index);
 
-  if (candidates.some((value) => usesPlaceholderDomain(value))) {
-    throw new Error(
-      'Contact recipient email is still using a placeholder domain. ' +
-      'Update CONTACT_TO_EMAIL to a real inbox address where you want inquiries delivered.'
-    );
-  }
-
-  throw new Error(
-    'Contact recipient email is not configured. Set CONTACT_TO_EMAIL or CONTACT_REPLY_TO in Backend/.env.'
-  );
+  return {
+    formatted: recipients.map((recipient) => recipient.formatted),
+    emails: recipients.map((recipient) => recipient.email),
+    replyTo: recipients.map((recipient) => recipient.formatted).join(', '),
+  };
 };
 
 const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
@@ -312,12 +319,12 @@ const buildInquiryPayload = (payload = {}) => {
 
 export const sendContactInquiryNotification = async (payload = {}) => {
   const inquiry = buildInquiryPayload(payload);
-  const recipient = resolveRecipient();
+  const recipients = resolveRecipients();
   const subject = inquiry.subject || `New ${inquiry.inquiryTypeLabel} - ${inquiry.name}`;
   const replyTo = formatReplyTo(inquiry.name, inquiry.email);
 
   return sendMail({
-    to: recipient.formatted,
+    to: recipients.formatted,
     subject,
     html: buildInquiryHtml(inquiry),
     text: buildInquiryText(inquiry),
@@ -329,13 +336,13 @@ export const sendContactInquiryAutoReply = async (payload = {}) => {
   const inquiry = buildInquiryPayload(payload);
   if (!inquiry.email) return null;
 
-  const recipient = resolveRecipient();
+  const recipients = resolveRecipients();
 
   return sendMail({
     to: inquiry.email,
     subject: `We received your message - Belle Kreyashon`,
     html: buildAutoReplyHtml(inquiry),
     text: buildAutoReplyText(inquiry),
-    replyTo: recipient.formatted,
+    replyTo: recipients.replyTo,
   });
 };

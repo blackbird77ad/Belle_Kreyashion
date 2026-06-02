@@ -9,6 +9,7 @@ import {
   buildLegacyDigitalModulesFromCollections,
   flattenTextBlocksToContent,
   isPreviewableDigitalFile,
+  normalizeDigitalContentsPage,
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
 } from '../Utils/digitalModules.mjs';
@@ -306,6 +307,7 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
   const certificateIssued = certificate?.emailStatus === 'sent';
   const supportEmail = normalizeEmail(productMeta?.supportEmail || grant.supportEmail || '');
   const supportWhatsApp = normalizePhone(productMeta?.supportWhatsApp || grant.supportWhatsApp || '');
+  const digitalContentsPage = normalizeDigitalContentsPage(productMeta?.digitalContentsPage || grant.digitalContentsPage || {});
   const modules = resolveGrantModules(grant);
   const flatFiles = flattenModuleFiles(modules);
   const filesByPublicId = new Map(flatFiles.filter((file) => file?.publicId).map((file) => [String(file.publicId), file]));
@@ -345,6 +347,7 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
     productDesc: grant.productDesc,
     supportEmail,
     supportWhatsApp,
+    digitalContentsPage,
     digitalType: grant.digitalType,
     digitalAccessKind: grant.digitalAccessKind || 'paid',
     trialStatus: grant.trialStatus || 'none',
@@ -532,7 +535,7 @@ export const getCustomerDigitalLibrary = async (req, res) => {
     const certificatesByGrant = new Map(certificates.map((record) => [String(record.digitalAccess), record]));
     const productIds = [...new Set(visibleGrants.map((grant) => String(grant.productId || '')).filter(Boolean))];
     const products = productIds.length
-      ? await Product.find({ _id: { $in: productIds } }).select('supportEmail supportWhatsApp')
+      ? await Product.find({ _id: { $in: productIds } }).select('supportEmail supportWhatsApp digitalContentsPage')
       : [];
     const productsById = new Map(products.map((product) => [String(product._id), product]));
 

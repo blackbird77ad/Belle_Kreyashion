@@ -1,5 +1,8 @@
 const SITE_URL = 'https://bellekreyashon.com';
-const PUBLIC_CONTACT_EMAIL = String(import.meta.env.VITE_PUBLIC_CONTACT_EMAIL || 'dampon@scaled-solutions.ai').trim().toLowerCase();
+const PUBLIC_CONTACT_EMAIL = String(import.meta.env.VITE_PUBLIC_CONTACT_EMAIL || 'bellekreyashon@gmail.com')
+  .split(/[;,]/)
+  .map((entry) => entry.trim().toLowerCase())
+  .find(Boolean) || 'bellekreyashon@gmail.com';
 
 const ensureLeadingSlash = (value = '/') => (
   value.startsWith('/') ? value : `/${value}`

@@ -35,6 +35,89 @@ const getCollectionLayoutClass = (tab, viewMode) => {
 
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
 const certHelp = 'mt-1 text-[11px] leading-relaxed text-gray-500';
+const DIGITAL_CONTENTS_FONT_OPTIONS = [
+  { value:'Georgia, serif', label:'Georgia Serif' },
+  { value:'"Times New Roman", serif', label:'Times New Roman' },
+  { value:'Arial, sans-serif', label:'Arial Sans' },
+  { value:'Verdana, sans-serif', label:'Verdana Sans' },
+  { value:'"Trebuchet MS", sans-serif', label:'Trebuchet Sans' },
+];
+const DIGITAL_CONTENTS_WEIGHT_OPTIONS = [
+  { value:'400', label:'Regular' },
+  { value:'500', label:'Medium' },
+  { value:'600', label:'Semibold' },
+  { value:'700', label:'Bold' },
+  { value:'800', label:'Extra Bold' },
+];
+const DIGITAL_CONTENTS_FONT_STYLE_OPTIONS = [
+  { value:'normal', label:'Normal' },
+  { value:'italic', label:'Italic' },
+];
+const DIGITAL_CONTENTS_TEXT_TRANSFORM_OPTIONS = [
+  { value:'none', label:'Normal Case' },
+  { value:'uppercase', label:'UPPERCASE' },
+  { value:'capitalize', label:'Capitalize' },
+];
+const DIGITAL_CONTENTS_TEXT_DECORATION_OPTIONS = [
+  { value:'none', label:'No Underline' },
+  { value:'underline', label:'Underline' },
+];
+const DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE = Object.freeze({
+  color:'#111827',
+  fontSize:32,
+  fontFamily:'Georgia, serif',
+  fontWeight:'700',
+  fontStyle:'normal',
+  textTransform:'none',
+  textDecoration:'none',
+});
+const DEFAULT_DIGITAL_CONTENTS_SUBTITLE_STYLE = Object.freeze({
+  color:'#4B5563',
+  fontSize:16,
+  fontFamily:'Arial, sans-serif',
+  fontWeight:'500',
+  fontStyle:'normal',
+  textTransform:'none',
+  textDecoration:'none',
+});
+const createDefaultDigitalContentsPage = () => ({
+  title:'Table of Contents',
+  subtitle:'Choose any module or lesson below to continue from the right place.',
+  titleStyle:{ ...DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE },
+  subtitleStyle:{ ...DEFAULT_DIGITAL_CONTENTS_SUBTITLE_STYLE },
+});
+const clampContentsFontSize = (value, fallback) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(64, Math.max(12, Math.round(parsed)));
+};
+const normalizeDigitalContentsTextStyleForForm = (style = {}, fallback = DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE) => ({
+  color: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(style.color || '').trim()) ? String(style.color).trim().toUpperCase() : fallback.color,
+  fontSize: clampContentsFontSize(style.fontSize, fallback.fontSize),
+  fontFamily: DIGITAL_CONTENTS_FONT_OPTIONS.some((option) => option.value === style.fontFamily) ? style.fontFamily : fallback.fontFamily,
+  fontWeight: DIGITAL_CONTENTS_WEIGHT_OPTIONS.some((option) => option.value === String(style.fontWeight || '')) ? String(style.fontWeight) : fallback.fontWeight,
+  fontStyle: DIGITAL_CONTENTS_FONT_STYLE_OPTIONS.some((option) => option.value === style.fontStyle) ? style.fontStyle : fallback.fontStyle,
+  textTransform: DIGITAL_CONTENTS_TEXT_TRANSFORM_OPTIONS.some((option) => option.value === style.textTransform) ? style.textTransform : fallback.textTransform,
+  textDecoration: DIGITAL_CONTENTS_TEXT_DECORATION_OPTIONS.some((option) => option.value === style.textDecoration) ? style.textDecoration : fallback.textDecoration,
+});
+const normalizeDigitalContentsPageForForm = (page = {}) => ({
+  title: String(page.title || '').trim() || 'Table of Contents',
+  subtitle: String(page.subtitle || '').trim() || 'Choose any module or lesson below to continue from the right place.',
+  titleStyle: normalizeDigitalContentsTextStyleForForm(page.titleStyle || {}, DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE),
+  subtitleStyle: normalizeDigitalContentsTextStyleForForm(page.subtitleStyle || {}, DEFAULT_DIGITAL_CONTENTS_SUBTITLE_STYLE),
+});
+const buildDigitalContentsInlineStyle = (style = {}, fallback = DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE) => {
+  const normalized = normalizeDigitalContentsTextStyleForForm(style, fallback);
+  return {
+    color: normalized.color,
+    fontSize: `${normalized.fontSize}px`,
+    fontFamily: normalized.fontFamily,
+    fontWeight: normalized.fontWeight,
+    fontStyle: normalized.fontStyle,
+    textTransform: normalized.textTransform,
+    textDecoration: normalized.textDecoration,
+  };
+};
 
 const convertDrive = (url) => {
   if (!url) return url;
@@ -620,6 +703,7 @@ const EMPTY_DIGITAL = {
   hasDiscount:false, discount:{type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:''},
   isDigital:true, digitalType:'mixed', accessNote:'', digitalModules:[], digitalManualPages:[], digitalFiles:[],
   supportEmail:'', supportWhatsApp:'',
+  digitalContentsPage:createDefaultDigitalContentsPage(),
   digitalSkillLevel:'all-levels', digitalFormat:'', digitalDuration:'', digitalTopics:[], digitalInclusions:[],
   digitalAccessKind:'paid', freeTrialDays:'7', isSeries:false, seriesTitle:'', seriesDescription:'',
   isCertified:false, certificateTitle:'', certificateDescription:'',
@@ -2104,6 +2188,7 @@ export default function Admin() {
 
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   const visibleCertificateTemplates = mergeCertificateTemplates(certificateTemplates);
+  const digitalContentsPagePreview = normalizeDigitalContentsPageForForm(form.digitalContentsPage || {});
   const [orderFilter,    setOrderFilter]    = useState('all');
   const [customerSearch, setCustomerSearch] = useState('');
 
@@ -2271,7 +2356,9 @@ export default function Admin() {
 
   const getEmptyForm = (t) => {
     const map = { Products: EMPTY_PROD, 'Digital Products': EMPTY_DIGITAL, Certificates: EMPTY_CERT, Training: EMPTY_TRAIN, Delivery: EMPTY_ZONE, Consultations: EMPTY_CONSULT, Blog: EMPTY_BLOG, Featured: EMPTY_FEATURED };
-    return { ...(map[t] || {}) };
+    const next = { ...(map[t] || {}) };
+    if (t === 'Digital Products') next.digitalContentsPage = createDefaultDigitalContentsPage();
+    return next;
   };
 
   const resetCustomInputs = () => {
@@ -2410,7 +2497,13 @@ export default function Admin() {
 
   const openNew = () => {
     const restoredDraft = tab === 'Digital Products' ? readDigitalDraft() : null;
-    setForm(restoredDraft || getEmptyForm(tab));
+    setForm(tab === 'Digital Products'
+      ? {
+          ...getEmptyForm(tab),
+          ...(restoredDraft || {}),
+          digitalContentsPage: normalizeDigitalContentsPageForForm(restoredDraft?.digitalContentsPage || {}),
+        }
+      : (restoredDraft || getEmptyForm(tab)));
     setEditId(null);
     setShowForm(true);
     setExpandedDigitalModules({});
@@ -2482,6 +2575,7 @@ export default function Admin() {
         accessNote:      item.accessNote || '',
         supportEmail:    item.supportEmail || '',
         supportWhatsApp: item.supportWhatsApp || '',
+        digitalContentsPage: normalizeDigitalContentsPageForForm(item.digitalContentsPage || {}),
         digitalModules:  Array.isArray(item.digitalModules) && item.digitalModules.length
           ? reindexDigitalModules(item.digitalModules.map((module, index) => normalizeDigitalModuleForForm(module, index)))
           : buildLegacyDigitalModulesForForm(item),
@@ -2575,6 +2669,29 @@ export default function Admin() {
     sf(fieldKey, nextValue);
     setCustomDigitalInput(inputKey, '');
   };
+  const updateDigitalContentsPageField = (key, value) => setForm((current) => {
+    const nextPage = normalizeDigitalContentsPageForForm(current.digitalContentsPage || {});
+    return {
+      ...current,
+      digitalContentsPage: {
+        ...nextPage,
+        [key]: value,
+      },
+    };
+  });
+  const updateDigitalContentsPageStyle = (styleKey, key, value) => setForm((current) => {
+    const nextPage = normalizeDigitalContentsPageForForm(current.digitalContentsPage || {});
+    return {
+      ...current,
+      digitalContentsPage: {
+        ...nextPage,
+        [styleKey]: {
+          ...nextPage[styleKey],
+          [key]: value,
+        },
+      },
+    };
+  });
   const addCustomDigitalArrayValue = (fieldKey, inputKey) => {
     const nextValue = String(customDigitalInputs[inputKey] || '').trim();
     if (!nextValue) return;
@@ -2890,6 +3007,7 @@ export default function Admin() {
       accessNote:   f.accessNote || '',
       supportEmail: f.supportEmail || '',
       supportWhatsApp: f.supportWhatsApp || '',
+      digitalContentsPage: normalizeDigitalContentsPageForForm(f.digitalContentsPage || {}),
       digitalModules: reindexDigitalModules(f.digitalModules || []).map((module, moduleIndex) => ({
         _id: module._id,
         moduleNumber: module.moduleNumber || moduleIndex + 1,
@@ -4710,6 +4828,183 @@ const buildTrainingBody = (f) => ({
                   <div className="sm:col-span-2 space-y-3">
                     <input value={form.supportWhatsApp||''} onChange={e => sf('supportWhatsApp',e.target.value)} placeholder="Trainer / tutor WhatsApp (optional)" className={inp} />
                     <p className={certHelp}>Optional support line for quicker help. Example: `0594038888` or `+233594038888`.</p>
+                  </div>
+                  <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4 space-y-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Table of Contents Page</p>
+                        <p className="mt-1 text-xs text-gray-500 leading-relaxed max-w-3xl">
+                          This page is generated from module titles, lesson titles, and their subtitles. Learners can open it in the library and tap any entry to jump straight to the right lesson.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => sf('digitalContentsPage', createDefaultDigitalContentsPage())}
+                        className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                      >
+                        Reset Contents Page
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+                      <div className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="sm:col-span-2">
+                            <input
+                              value={digitalContentsPagePreview.title}
+                              onChange={(event) => updateDigitalContentsPageField('title', event.target.value)}
+                              placeholder="Contents page title"
+                              className={inp}
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <input
+                              value={digitalContentsPagePreview.subtitle}
+                              onChange={(event) => updateDigitalContentsPageField('subtitle', event.target.value)}
+                              placeholder="Contents page subtitle"
+                              className={inp}
+                            />
+                          </div>
+                        </div>
+
+                        {[
+                          ['titleStyle', 'Title Styling'],
+                          ['subtitleStyle', 'Subtitle Styling'],
+                        ].map(([styleKey, label]) => {
+                          const styleValue = digitalContentsPagePreview[styleKey] || DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE;
+                          return (
+                            <div key={styleKey} className="rounded-2xl border border-gray-200 bg-white p-4">
+                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">{label}</p>
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <label className="space-y-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Font color</span>
+                                  <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2">
+                                    <input
+                                      value={styleValue.color || '#111827'}
+                                      onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'color', event.target.value)}
+                                      type="color"
+                                      className="h-10 w-10 cursor-pointer rounded-lg border-0 bg-transparent p-0"
+                                    />
+                                    <span className="text-xs font-bold text-gray-600">{styleValue.color || '#111827'}</span>
+                                  </div>
+                                </label>
+                                <label className="space-y-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Font size</span>
+                                  <input
+                                    value={styleValue.fontSize || 16}
+                                    onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'fontSize', event.target.value)}
+                                    type="number"
+                                    min="12"
+                                    max="64"
+                                    className={inp}
+                                  />
+                                </label>
+                                <label className="space-y-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Font family</span>
+                                  <select
+                                    value={styleValue.fontFamily || 'Arial, sans-serif'}
+                                    onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'fontFamily', event.target.value)}
+                                    className={inp}
+                                  >
+                                    {DIGITAL_CONTENTS_FONT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  </select>
+                                </label>
+                                <label className="space-y-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Font weight</span>
+                                  <select
+                                    value={styleValue.fontWeight || '500'}
+                                    onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'fontWeight', event.target.value)}
+                                    className={inp}
+                                  >
+                                    {DIGITAL_CONTENTS_WEIGHT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  </select>
+                                </label>
+                                <label className="space-y-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Font style</span>
+                                  <select
+                                    value={styleValue.fontStyle || 'normal'}
+                                    onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'fontStyle', event.target.value)}
+                                    className={inp}
+                                  >
+                                    {DIGITAL_CONTENTS_FONT_STYLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  </select>
+                                </label>
+                                <label className="space-y-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Text format</span>
+                                  <select
+                                    value={styleValue.textTransform || 'none'}
+                                    onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'textTransform', event.target.value)}
+                                    className={inp}
+                                  >
+                                    {DIGITAL_CONTENTS_TEXT_TRANSFORM_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  </select>
+                                </label>
+                                <label className="space-y-2 sm:col-span-2">
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">Decoration</span>
+                                  <select
+                                    value={styleValue.textDecoration || 'none'}
+                                    onChange={(event) => updateDigitalContentsPageStyle(styleKey, 'textDecoration', event.target.value)}
+                                    className={inp}
+                                  >
+                                    {DIGITAL_CONTENTS_TEXT_DECORATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  </select>
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="rounded-[24px] border border-black/10 bg-[linear-gradient(180deg,_#ffffff_0%,_#f7f3ea_100%)] p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)]">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Live Contents Preview</p>
+                        <div className="mt-3 rounded-[20px] border border-white/80 bg-white/90 p-4">
+                          <p style={buildDigitalContentsInlineStyle(digitalContentsPagePreview.titleStyle, DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE)}>
+                            {digitalContentsPagePreview.title}
+                          </p>
+                          <p className="mt-2 leading-relaxed" style={buildDigitalContentsInlineStyle(digitalContentsPagePreview.subtitleStyle, DEFAULT_DIGITAL_CONTENTS_SUBTITLE_STYLE)}>
+                            {digitalContentsPagePreview.subtitle}
+                          </p>
+
+                          {(form.digitalModules || []).length ? (
+                            <div className="mt-4 space-y-3">
+                              {(form.digitalModules || []).map((module, moduleIndex) => (
+                                <div key={module.clientKey || module._id || `contents-preview-module-${moduleIndex}`} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                                  <div className="flex items-start gap-3">
+                                    <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-2 text-[11px] font-extrabold text-white">
+                                      {module.moduleNumber || moduleIndex + 1}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-extrabold text-black">
+                                        {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
+                                      </p>
+                                      {module.description && (
+                                        <p className="mt-1 text-xs leading-relaxed text-gray-500">{module.description}</p>
+                                      )}
+                                      <div className="mt-3 space-y-2">
+                                        {(module.items || []).map((item, itemIndex) => (
+                                          <div key={item.clientKey || item._id || `contents-preview-item-${moduleIndex}-${itemIndex}`} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
+                                            <p className="text-xs font-bold text-gray-800">
+                                              {item.order || itemIndex + 1}. {item.title || (item.kind === 'file' ? item.originalFilename || 'Attachment' : `Text Lesson ${itemIndex + 1}`)}
+                                            </p>
+                                            {item.description && (
+                                              <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{item.description}</p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] px-4 py-4 text-xs text-gray-500">
+                              Add modules and lesson items to generate the clickable contents page automatically.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <ImageUploader

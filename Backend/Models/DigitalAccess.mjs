@@ -92,6 +92,26 @@ const moduleSchema = new mongoose.Schema({
   items: { type: [moduleItemSchema], default: [] },
 }, { _id: false });
 
+const digitalTextStyleSchema = new mongoose.Schema({
+  color: { type: String, default: '#111827' },
+  fontSize: { type: Number, default: 16 },
+  fontFamily: { type: String, default: 'Arial, sans-serif' },
+  fontWeight: { type: String, default: '500' },
+  fontStyle: { type: String, default: 'normal' },
+  textTransform: { type: String, default: 'none' },
+  textDecoration: { type: String, default: 'none' },
+}, { _id: false });
+
+const digitalContentsPageSchema = new mongoose.Schema({
+  title: { type: String, default: 'Table of Contents' },
+  subtitle: {
+    type: String,
+    default: 'Choose any module or lesson below to continue from the right place.',
+  },
+  titleStyle: { type: digitalTextStyleSchema, default: () => ({ color: '#111827', fontSize: 32, fontFamily: 'Georgia, serif', fontWeight: '700', fontStyle: 'normal', textTransform: 'none', textDecoration: 'none' }) },
+  subtitleStyle: { type: digitalTextStyleSchema, default: () => ({ color: '#4B5563', fontSize: 16, fontFamily: 'Arial, sans-serif', fontWeight: '500', fontStyle: 'normal', textTransform: 'none', textDecoration: 'none' }) },
+}, { _id: false });
+
 const accessLogSchema = new mongoose.Schema({
   assetId: { type: String, required: true },
   mode: { type: String, enum: ['inline', 'download'], default: 'inline' },
@@ -157,6 +177,7 @@ const digitalAccessSchema = new mongoose.Schema({
   productDesc: { type: String, default: '' },
   supportEmail: { type: String, default: '' },
   supportWhatsApp: { type: String, default: '' },
+  digitalContentsPage: { type: digitalContentsPageSchema, default: () => ({}) },
   digitalType: { type: String, default: 'other' },
   accessType: { type: String, enum: ['limited', 'lifetime'], default: 'limited' },
   accessMonths: { type: Number, default: null },

@@ -7,6 +7,7 @@ import {
   buildLegacyDigitalModulesFromCollections,
   flattenTextBlocksToContent,
   isPreviewableDigitalFile,
+  normalizeDigitalContentsPage,
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
 } from '../Utils/digitalModules.mjs';
@@ -263,6 +264,7 @@ export const grantDigitalAccessForOrder = async (order, context = {}) => {
         productDesc: product.desc || '',
         supportEmail: product.supportEmail || '',
         supportWhatsApp: product.supportWhatsApp || '',
+        digitalContentsPage: normalizeDigitalContentsPage(product.digitalContentsPage || {}),
         digitalType: product.digitalType || 'other',
         digitalAccessKind,
         trialStatus: digitalAccessKind === 'trial' ? 'trialing' : 'none',

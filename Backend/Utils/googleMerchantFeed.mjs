@@ -1,5 +1,5 @@
 const DEFAULT_SITE_URL = 'https://bellekreyashon.com';
-const DEFAULT_CONTACT_EMAIL = 'dampon@scaled-solutions.ai';
+const DEFAULT_CONTACT_EMAIL = 'bellekreyashon@gmail.com';
 
 const stripHtml = (value = '') => String(value || '')
   .replace(/<[^>]*>/g, ' ')
@@ -41,8 +41,13 @@ export const resolveMerchantSiteUrl = () => (
   String(process.env.SITE_URL || process.env.FRONTEND_URL || DEFAULT_SITE_URL).trim().replace(/\/+$/, '')
 );
 
+const normalizeSingleEmail = (value = '') => String(value || '')
+  .split(/[;,]/)
+  .map((entry) => entry.trim().toLowerCase())
+  .find(Boolean) || '';
+
 export const resolveMerchantContactEmail = () => (
-  String(process.env.PUBLIC_CONTACT_EMAIL || process.env.CONTACT_TO_EMAIL || DEFAULT_CONTACT_EMAIL).trim().toLowerCase()
+  normalizeSingleEmail(process.env.PUBLIC_CONTACT_EMAIL || process.env.CONTACT_TO_EMAIL || DEFAULT_CONTACT_EMAIL)
 );
 
 export const toMerchantAbsoluteUrl = (value = '') => {
