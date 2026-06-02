@@ -13,9 +13,11 @@ import {
   buildLegacyDigitalModulesFromCollections,
   flattenTextBlocksToContent,
   isPreviewableDigitalFile,
+  normalizeDigitalContentsPage,
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
 } from '../Utils/digitalModules.mjs';
+import { syncDigitalAccessGrantsForProduct } from '../Services/digitalAccessService.mjs';
 import { buildGoogleMerchantFeedXml, isMerchantFeedEligible } from '../Utils/googleMerchantFeed.mjs';
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
@@ -392,6 +394,7 @@ const cleanBody = (body) => {
   if (b.supportEmail !== undefined) b.supportEmail = normalizeEmail(b.supportEmail);
   if (b.supportWhatsApp !== undefined) b.supportWhatsApp = normalizePhone(b.supportWhatsApp);
   if (b.category !== undefined) b.category = String(b.category || '').trim();
+  if (b.digitalContentsPage !== undefined) b.digitalContentsPage = normalizeDigitalContentsPage(b.digitalContentsPage || {});
   if (b.digitalType !== undefined) b.digitalType = normalizeFlexibleOption(b.digitalType);
   if (b.digitalSkillLevel !== undefined) b.digitalSkillLevel = normalizeFlexibleOption(b.digitalSkillLevel, 'all-levels');
   if (b.digitalFormat !== undefined) b.digitalFormat = normalizeFlexibleOption(b.digitalFormat);
@@ -477,6 +480,7 @@ const cleanBody = (body) => {
     b.accessMode = b.accessMode || 'customer_choice';
     b.limitedAccessMonths = Number(b.limitedAccessMonths) > 0 ? Number(b.limitedAccessMonths) : 6;
     b.accessNote = b.accessNote || '';
+    b.digitalContentsPage = normalizeDigitalContentsPage(b.digitalContentsPage || {});
   } else {
     b.digitalType = null;
     b.digitalAccessKind = 'paid';
@@ -500,6 +504,7 @@ const cleanBody = (body) => {
     b.digitalModules = [];
     b.digitalManualPages = [];
     b.digitalFiles = [];
+    b.digitalContentsPage = normalizeDigitalContentsPage({});
   }
 
   return b;
@@ -748,6 +753,7 @@ export const updateProduct = async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!product) return res.status(404).json({ message: 'Not found' });
+    await syncDigitalAccessGrantsForProduct(product);
     res.json(product);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -756,7 +762,8 @@ export const updateProduct = async (req, res) => {
 
 export const deleteProduct = async (req, res) => {
   try {
-    await Product.findByIdAndDelete(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Not found' });
     res.json({ message: 'Deleted' });
   } catch {
     res.status(500).json({ message: 'Server error' });

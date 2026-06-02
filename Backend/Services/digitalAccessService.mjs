@@ -171,6 +171,109 @@ const buildModuleProgress = (product) => snapshotModules(product).map((module) =
   textMarker: null,
 }));
 
+const buildModuleProgressSnapshot = (modules = [], existingProgress = []) => modules.map((module) => {
+  const moduleId = String(module.moduleId || '');
+  const moduleItems = Array.isArray(module.items) ? module.items : [];
+  const moduleItemIds = new Set(moduleItems.map((item) => String(item.itemId || '')).filter(Boolean));
+  const fileItemIds = moduleItems
+    .filter((item) => item.kind === 'file')
+    .map((item) => String(item.itemId || ''))
+    .filter(Boolean);
+  const firstFileItemId = fileItemIds[0] || '';
+  const previousEntry = (Array.isArray(existingProgress) ? existingProgress : []).find((entry) => (
+    String(entry?.moduleId || '') === moduleId
+      || (!!entry?.assetId && fileItemIds.includes(String(entry.assetId || '')))
+  )) || null;
+  const previousLastItemId = String(previousEntry?.lastItemId || '');
+  const nextLastItemId = moduleItemIds.has(previousLastItemId) ? previousLastItemId : '';
+  const lastItem = nextLastItemId
+    ? moduleItems.find((item) => String(item.itemId || '') === nextLastItemId) || null
+    : null;
+  const previousTextMarkerItemId = String(previousEntry?.textMarker?.itemId || '');
+  const textMarkerItem = previousTextMarkerItemId
+    ? moduleItems.find((item) => String(item.itemId || '') === previousTextMarkerItemId) || null
+    : null;
+  const nextTextMarker = textMarkerItem?.kind === 'text'
+    ? {
+        itemId: previousTextMarkerItemId,
+        sentenceIndex: Number.isFinite(Number(previousEntry?.textMarker?.sentenceIndex))
+          && Number(previousEntry.textMarker.sentenceIndex) >= 0
+          ? Number(previousEntry.textMarker.sentenceIndex)
+          : null,
+        sentenceText: String(previousEntry?.textMarker?.sentenceText || ''),
+        updatedAt: previousEntry?.textMarker?.updatedAt || null,
+      }
+    : null;
+
+  return {
+    moduleId,
+    assetId: firstFileItemId || '',
+    label: module.title || `Module ${module.moduleNumber || 1}`,
+    stepNumber: module.moduleNumber ?? null,
+    moduleNumber: module.moduleNumber ?? null,
+    openedAt: previousEntry?.openedAt || null,
+    completedAt: previousEntry?.completedAt || null,
+    lastItemId: nextLastItemId,
+    lastItemType: lastItem ? (lastItem.kind === 'file' ? 'file' : 'text') : '',
+    lastItemTitle: lastItem
+      ? String(lastItem.title || lastItem.originalFilename || previousEntry?.lastItemTitle || '')
+      : '',
+    lastPositionUpdatedAt: nextLastItemId ? (previousEntry?.lastPositionUpdatedAt || null) : null,
+    textMarker: nextTextMarker,
+  };
+});
+
+const resolveCertificateStatus = (product, moduleProgress = [], currentStatus = '') => {
+  if (!product?.isCertified) {
+    return currentStatus === 'generated' ? 'generated' : 'not-applicable';
+  }
+
+  if (currentStatus === 'requested' || currentStatus === 'generated' || currentStatus === 'declined') {
+    return currentStatus;
+  }
+
+  const totalModules = moduleProgress.length;
+  const completedModules = moduleProgress.filter((entry) => !!entry?.completedAt).length;
+  return totalModules > 0 && completedModules >= totalModules ? 'eligible' : 'in-progress';
+};
+
+export const syncDigitalAccessGrantsForProduct = async (product) => {
+  if (!product?._id || !product?.isDigital) return 0;
+
+  const grants = await DigitalAccess.find({
+    productId: product._id,
+    status: { $ne: 'revoked' },
+  });
+  if (!grants.length) return 0;
+
+  for (const grant of grants) {
+    const modules = snapshotModules(product);
+    const nextModuleProgress = buildModuleProgressSnapshot(modules, grant.moduleProgress || []);
+
+    grant.productName = product.name || '';
+    grant.productImage = product.images?.[0] || '';
+    grant.productDesc = product.desc || '';
+    grant.supportEmail = product.supportEmail || '';
+    grant.supportWhatsApp = product.supportWhatsApp || '';
+    grant.digitalContentsPage = normalizeDigitalContentsPage(product.digitalContentsPage || {});
+    grant.digitalType = product.digitalType || 'other';
+    grant.modules = modules;
+    grant.files = snapshotFiles(product);
+    grant.manualPages = snapshotManualPages(product);
+    grant.isSeries = !!product.isSeries;
+    grant.seriesTitle = product.seriesTitle || '';
+    grant.seriesDescription = product.seriesDescription || '';
+    grant.isCertified = !!product.isCertified;
+    grant.certificateTitle = product.certificateTitle || product.name || '';
+    grant.certificateDescription = product.certificateDescription || '';
+    grant.moduleProgress = nextModuleProgress;
+    grant.certificateStatus = resolveCertificateStatus(product, nextModuleProgress, grant.certificateStatus || '');
+    await grant.save();
+  }
+
+  return grants.length;
+};
+
 const resolveExpiry = ({ accessType, accessMonths, baseDate = new Date() }) => {
   if (accessType === 'lifetime') return null;
   if (!accessMonths || accessMonths <= 0) return null;
