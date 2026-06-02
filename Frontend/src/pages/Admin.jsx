@@ -446,6 +446,9 @@ function RichTextEditor({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-3">
+        <span className="rounded-full border border-[#FDC700]/40 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">
+          Writing Tools
+        </span>
         <select
           defaultValue=""
           onMouseDown={saveSelection}
@@ -3427,51 +3430,6 @@ export default function Admin() {
       };
     })
   ));
-  const updateTextLessonBlockTextStyle = (moduleIndex, itemIndex, blockIndex, key, value) => setForm((current) => updateTextLessonBlocks(
-    current,
-    moduleIndex,
-    itemIndex,
-    (blocks) => (blocks || []).map((block, currentBlockIndex) => {
-      if (currentBlockIndex !== blockIndex) return block;
-      const nextPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
-      return {
-        ...block,
-        presentation: {
-          ...nextPresentation,
-          textStyle: {
-            ...nextPresentation.textStyle,
-            [key]: value,
-          },
-        },
-      };
-    })
-  ));
-  const toggleTextLessonBlockTextFormat = (moduleIndex, itemIndex, blockIndex, formatKey) => setForm((current) => updateTextLessonBlocks(
-    current,
-    moduleIndex,
-    itemIndex,
-    (blocks) => (blocks || []).map((block, currentBlockIndex) => {
-      if (currentBlockIndex !== blockIndex) return block;
-      const nextPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
-      const nextTextStyle = { ...nextPresentation.textStyle };
-
-      if (formatKey === 'bold') {
-        nextTextStyle.fontWeight = nextTextStyle.fontWeight === '700' ? DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontWeight : '700';
-      } else if (formatKey === 'italic') {
-        nextTextStyle.fontStyle = nextTextStyle.fontStyle === 'italic' ? 'normal' : 'italic';
-      } else if (formatKey === 'underline') {
-        nextTextStyle.textDecoration = nextTextStyle.textDecoration === 'underline' ? 'none' : 'underline';
-      }
-
-      return {
-        ...block,
-        presentation: {
-          ...nextPresentation,
-          textStyle: nextTextStyle,
-        },
-      };
-    })
-  ));
   const removeTextLessonBlock = (moduleIndex, itemIndex, blockIndex) => setForm((current) => updateTextLessonBlocks(
     current,
     moduleIndex,
@@ -5147,79 +5105,9 @@ const buildTrainingBody = (f) => ({
                                                     <option key={option.value} value={option.value}>{option.label}</option>
                                                   ))}
                                                 </select>
-                                                <select
-                                                  value={writingBlockPresentation.textStyle.fontFamily}
-                                                  onChange={(event) => updateTextLessonBlockTextStyle(moduleIndex, itemIndex, blockIndex, 'fontFamily', event.target.value)}
-                                                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 outline-none focus:border-black"
-                                                >
-                                                  {DIGITAL_CONTENTS_FONT_OPTIONS.map((option) => (
-                                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                                  ))}
-                                                </select>
-                                                <div className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2">
-                                                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500">Size</span>
-                                                  <input
-                                                    value={writingBlockPresentation.textStyle.fontSize}
-                                                    onChange={(event) => updateTextLessonBlockTextStyle(moduleIndex, itemIndex, blockIndex, 'fontSize', Math.min(64, Math.max(12, Number(event.target.value) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize)))}
-                                                    type="number"
-                                                    min="12"
-                                                    max="64"
-                                                    className="w-16 border-0 bg-transparent p-0 text-[11px] font-bold text-gray-700 outline-none"
-                                                  />
-                                                </div>
-                                                <label className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700">
-                                                  <span>Text Color</span>
-                                                  <input
-                                                    value={writingBlockPresentation.textStyle.color}
-                                                    onChange={(event) => updateTextLessonBlockTextStyle(moduleIndex, itemIndex, blockIndex, 'color', event.target.value.toUpperCase())}
-                                                    type="color"
-                                                    className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
-                                                  />
-                                                </label>
-                                                <select
-                                                  value={writingBlockPresentation.highlightColor}
-                                                  onChange={(event) => updateTextLessonBlockPresentation(moduleIndex, itemIndex, blockIndex, 'highlightColor', event.target.value)}
-                                                  className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 outline-none focus:border-black"
-                                                >
-                                                  {DIGITAL_WRITING_BLOCK_HIGHLIGHT_OPTIONS.map((option) => (
-                                                    <option key={option.value || 'none'} value={option.value}>{option.label}</option>
-                                                  ))}
-                                                </select>
-                                                <div className="inline-flex items-center gap-1 rounded-2xl border border-gray-200 bg-white p-1">
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => toggleTextLessonBlockTextFormat(moduleIndex, itemIndex, blockIndex, 'bold')}
-                                                    className={`rounded-xl px-2.5 py-1.5 text-[11px] font-extrabold transition-colors ${
-                                                      writingBlockPresentation.textStyle.fontWeight === '700'
-                                                        ? 'bg-black text-white'
-                                                        : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                  >
-                                                    B
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => toggleTextLessonBlockTextFormat(moduleIndex, itemIndex, blockIndex, 'italic')}
-                                                    className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold italic transition-colors ${
-                                                      writingBlockPresentation.textStyle.fontStyle === 'italic'
-                                                        ? 'bg-black text-white'
-                                                        : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                  >
-                                                    I
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => toggleTextLessonBlockTextFormat(moduleIndex, itemIndex, blockIndex, 'underline')}
-                                                    className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold underline transition-colors ${
-                                                      writingBlockPresentation.textStyle.textDecoration === 'underline'
-                                                        ? 'bg-black text-white'
-                                                        : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                  >
-                                                    U
-                                                  </button>
-                                                </div>
+                                                <span className="rounded-2xl border border-dashed border-[#e6d8a6] bg-white px-3 py-2 text-[11px] font-bold text-[#8b6a00]">
+                                                  Use the writing tools above the main text box to style selected text only.
+                                                </span>
                                               </div>
 
                                               {writingBlockTitleEditorVisible && (
@@ -5281,7 +5169,7 @@ const buildTrainingBody = (f) => ({
                                               className="rounded-2xl border border-dashed border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-500"
                                               style={writingBlockEditorStyle}
                                             >
-                                              Select part of the writing above, then use the toolbar to change its font, size, colour, highlight, bold, italic, underline, or clear the formatting.
+                                              Select text in the main writing area, then use the writing tools right above it to change font, size, colour, highlight, bold, italic, underline, or clear formatting.
                                             </div>
                                           </div>
                                         ) : block.kind === 'link' ? (
