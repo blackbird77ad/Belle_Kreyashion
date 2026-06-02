@@ -414,6 +414,31 @@ const sortModuleItems = (items = []) => [...items].sort((a, b) => {
   return String(a?.title || a?.label || '').localeCompare(String(b?.title || b?.label || ''));
 });
 
+const sortLessonBlocks = (blocks = []) => [...blocks].sort((a, b) => {
+  const orderDiff = Number(a?.order ?? Number.MAX_SAFE_INTEGER) - Number(b?.order ?? Number.MAX_SAFE_INTEGER);
+  if (orderDiff !== 0) return orderDiff;
+  return String(a?.title || a?.originalFilename || a?.url || '').localeCompare(String(b?.title || b?.originalFilename || b?.url || ''));
+});
+
+const buildContentsWritingBlockEntries = (lessonItem = {}) => {
+  if (String(lessonItem?.kind || '').trim().toLowerCase() !== 'text') return [];
+  let textBlockCount = 0;
+  return sortLessonBlocks(lessonItem.blocks || [])
+    .map((block, blockIndex) => {
+      if (String(block?.kind || '').trim().toLowerCase() !== 'text') return null;
+      textBlockCount += 1;
+      const titleLines = parseWritingBlockTitleLines(block.title || '');
+      if (!titleLines.length) return null;
+      const presentation = normalizeWritingBlockPresentation(block.presentation || {});
+      return {
+        blockKey: String(block.blockId || block._id || `${lessonItem.itemId || 'lesson'}-contents-block-${blockIndex + 1}`),
+        lessonLabel: presentation.labelMode === 'lesson' ? `LESSON ${textBlockCount}` : '',
+        titleLines,
+      };
+    })
+    .filter(Boolean);
+};
+
 const buildContentsReaderState = ({ libraryItem = {} } = {}) => ({
   readerType: 'table-of-contents',
   grantId: libraryItem._id,
@@ -1765,36 +1790,71 @@ export default function DigitalLibrary() {
 
                             {!!module.items?.length && (
                               <div className="mt-4 space-y-3">
-                                {(module.items || []).map((lessonItem, lessonIndex) => (
-                                  <button
-                                    key={lessonItem.itemId || `${module.moduleId || moduleIndex}-lesson-${lessonIndex}`}
-                                    type="button"
-                                    onClick={() => {
-                                      setManualReader(null);
-                                      window.setTimeout(() => openModuleItem(manualReader.grantId, module.moduleId, lessonItem), 0);
-                                    }}
-                                    className="w-full rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3 text-left hover:border-black"
-                                  >
-                                    <div className="flex items-start gap-3">
-                                      <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-2 text-[11px] font-extrabold text-gray-700 border border-gray-200 shrink-0">
-                                        {lessonItem.order || lessonIndex + 1}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-extrabold text-black">
-                                            {lessonItem.title || (lessonItem.kind === 'file' ? lessonItem.label || 'Attachment' : `Text Lesson ${lessonIndex + 1}`)}
-                                          </p>
-                                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
-                                            {lessonItem.kind === 'file' ? `${lessonItem.fileKind || 'file'} attachment` : 'text lesson'}
-                                          </span>
+                                {(module.items || []).map((lessonItem, lessonIndex) => {
+                                  const contentsWritingBlocks = buildContentsWritingBlockEntries(lessonItem);
+                                  return (
+                                    <div key={lessonItem.itemId || `${module.moduleId || moduleIndex}-lesson-${lessonIndex}`} className="space-y-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setManualReader(null);
+                                          window.setTimeout(() => openModuleItem(manualReader.grantId, module.moduleId, lessonItem), 0);
+                                        }}
+                                        className="w-full rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3 text-left hover:border-black"
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-2 text-[11px] font-extrabold text-gray-700 border border-gray-200 shrink-0">
+                                            {lessonItem.order || lessonIndex + 1}
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <p className="text-sm font-extrabold text-black">
+                                                {lessonItem.title || (lessonItem.kind === 'file' ? lessonItem.label || 'Attachment' : `Text Lesson ${lessonIndex + 1}`)}
+                                              </p>
+                                              <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                                {lessonItem.kind === 'file' ? `${lessonItem.fileKind || 'file'} attachment` : 'text lesson'}
+                                              </span>
+                                            </div>
+                                            {lessonItem.description && (
+                                              <p className="mt-2 text-xs leading-relaxed text-gray-500">{lessonItem.description}</p>
+                                            )}
+                                          </div>
                                         </div>
-                                        {lessonItem.description && (
-                                          <p className="mt-2 text-xs leading-relaxed text-gray-500">{lessonItem.description}</p>
-                                        )}
-                                      </div>
+                                      </button>
+                                      {!!contentsWritingBlocks.length && (
+                                        <div className="space-y-2 pl-11">
+                                          {contentsWritingBlocks.map((blockEntry) => (
+                                            <button
+                                              key={blockEntry.blockKey}
+                                              type="button"
+                                              onClick={() => {
+                                                setManualReader(null);
+                                                window.setTimeout(() => openModuleItem(manualReader.grantId, module.moduleId, lessonItem), 0);
+                                              }}
+                                              className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-left hover:border-black"
+                                            >
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                {blockEntry.lessonLabel && (
+                                                  <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                                                    {blockEntry.lessonLabel}
+                                                  </span>
+                                                )}
+                                                <p className="text-xs font-bold text-gray-700">
+                                                  {blockEntry.titleLines[0]}
+                                                </p>
+                                              </div>
+                                              {blockEntry.titleLines.length > 1 && (
+                                                <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                                                  {blockEntry.titleLines.slice(1).join(' • ')}
+                                                </p>
+                                              )}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
-                                  </button>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>

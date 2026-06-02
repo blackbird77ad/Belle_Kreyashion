@@ -829,6 +829,26 @@ const reindexTextLessonBlocks = (blocks = []) => sortTextLessonBlocks(blocks).ma
   order: index + 1,
 }));
 
+const buildDigitalContentsWritingBlockEntries = (item = {}) => {
+  if (String(item?.kind || '').trim().toLowerCase() !== 'text') return [];
+  const blocks = reindexTextLessonBlocks(item.blocks || []);
+  return blocks
+    .map((block, blockIndex) => {
+      if (String(block?.kind || '').trim().toLowerCase() !== 'text') return null;
+      const titleLines = parseDigitalWritingBlockTitleLines(block.title || '');
+      if (!titleLines.length) return null;
+      const lessonLabel = String(block?.presentation?.labelMode || '').trim().toLowerCase() === 'lesson'
+        ? `LESSON ${resolveDigitalWritingBlockLessonNumber(blocks, blockIndex)}`
+        : '';
+      return {
+        blockKey: String(block.clientKey || block.blockId || block._id || `contents-block-${blockIndex + 1}`),
+        lessonLabel,
+        titleLines,
+      };
+    })
+    .filter(Boolean);
+};
+
 const normalizeTextLessonBlockForForm = (block = {}, index = 0) => {
   if (String(block.kind || '').trim().toLowerCase() === 'file' || block.secureUrl) {
     return {
@@ -2632,6 +2652,7 @@ export default function Admin() {
   const [expandedDigitalModules, setExpandedDigitalModules] = useState({});
   const [expandedDigitalModuleSections, setExpandedDigitalModuleSections] = useState({});
   const [expandedDigitalModuleItems, setExpandedDigitalModuleItems] = useState({});
+  const [expandedDigitalWritingBlocks, setExpandedDigitalWritingBlocks] = useState({});
   const [visibleDigitalWritingBlockTitles, setVisibleDigitalWritingBlockTitles] = useState({});
   const [showDigitalCustomerPreview, setShowDigitalCustomerPreview] = useState(false);
   const [expandedPreviewModules, setExpandedPreviewModules] = useState({});
@@ -2787,6 +2808,7 @@ export default function Admin() {
     setExpandedDigitalModules({});
     setExpandedDigitalModuleSections({});
     setExpandedDigitalModuleItems({});
+    setExpandedDigitalWritingBlocks({});
     setExpandedPreviewModules({});
     setShowDigitalCustomerPreview(false);
     pendingDigitalItemScrollRef.current = '';
@@ -2868,6 +2890,9 @@ export default function Admin() {
   const toggleDigitalModuleItemExpanded = (itemKey) => {
     setExpandedDigitalModuleItems((current) => ({ ...current, [itemKey]: !current[itemKey] }));
   };
+  const toggleDigitalWritingBlockExpanded = (blockKey) => {
+    setExpandedDigitalWritingBlocks((current) => ({ ...current, [blockKey]: !(current[blockKey] ?? true) }));
+  };
   const toggleDigitalModuleExpanded = (moduleKey) => {
     setExpandedDigitalModules((current) => ({ ...current, [moduleKey]: !current[moduleKey] }));
   };
@@ -2929,6 +2954,20 @@ export default function Admin() {
       return next;
     });
 
+    setExpandedDigitalWritingBlocks((current) => {
+      const next = {};
+      modules.forEach((module, moduleIndex) => {
+        (module.items || []).forEach((item, itemIndex) => {
+          if (String(item?.kind || '').trim().toLowerCase() !== 'text') return;
+          reindexTextLessonBlocks(item.blocks || []).forEach((block, blockIndex) => {
+            const blockKey = String(block.clientKey || block.blockId || block._id || `${moduleIndex}-${itemIndex}-${blockIndex}`);
+            next[blockKey] = current[blockKey] ?? true;
+          });
+        });
+      });
+      return next;
+    });
+
     setExpandedPreviewModules((current) => {
       const currentKeys = Object.keys(current || {});
       const next = {};
@@ -2967,6 +3006,7 @@ export default function Admin() {
     setExpandedDigitalModules({});
     setExpandedDigitalModuleSections({});
     setExpandedDigitalModuleItems({});
+    setExpandedDigitalWritingBlocks({});
     setExpandedPreviewModules({});
     setShowDigitalCustomerPreview(false);
     setDigitalAutoSave({
@@ -3091,6 +3131,7 @@ export default function Admin() {
     setExpandedDigitalModules({});
     setExpandedDigitalModuleSections({});
     setExpandedDigitalModuleItems({});
+    setExpandedDigitalWritingBlocks({});
     setExpandedPreviewModules({});
     setShowDigitalCustomerPreview(false);
     setDigitalAutoSave({ status: 'idle', message: '' });
@@ -4980,10 +5021,16 @@ const buildTrainingBody = (f) => ({
                                       const writingBlockPresentation = normalizeDigitalWritingBlockPresentationForForm(block.presentation || {});
                                       const writingBlockTitleLines = parseDigitalWritingBlockTitleLines(block.title || '');
                                       const writingBlockLessonNumber = resolveDigitalWritingBlockLessonNumber(item.blocks || [], blockIndex);
+                                      const isWritingBlockExpanded = expandedDigitalWritingBlocks[textBlockKey] ?? true;
                                       const writingBlockTitleEditorVisible = block.kind === 'text'
                                         && (visibleDigitalWritingBlockTitles[textBlockKey] ?? writingBlockTitleLines.length > 0);
                                       const writingBlockPreviewStyle = buildDigitalWritingBlockInlineStyle(writingBlockPresentation);
                                       const writingBlockEditorStyle = buildDigitalWritingBlockInlineStyle(writingBlockPresentation, { includeHighlight: false });
+                                      const collapsedWritingPreview = block.kind === 'text'
+                                        ? truncatePreviewText(stripRichTextHtmlToPlainText(block.contentHtml || '') || block.content || 'Open this writing block to keep editing the lesson copy.', 160)
+                                        : block.kind === 'link'
+                                          ? truncatePreviewText(block.description || block.url || 'Open this link block to keep editing the reference details.', 160)
+                                          : truncatePreviewText(block.description || block.originalFilename || 'Open this attachment block to keep editing the file details.', 160);
 
                                       return (
                                       <div
@@ -5032,6 +5079,14 @@ const buildTrainingBody = (f) => ({
                                           <div className="flex flex-wrap gap-2">
                                             <button
                                               type="button"
+                                              onClick={() => toggleDigitalWritingBlockExpanded(textBlockKey)}
+                                              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                                            >
+                                              {isWritingBlockExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                              {isWritingBlockExpanded ? 'Fold Block' : 'Open Block'}
+                                            </button>
+                                            <button
+                                              type="button"
                                               onClick={() => moveTextLessonBlock(moduleIndex, itemIndex, blockIndex, -1)}
                                               disabled={blockIndex === 0}
                                               className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-40"
@@ -5057,7 +5112,11 @@ const buildTrainingBody = (f) => ({
                                           </div>
                                         </div>
 
-                                        {block.kind === 'text' ? (
+                                        {!isWritingBlockExpanded ? (
+                                          <div className="rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] px-3 py-2 text-xs leading-relaxed text-gray-500">
+                                            {collapsedWritingPreview}
+                                          </div>
+                                        ) : block.kind === 'text' ? (
                                           <div className="space-y-3">
                                             <div className="rounded-2xl border border-[#efe4bf] bg-[#fffaf0] p-3 space-y-3">
                                               <div className="flex flex-wrap items-center gap-2">
@@ -5696,16 +5755,42 @@ const buildTrainingBody = (f) => ({
                                         {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
                                       </p>
                                       <div className="mt-3 space-y-2">
-                                        {(module.items || []).map((item, itemIndex) => (
-                                          <div key={item.clientKey || item._id || `contents-preview-item-${moduleIndex}-${itemIndex}`} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
-                                            <p className="text-xs font-bold text-gray-800">
-                                              {item.order || itemIndex + 1}. {item.title || (item.kind === 'file' ? item.originalFilename || 'Attachment' : `Text Lesson ${itemIndex + 1}`)}
-                                            </p>
-                                            {item.description && (
-                                              <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{item.description}</p>
-                                            )}
-                                          </div>
-                                        ))}
+                                        {(module.items || []).map((item, itemIndex) => {
+                                          const contentsWritingBlocks = buildDigitalContentsWritingBlockEntries(item);
+                                          return (
+                                            <div key={item.clientKey || item._id || `contents-preview-item-${moduleIndex}-${itemIndex}`} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
+                                              <p className="text-xs font-bold text-gray-800">
+                                                {item.order || itemIndex + 1}. {item.title || (item.kind === 'file' ? item.originalFilename || 'Attachment' : `Text Lesson ${itemIndex + 1}`)}
+                                              </p>
+                                              {item.description && (
+                                                <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{item.description}</p>
+                                              )}
+                                              {!!contentsWritingBlocks.length && (
+                                                <div className="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
+                                                  {contentsWritingBlocks.map((blockEntry) => (
+                                                    <div key={blockEntry.blockKey} className="rounded-lg bg-[#fcfbf7] px-2.5 py-2">
+                                                      <div className="flex flex-wrap items-center gap-2">
+                                                        {blockEntry.lessonLabel && (
+                                                          <span className="rounded-full border border-[#eadfbd] bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7a00]">
+                                                            {blockEntry.lessonLabel}
+                                                          </span>
+                                                        )}
+                                                        <p className="text-[11px] font-bold text-gray-700">
+                                                          {blockEntry.titleLines[0]}
+                                                        </p>
+                                                      </div>
+                                                      {blockEntry.titleLines.length > 1 && (
+                                                        <p className="mt-1 text-[10px] leading-relaxed text-gray-500">
+                                                          {blockEntry.titleLines.slice(1).join(' • ')}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     </div>
                                   </div>
