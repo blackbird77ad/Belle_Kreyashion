@@ -4596,16 +4596,19 @@ const buildTrainingBody = (f) => ({
                       return (
                       <div
                         key={moduleKey}
-                        draggable
-                        onDragStart={() => startModuleDrag(moduleIndex)}
-                        onDragEnd={() => { draggedModuleRef.current = null; }}
                         onDragOver={(event) => event.preventDefault()}
                         onDrop={() => dropModuleAtIndex(moduleIndex)}
                         className="rounded-[26px] border border-gray-200 bg-[#fcfbf7] p-4 space-y-4"
                       >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-black px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
+                            <div
+                              className="inline-flex cursor-grab select-none items-center gap-2 rounded-full bg-black px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white active:cursor-grabbing"
+                              draggable
+                              onDragStart={() => startModuleDrag(moduleIndex)}
+                              onDragEnd={() => { draggedModuleRef.current = null; }}
+                              title="Drag to reorder module"
+                            >
                               <GripVertical size={12} />
                               Module {module.moduleNumber || moduleIndex + 1}
                             </div>
@@ -4804,9 +4807,6 @@ const buildTrainingBody = (f) => ({
                             <div
                               id={`digital-module-item-${itemKey}`}
                               key={itemKey}
-                              draggable
-                              onDragStart={() => startModuleItemDrag(moduleIndex, itemIndex)}
-                              onDragEnd={() => { draggedModuleItemRef.current = null; }}
                               onDragOver={(event) => event.preventDefault()}
                               onDrop={() => dropModuleItemAtIndex(moduleIndex, itemIndex)}
                               className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3"
@@ -4818,7 +4818,13 @@ const buildTrainingBody = (f) => ({
                                   </div>
                                   <div className="min-w-0">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                                      <span
+                                        className="inline-flex cursor-grab select-none items-center gap-1 rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500 active:cursor-grabbing"
+                                        draggable
+                                        onDragStart={() => startModuleItemDrag(moduleIndex, itemIndex)}
+                                        onDragEnd={() => { draggedModuleItemRef.current = null; }}
+                                        title="Drag to reorder lesson step"
+                                      >
                                         <GripVertical size={12} />
                                         Module {module.moduleNumber || moduleIndex + 1} / Step {item.order || itemIndex + 1}
                                       </span>
@@ -4982,9 +4988,6 @@ const buildTrainingBody = (f) => ({
                                       return (
                                       <div
                                         key={textBlockKey}
-                                        draggable
-                                        onDragStart={() => startLessonBlockDrag(moduleIndex, itemIndex, blockIndex)}
-                                        onDragEnd={() => { draggedLessonBlockRef.current = null; }}
                                         onDragOver={(event) => event.preventDefault()}
                                         onDrop={() => dropLessonBlockAtIndex(moduleIndex, itemIndex, blockIndex)}
                                         className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3"
@@ -4996,7 +4999,13 @@ const buildTrainingBody = (f) => ({
                                             </div>
                                             <div className="min-w-0">
                                               <div className="flex flex-wrap items-center gap-2">
-                                                <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                                                <span
+                                                  className="inline-flex cursor-grab select-none items-center gap-1 rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-500 active:cursor-grabbing"
+                                                  draggable
+                                                  onDragStart={() => startLessonBlockDrag(moduleIndex, itemIndex, blockIndex)}
+                                                  onDragEnd={() => { draggedLessonBlockRef.current = null; }}
+                                                  title="Drag to reorder block"
+                                                >
                                                   <GripVertical size={12} />
                                                   Block {block.order || blockIndex + 1}
                                                 </span>
