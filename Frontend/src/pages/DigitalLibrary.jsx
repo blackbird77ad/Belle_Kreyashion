@@ -1162,9 +1162,6 @@ export default function DigitalLibrary() {
                                         </span>
                                       )}
                                     </div>
-                                    {module.description && (
-                                      <p className="mt-2 text-xs leading-relaxed text-gray-500">{module.description}</p>
-                                    )}
                                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
                                       <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
                                         {orderedItems.length} item{orderedItems.length === 1 ? '' : 's'}
@@ -1629,18 +1626,6 @@ export default function DigitalLibrary() {
                                     >
                                       {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
                                     </button>
-                                    {module.description && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setManualReader(null);
-                                          window.setTimeout(() => openModuleResumeTarget(manualReader.grantId, module), 0);
-                                        }}
-                                        className="mt-2 block text-left text-xs leading-relaxed text-gray-500 hover:text-gray-700"
-                                      >
-                                        {module.description}
-                                      </button>
-                                    )}
                                   </div>
                                 </div>
                               </div>

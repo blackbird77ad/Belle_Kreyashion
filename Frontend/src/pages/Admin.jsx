@@ -5269,9 +5269,6 @@ const buildTrainingBody = (f) => ({
                                       <p className="text-sm font-extrabold text-black">
                                         {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
                                       </p>
-                                      {module.description && (
-                                        <p className="mt-1 text-xs leading-relaxed text-gray-500">{module.description}</p>
-                                      )}
                                       <div className="mt-3 space-y-2">
                                         {(module.items || []).map((item, itemIndex) => (
                                           <div key={item.clientKey || item._id || `contents-preview-item-${moduleIndex}-${itemIndex}`} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
