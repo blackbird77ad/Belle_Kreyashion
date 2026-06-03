@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import {
   isPreviewableDigitalFile,
+  isWatermarkEligibleDigitalFile,
   normalizeDigitalContentsPage,
   normalizeDigitalModules,
 } from '../Utils/digitalModules.mjs';
@@ -39,6 +40,8 @@ const digitalFileSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+  watermarkEnabled: { type: Boolean, default: false },
+  watermarkText: { type: String, trim: true, default: '' },
 });
 
 const digitalManualPageSchema = new mongoose.Schema({
@@ -124,6 +127,8 @@ const digitalLessonBlockSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+  watermarkEnabled: { type: Boolean, default: false },
+  watermarkText: { type: String, trim: true, default: '' },
 });
 
 const digitalModuleItemSchema = new mongoose.Schema({
@@ -146,6 +151,8 @@ const digitalModuleItemSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+  watermarkEnabled: { type: Boolean, default: false },
+  watermarkText: { type: String, trim: true, default: '' },
 });
 
 const digitalModuleSchema = new mongoose.Schema({
@@ -312,6 +319,12 @@ productSchema.pre('save', function () {
         stepTitle: String(file.stepTitle || '').trim(),
         stepSummary: String(file.stepSummary || '').trim(),
         allowDownload: !!file.allowDownload || !isPreviewableDigitalFile(file),
+        watermarkEnabled: isWatermarkEligibleDigitalFile(file) && (!!file.allowDownload || !isPreviewableDigitalFile(file))
+          ? !!file.watermarkEnabled
+          : false,
+        watermarkText: isWatermarkEligibleDigitalFile(file) && file.watermarkEnabled && (!!file.allowDownload || !isPreviewableDigitalFile(file))
+          ? String(file.watermarkText || '').trim().slice(0, 120)
+          : '',
       }))
       .filter((file) => file.secureUrl)
       .sort((a, b) => {

@@ -92,9 +92,10 @@ const DIGITAL_WRITING_BLOCK_HIGHLIGHT_OPTIONS = [
   { value:'#FCE7F3', label:'Rose Pink' },
   { value:'#EDE9FE', label:'Lavender' },
 ];
+const MIN_DIGITAL_TEXT_FONT_SIZE = 2;
 const DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE = Object.freeze({
   color:'#374151',
-  fontSize:16,
+  fontSize:11,
   fontFamily:'Arial, sans-serif',
   fontWeight:'400',
   fontStyle:'normal',
@@ -103,7 +104,7 @@ const DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE = Object.freeze({
 });
 const createDigitalWritingBlockTitleStyleFallback = (textStyle = DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE) => ({
   color: String(textStyle?.color || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.color).trim() || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.color,
-  fontSize: Math.min(72, Math.max(12, (Number(textStyle?.fontSize) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize) + 4)),
+  fontSize: Math.min(72, Math.max(MIN_DIGITAL_TEXT_FONT_SIZE, (Number(textStyle?.fontSize) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize) + 3)),
   fontFamily: textStyle?.fontFamily || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontFamily,
   fontWeight: '600',
   fontStyle: textStyle?.fontStyle === 'italic' ? 'italic' : 'normal',
@@ -112,7 +113,7 @@ const createDigitalWritingBlockTitleStyleFallback = (textStyle = DEFAULT_DIGITAL
 });
 const createDigitalWritingBlockSubtitleStyleFallback = (textStyle = DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE) => ({
   color: '#6B7280',
-  fontSize: Math.max(12, Math.min(48, (Number(textStyle?.fontSize) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize) - 1)),
+  fontSize: Math.max(MIN_DIGITAL_TEXT_FONT_SIZE, Math.min(48, Number(textStyle?.fontSize) || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontSize)),
   fontFamily: textStyle?.fontFamily || DEFAULT_DIGITAL_WRITING_BLOCK_TEXT_STYLE.fontFamily,
   fontWeight: '500',
   fontStyle: textStyle?.fontStyle === 'italic' ? 'italic' : 'normal',
@@ -137,7 +138,7 @@ const createDefaultDigitalContentsPage = () => ({
 const clampContentsFontSize = (value, fallback) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(64, Math.max(12, Math.round(parsed)));
+  return Math.min(64, Math.max(MIN_DIGITAL_TEXT_FONT_SIZE, Math.round(parsed)));
 };
 const normalizeDigitalContentsTextStyleForForm = (style = {}, fallback = DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE) => ({
   color: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(style.color || '').trim()) ? String(style.color).trim().toUpperCase() : fallback.color,
@@ -210,7 +211,7 @@ const buildDigitalWritingBlockSubtitleInlineStyle = (presentation = {}) => {
     createDigitalWritingBlockSubtitleStyleFallback(normalized.textStyle)
   );
 };
-const RICH_TEXT_FONT_SIZE_OPTIONS = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48];
+const RICH_TEXT_FONT_SIZE_OPTIONS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40, 48];
 const RICH_TEXT_ALLOWED_TAGS = new Set(['P', 'DIV', 'BR', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'MARK']);
 const RICH_TEXT_STYLE_KEYS = new Set(['color', 'background-color', 'font-family', 'font-size', 'font-style', 'font-weight', 'text-decoration']);
 const LEGACY_FONT_SIZE_TO_PX = {
@@ -390,6 +391,7 @@ function RichTextEditor({
   plainTextValue = '',
   placeholder = '',
   onChange,
+  editorStyle = null,
 }) {
   const editorRef = useRef(null);
   const selectionRef = useRef(null);
@@ -614,6 +616,7 @@ function RichTextEditor({
           onMouseUp={saveSelection}
           onKeyUp={saveSelection}
           className="min-h-[180px] w-full rounded-2xl border border-gray-200 bg-white px-3 py-3 text-sm leading-relaxed outline-none focus:border-black"
+          style={editorStyle || undefined}
         />
       </div>
     </div>
@@ -668,9 +671,9 @@ function WritingBlockTextStyleToolbar({
           <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500">Size</span>
           <input
             value={value.fontSize}
-            onChange={(event) => onChange?.('fontSize', Math.min(64, Math.max(12, Number(event.target.value) || 16)))}
+            onChange={(event) => onChange?.('fontSize', Math.min(64, Math.max(MIN_DIGITAL_TEXT_FONT_SIZE, Number(event.target.value) || 16)))}
             type="number"
-            min="12"
+            min={MIN_DIGITAL_TEXT_FONT_SIZE}
             max="64"
             className="w-16 border-0 bg-transparent p-0 text-[11px] font-bold text-gray-700 outline-none"
           />
@@ -866,6 +869,7 @@ const getNextDigitalManualPageNumber = (pages = []) => {
 const previewableModuleFileKinds = new Set(['document', 'video', 'audio', 'image']);
 const createClientKey = (prefix = 'item') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const isPreviewableModuleFile = (kind = 'other') => previewableModuleFileKinds.has(String(kind || '').trim());
+const isImageModuleFile = (kind = 'other') => String(kind || '').trim().toLowerCase() === 'image';
 const getModuleUiKey = (module = {}, index = 0) => String(module.clientKey || module._id || `module-${index + 1}`);
 const getModuleItemUiKey = (item = {}, moduleKey = 'module', index = 0) => String(item.clientKey || item._id || `${moduleKey}-item-${index + 1}`);
 const buildTextLessonContentFromBlocks = (blocks = []) => (
@@ -971,6 +975,8 @@ const createDigitalFileBlock = (file = {}, order = 1) => ({
   resourceType: file.resourceType || 'raw',
   fileKind: file.fileKind || 'other',
   bytes: file.bytes || 0,
+  watermarkEnabled: isImageModuleFile(file.fileKind) ? !!file.watermarkEnabled : false,
+  watermarkText: isImageModuleFile(file.fileKind) ? String(file.watermarkText || '') : '',
 });
 
 const sortTextLessonBlocks = (blocks = []) => [...blocks].sort((a, b) => {
@@ -1068,6 +1074,8 @@ const createDigitalFileItem = (file = {}, order = 1) => ({
   resourceType: file.resourceType || 'raw',
   fileKind: file.fileKind || 'other',
   bytes: file.bytes || 0,
+  watermarkEnabled: isImageModuleFile(file.fileKind) ? !!file.watermarkEnabled : false,
+  watermarkText: isImageModuleFile(file.fileKind) ? String(file.watermarkText || '') : '',
   blocks: [],
 });
 
@@ -3782,6 +3790,8 @@ export default function Admin() {
                 title: item.title || item.originalFilename || 'Lesson file',
                 description: item.description || '',
                 allowDownload: !!item.allowDownload,
+                watermarkEnabled: isImageModuleFile(item.fileKind) && !!item.allowDownload ? !!item.watermarkEnabled : false,
+                watermarkText: isImageModuleFile(item.fileKind) && item.allowDownload && item.watermarkEnabled ? String(item.watermarkText || '').trim() : '',
                 secureUrl: item.secureUrl || '',
                 publicId: item.publicId || '',
                 originalFilename: item.originalFilename || '',
@@ -3812,6 +3822,8 @@ export default function Admin() {
                         url: '',
                         openInNewTab: true,
                         allowDownload: !!block.allowDownload || !isPreviewableModuleFile(block.fileKind),
+                        watermarkEnabled: isImageModuleFile(block.fileKind) && !!block.allowDownload ? !!block.watermarkEnabled : false,
+                        watermarkText: isImageModuleFile(block.fileKind) && block.allowDownload && block.watermarkEnabled ? String(block.watermarkText || '').trim() : '',
                         secureUrl: block.secureUrl || '',
                         publicId: block.publicId || '',
                         originalFilename: block.originalFilename || '',
@@ -3841,6 +3853,8 @@ export default function Admin() {
                           resourceType: 'raw',
                           fileKind: 'other',
                           bytes: 0,
+                          watermarkEnabled: false,
+                          watermarkText: '',
                         }
                       : {
                           _id: block._id,
@@ -3863,6 +3877,8 @@ export default function Admin() {
                           resourceType: 'raw',
                           fileKind: 'other',
                           bytes: 0,
+                          watermarkEnabled: false,
+                          watermarkText: '',
                         }
                 )).filter((block) => (
                   block.kind === 'file'
@@ -5142,17 +5158,25 @@ const buildTrainingBody = (f) => ({
 
                               {isItemExpanded && (
                                 <>
+                              {item.kind === 'file' && (
+                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Attachment Title</p>
+                              )}
                               <input
                                 value={item.title || ''}
                                 onChange={e => updateModuleItem(moduleIndex, itemIndex, 'title', e.target.value)}
-                                placeholder={item.kind === 'file' ? 'Lesson file title' : 'Text lesson title'}
+                                placeholder={item.kind === 'file' ? 'Attachment or recording title' : 'Text lesson title'}
                                 className={inp}
                               />
 
+                              {item.kind === 'file' && (
+                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Attachment Description</p>
+                              )}
                               <textarea
                                 value={item.description || ''}
                                 onChange={e => updateModuleItem(moduleIndex, itemIndex, 'description', e.target.value)}
-                                placeholder="Short learner-facing description for this step"
+                                placeholder={item.kind === 'file'
+                                  ? 'Describe exactly what this upload or recording is about for the learner'
+                                  : 'Short learner-facing description for this step'}
                                 rows={2}
                                 className={inp + ' resize-none'}
                               />
@@ -5348,7 +5372,7 @@ const buildTrainingBody = (f) => ({
 
                                               {writingBlockTitleEditorVisible && (
                                                 <div className="space-y-3">
-                                                  <div className="grid gap-3 lg:grid-cols-2">
+                                                  <div className="grid gap-3 sm:grid-cols-2">
                                                     <div className="space-y-1">
                                                       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Title</p>
                                                       <textarea
@@ -5435,6 +5459,7 @@ const buildTrainingBody = (f) => ({
                                               value={block.contentHtml || ''}
                                               plainTextValue={block.content || ''}
                                               onChange={(payload) => updateTextLessonBlockRichContent(moduleIndex, itemIndex, blockIndex, payload)}
+                                              editorStyle={writingBlockEditorStyle}
                                               placeholder={'Type the lesson text for this block.\nUse blank lines for paragraphs.\nUse separate blocks when you want the learner to stop and watch, listen, or open something between written parts.'}
                                             />
                                             <div
@@ -5477,16 +5502,18 @@ const buildTrainingBody = (f) => ({
                                           </div>
                                         ) : (
                                           <div className="space-y-3">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Attachment Title</p>
                                             <input
                                               value={block.title || ''}
                                               onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', e.target.value)}
-                                              placeholder="Inline attachment title"
+                                              placeholder="Attachment or recording title"
                                               className={inp}
                                             />
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Attachment Description</p>
                                             <textarea
                                               value={block.description || ''}
                                               onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'description', e.target.value)}
-                                              placeholder="Optional note telling the learner what to do with this attachment"
+                                              placeholder="Describe what this upload or recording is about and what the learner should use it for"
                                               rows={2}
                                               className={inp + ' resize-none'}
                                             />
@@ -5500,6 +5527,34 @@ const buildTrainingBody = (f) => ({
                                               />
                                               {isPreviewableModuleFile(block.fileKind) ? 'Allow learner download' : 'Download required for this file type'}
                                             </label>
+                                            {isImageModuleFile(block.fileKind) && (
+                                              <div className="rounded-2xl border border-gray-200 bg-[#fcfbf7] px-3 py-3 space-y-2">
+                                                <p className="text-[11px] font-bold text-gray-700">Image protection</p>
+                                                <p className="text-[11px] leading-relaxed text-gray-500">
+                                                  {block.allowDownload
+                                                    ? 'This image can be downloaded. Turn on watermarking if the learner copy should carry your name or context.'
+                                                    : 'Leave download off to keep this image strictly protected inside the library.'}
+                                                </p>
+                                                <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={!!block.watermarkEnabled}
+                                                    onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'watermarkEnabled', e.target.checked)}
+                                                    disabled={!block.allowDownload}
+                                                    className="h-4 w-4 accent-black"
+                                                  />
+                                                  Watermark learner copy
+                                                </label>
+                                                {block.allowDownload && block.watermarkEnabled && (
+                                                  <input
+                                                    value={block.watermarkText || ''}
+                                                    onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'watermarkText', e.target.value)}
+                                                    placeholder="Watermark text, e.g. Belle Kreyashon Student Copy"
+                                                    className={inp}
+                                                  />
+                                                )}
+                                              </div>
+                                            )}
                                             <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                                               {block.originalFilename && (
                                                 <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
@@ -5521,8 +5576,13 @@ const buildTrainingBody = (f) => ({
                                                   ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
                                                   : 'border-amber-100 bg-amber-50 text-amber-700'
                                               }`}>
-                                                {block.allowDownload ? 'Download enabled' : 'View only'}
+                                                {block.allowDownload ? 'Download enabled' : 'Strictly protected'}
                                               </span>
+                                              {isImageModuleFile(block.fileKind) && block.allowDownload && block.watermarkEnabled && !!String(block.watermarkText || '').trim() && (
+                                                <span className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-sky-700">
+                                                  Watermarked learner copy
+                                                </span>
+                                              )}
                                             </div>
                                           </div>
                                         )}
@@ -5542,6 +5602,34 @@ const buildTrainingBody = (f) => ({
                                     />
                                     {isPreviewableModuleFile(item.fileKind) ? 'Allow learner download' : 'Download required for this file type'}
                                   </label>
+                                  {isImageModuleFile(item.fileKind) && (
+                                    <div className="rounded-2xl border border-gray-200 bg-[#fcfbf7] px-3 py-3 space-y-2">
+                                      <p className="text-[11px] font-bold text-gray-700">Image protection</p>
+                                      <p className="text-[11px] leading-relaxed text-gray-500">
+                                        {item.allowDownload
+                                          ? 'This image can be downloaded. Turn on watermarking if the learner copy should carry your name or context.'
+                                          : 'Leave download off to keep this image strictly protected inside the library.'}
+                                      </p>
+                                      <label className="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!item.watermarkEnabled}
+                                          onChange={e => updateModuleItem(moduleIndex, itemIndex, 'watermarkEnabled', e.target.checked)}
+                                          disabled={!item.allowDownload}
+                                          className="h-4 w-4 accent-black"
+                                        />
+                                        Watermark learner copy
+                                      </label>
+                                      {item.allowDownload && item.watermarkEnabled && (
+                                        <input
+                                          value={item.watermarkText || ''}
+                                          onChange={e => updateModuleItem(moduleIndex, itemIndex, 'watermarkText', e.target.value)}
+                                          placeholder="Watermark text, e.g. Belle Kreyashon Student Copy"
+                                          className={inp}
+                                        />
+                                      )}
+                                    </div>
+                                  )}
                                   <div className="flex flex-wrap gap-2 text-xs text-gray-500">
                                     {item.originalFilename && (
                                       <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
@@ -5563,8 +5651,13 @@ const buildTrainingBody = (f) => ({
                                         ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
                                         : 'border-amber-100 bg-amber-50 text-amber-700'
                                     }`}>
-                                      {item.allowDownload ? 'Download enabled' : 'View only'}
+                                      {item.allowDownload ? 'Download enabled' : 'Strictly protected'}
                                     </span>
+                                    {isImageModuleFile(item.fileKind) && item.allowDownload && item.watermarkEnabled && !!String(item.watermarkText || '').trim() && (
+                                      <span className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-sky-700">
+                                        Watermarked learner copy
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               )}

@@ -19,6 +19,8 @@ const accessFileSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+  watermarkEnabled: { type: Boolean, default: false },
+  watermarkText: { type: String, default: '' },
 }, { _id: false });
 
 const manualPageSchema = new mongoose.Schema({
@@ -112,6 +114,8 @@ const moduleItemBlockSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+  watermarkEnabled: { type: Boolean, default: false },
+  watermarkText: { type: String, default: '' },
 }, { _id: false });
 
 const moduleItemSchema = new mongoose.Schema({
@@ -135,6 +139,8 @@ const moduleItemSchema = new mongoose.Schema({
     default: 'other',
   },
   bytes: { type: Number, default: 0 },
+  watermarkEnabled: { type: Boolean, default: false },
+  watermarkText: { type: String, default: '' },
 }, { _id: false });
 
 const moduleSchema = new mongoose.Schema({

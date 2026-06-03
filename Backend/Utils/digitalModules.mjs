@@ -16,6 +16,7 @@ const DIGITAL_WRITING_BLOCK_LABEL_MODES = new Set(['none', 'lesson']);
 
 const trimText = (value = '') => String(value || '').trim();
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const normalizeWatermarkText = (value = '') => trimText(value).slice(0, 120);
 const toPositiveNumberOrNull = (value) => {
   if (value === '' || value === undefined || value === null) return null;
   const parsed = Number(value);
@@ -26,6 +27,7 @@ const numericSortValue = (value, fallback = Number.MAX_SAFE_INTEGER) => (
 );
 
 export const isPreviewableDigitalFile = (file = {}) => PREVIEWABLE_FILE_KINDS.has(String(file.fileKind || '').trim());
+export const isWatermarkEligibleDigitalFile = (file = {}) => String(file?.fileKind || '').trim().toLowerCase() === 'image';
 
 export const DIGITAL_CONTENTS_TITLE_STYLE_DEFAULTS = Object.freeze({
   color: '#111827',
@@ -217,6 +219,8 @@ export const normalizeDigitalLessonBlock = (block = {}, index = 0) => {
       resourceType: 'raw',
       fileKind: 'other',
       bytes: 0,
+      watermarkEnabled: false,
+      watermarkText: '',
     };
   }
 
@@ -235,16 +239,20 @@ export const normalizeDigitalLessonBlock = (block = {}, index = 0) => {
       resourceType: 'raw',
       fileKind: 'other',
       bytes: 0,
+      watermarkEnabled: false,
+      watermarkText: '',
     };
   }
 
   const fileKind = trimText(block.fileKind || 'other') || 'other';
+  const allowDownload = !!block.allowDownload || !isPreviewableDigitalFile({ fileKind });
+  const watermarkEnabled = isWatermarkEligibleDigitalFile({ fileKind }) && allowDownload && !!block.watermarkEnabled;
   return {
     ...base,
     content: '',
     url: '',
     openInNewTab: true,
-    allowDownload: !!block.allowDownload || !isPreviewableDigitalFile({ fileKind }),
+    allowDownload,
     secureUrl: trimText(block.secureUrl || ''),
     publicId: trimText(block.publicId || ''),
     originalFilename: trimText(block.originalFilename || ''),
@@ -253,6 +261,8 @@ export const normalizeDigitalLessonBlock = (block = {}, index = 0) => {
     resourceType: trimText(block.resourceType || 'raw') || 'raw',
     fileKind,
     bytes: Math.max(0, Number(block.bytes) || 0),
+    watermarkEnabled,
+    watermarkText: watermarkEnabled ? normalizeWatermarkText(block.watermarkText || '') : '',
   };
 };
 
@@ -323,15 +333,19 @@ export const normalizeDigitalModuleItem = (item = {}, index = 0) => {
       resourceType: 'raw',
       fileKind: 'other',
       bytes: 0,
+      watermarkEnabled: false,
+      watermarkText: '',
     };
   }
 
   const fileKind = trimText(item.fileKind || 'other') || 'other';
+  const allowDownload = !!item.allowDownload || !isPreviewableDigitalFile({ fileKind });
+  const watermarkEnabled = isWatermarkEligibleDigitalFile({ fileKind }) && allowDownload && !!item.watermarkEnabled;
   return {
     ...base,
     content: '',
     blocks: [],
-    allowDownload: !!item.allowDownload || !isPreviewableDigitalFile({ fileKind }),
+    allowDownload,
     secureUrl: trimText(item.secureUrl || ''),
     publicId: trimText(item.publicId || ''),
     originalFilename: trimText(item.originalFilename || ''),
@@ -340,6 +354,8 @@ export const normalizeDigitalModuleItem = (item = {}, index = 0) => {
     resourceType: trimText(item.resourceType || 'raw') || 'raw',
     fileKind,
     bytes: Math.max(0, Number(item.bytes) || 0),
+    watermarkEnabled,
+    watermarkText: watermarkEnabled ? normalizeWatermarkText(item.watermarkText || '') : '',
   };
 };
 

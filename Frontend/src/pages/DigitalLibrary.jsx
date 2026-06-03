@@ -2193,7 +2193,11 @@ export default function DigitalLibrary() {
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#FDC700]">Secure Viewer</p>
                 <h3 className="mt-1 text-lg font-extrabold">{viewer.productName}</h3>
                 <p className="mt-1 text-xs text-gray-300">
-                  {viewer.file.label || viewer.file.originalFilename} {viewer.file.allowDownload ? 'can be downloaded if needed.' : 'is view-only in this library.'}
+                  {viewer.file.label || viewer.file.originalFilename} {viewer.file.allowDownload
+                    ? (viewer.file.fileKind === 'image' && viewer.file.watermarkEnabled && viewer.file.watermarkText
+                      ? 'can be downloaded with its learner watermark applied.'
+                      : 'can be downloaded if needed.')
+                    : 'is view-only in this library.'}
                 </p>
               </div>
               <button

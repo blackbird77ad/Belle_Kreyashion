@@ -5,11 +5,13 @@ import CertificateRecord from '../Models/CertificateRecord.mjs';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Product from '../Models/Product.mjs';
 import { hashRequestDevice, listActiveCustomerSessionDeviceHashes } from '../Middlewares/auth.mjs';
+import { cloudinary } from '../Middlewares/upload.mjs';
 import {
   buildModuleBlockAssetId,
   buildLegacyDigitalModulesFromCollections,
   flattenTextBlocksToContent,
   isPreviewableDigitalFile,
+  isWatermarkEligibleDigitalFile,
   normalizeDigitalContentsPage,
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
@@ -27,6 +29,44 @@ const normalizePhone = (value = '') => {
   return cleaned;
 };
 const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+const normalizeWatermarkText = (value = '') => normalizeText(value)
+  .replace(/\s+/g, ' ')
+  .replace(/[/%?&#\\]/g, '-')
+  .slice(0, 80);
+const shouldWatermarkDigitalAsset = (asset = {}) => (
+  isWatermarkEligibleDigitalFile(asset)
+  && !!asset?.allowDownload
+  && !!asset?.watermarkEnabled
+  && !!normalizeWatermarkText(asset?.watermarkText || '')
+);
+const buildWatermarkedDigitalAssetUrl = (asset = {}) => {
+  const watermarkText = normalizeWatermarkText(asset?.watermarkText || '');
+  if (!asset?.publicId || !watermarkText) return asset?.secureUrl || '';
+
+  return cloudinary.url(asset.publicId, {
+    secure: true,
+    resource_type: 'image',
+    type: 'upload',
+    sign_url: false,
+    transformation: [
+      {
+        overlay: {
+          font_family: 'Arial',
+          font_size: 34,
+          font_weight: 'bold',
+          text: watermarkText,
+        },
+      },
+      {
+        color: 'white',
+        opacity: 42,
+        flags: 'layer_apply',
+        gravity: 'center',
+        angle: -25,
+      },
+    ],
+  });
+};
 
 const isPreviewable = (file) => isPreviewableDigitalFile(file);
 const canDownloadAsset = (file) => !!file?.allowDownload || !isPreviewable(file);
@@ -69,6 +109,8 @@ const flattenModuleFiles = (modules = []) => modules.flatMap((module, moduleInde
         secureUrl: item.secureUrl || '',
         publicId: item.publicId || '',
         resourceType: item.resourceType || 'raw',
+        watermarkEnabled: !!item.watermarkEnabled,
+        watermarkText: item.watermarkText || '',
       }];
     }
 
@@ -94,6 +136,8 @@ const flattenModuleFiles = (modules = []) => modules.flatMap((module, moduleInde
           secureUrl: block.secureUrl || '',
           publicId: block.publicId || '',
           resourceType: block.resourceType || 'raw',
+          watermarkEnabled: !!block.watermarkEnabled,
+          watermarkText: block.watermarkText || '',
         };
       });
   });
@@ -431,6 +475,8 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
                 mimeType: item.mimeType || '',
                 bytes: item.bytes || 0,
                 canPreview: isPreviewable(item),
+                watermarkEnabled: !!item.watermarkEnabled,
+                watermarkText: item.watermarkText || '',
                 isResumeTarget: moduleProgress?.lastItemId === itemId,
               };
             }
@@ -460,6 +506,8 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
                     mimeType: block.mimeType || '',
                     bytes: block.bytes || 0,
                     canPreview: isPreviewable(block),
+                    watermarkEnabled: !!block.watermarkEnabled,
+                    watermarkText: block.watermarkText || '',
                   };
                 }
                 if (block.kind === 'link') {
@@ -510,6 +558,8 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
       mimeType: file.mimeType,
       bytes: file.bytes,
       canPreview: isPreviewable(file),
+      watermarkEnabled: !!file.watermarkEnabled,
+      watermarkText: file.watermarkText || '',
       isCompleted: !!(grant.moduleProgress || []).find((module) => module.assetId === file.assetId || module.lastItemId === file.assetId)?.completedAt,
       openedAt: (grant.moduleProgress || []).find((module) => module.assetId === file.assetId || module.lastItemId === file.assetId)?.openedAt || null,
     })),
@@ -625,7 +675,19 @@ export const serveDigitalAsset = async (req, res) => {
     const asset = assetMatch?.item || null;
     if (!asset) return res.status(404).json({ message: 'File not found' });
 
-    const remote = await axios.get(asset.secureUrl, { responseType: 'stream' });
+    const assetUrl = shouldWatermarkDigitalAsset(asset)
+      ? (buildWatermarkedDigitalAssetUrl(asset) || asset.secureUrl)
+      : asset.secureUrl;
+    let remote;
+    try {
+      remote = await axios.get(assetUrl, { responseType: 'stream' });
+    } catch (assetError) {
+      if (assetUrl !== asset.secureUrl) {
+        remote = await axios.get(asset.secureUrl, { responseType: 'stream' });
+      } else {
+        throw assetError;
+      }
+    }
     const filename = encodeURIComponent(asset.downloadName || asset.originalFilename || 'digital-file');
 
     res.setHeader('Content-Type', asset.mimeType || remote.headers['content-type'] || 'application/octet-stream');

@@ -72,6 +72,8 @@ const snapshotModules = (product) => resolveProductModules(product).map((module,
               resourceType: block.kind === 'file' ? (block.resourceType || 'raw') : 'raw',
               fileKind: block.kind === 'file' ? (block.fileKind || 'other') : 'other',
               bytes: block.kind === 'file' ? (block.bytes || 0) : 0,
+              watermarkEnabled: block.kind === 'file' ? !!block.watermarkEnabled : false,
+              watermarkText: block.kind === 'file' ? (block.watermarkText || '') : '',
             }))
           : [],
         allowDownload: item.kind === 'file' ? (!!item.allowDownload || !isPreviewableDigitalFile(item)) : false,
@@ -83,6 +85,8 @@ const snapshotModules = (product) => resolveProductModules(product).map((module,
         resourceType: item.kind === 'file' ? (item.resourceType || 'raw') : 'raw',
         fileKind: item.kind === 'file' ? (item.fileKind || 'other') : 'other',
         bytes: item.kind === 'file' ? (item.bytes || 0) : 0,
+        watermarkEnabled: item.kind === 'file' ? !!item.watermarkEnabled : false,
+        watermarkText: item.kind === 'file' ? (item.watermarkText || '') : '',
       })),
   };
 });
@@ -106,6 +110,8 @@ const snapshotFiles = (product) => snapshotModules(product)
           resourceType: item.resourceType || 'raw',
           fileKind: item.fileKind || 'other',
           bytes: item.bytes || 0,
+          watermarkEnabled: !!item.watermarkEnabled,
+          watermarkText: item.watermarkText || '',
         }];
       }
 
@@ -126,6 +132,8 @@ const snapshotFiles = (product) => snapshotModules(product)
           resourceType: block.resourceType || 'raw',
           fileKind: block.fileKind || 'other',
           bytes: block.bytes || 0,
+          watermarkEnabled: !!block.watermarkEnabled,
+          watermarkText: block.watermarkText || '',
         }));
     })
   ))

@@ -22,3 +22,6 @@ Frontend/dist/
 .DS_Store
 *.local
 Thumbs.db
+
+# Local notes
+Backend/phase.txt
