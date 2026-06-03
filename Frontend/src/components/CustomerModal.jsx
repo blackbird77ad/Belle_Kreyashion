@@ -63,7 +63,7 @@ const ACCOUNT_COPY = {
   },
   forgot: {
     title: 'Reset your password',
-    subtitle: 'Enter the email linked to your account and we will send you a reset link.',
+    subtitle: 'Enter the email or phone linked to your account and we will send the reset link to the saved email on that profile.',
     button: 'Send Reset Link',
   },
 };
@@ -166,14 +166,22 @@ export default function CustomerModal({ onClose, onSuccess, initialMode = 'signu
   };
 
   const handleForgotPassword = async () => {
-    const emailError = validateEmail(email);
-    if (emailError) return setError(emailError);
+    const identifierValue = email.trim();
+    if (!identifierValue) return setError('Please enter your email address or phone number');
+
+    if (identifierValue.includes('@')) {
+      const emailError = validateEmail(identifierValue);
+      if (emailError) return setError(emailError);
+    } else {
+      const phoneError = validatePhone(identifierValue);
+      if (phoneError) return setError(phoneError);
+    }
 
     const { data } = await api.post('/api/customers/password-reset/request', {
-      email: email.trim().toLowerCase(),
+      identifier: identifierValue,
     });
 
-    setMessage(data.message || 'If an account exists for that email, a reset link has been sent.');
+    setMessage(data.message || 'If an account exists for those details, a reset link has been sent.');
     setError('');
   };
 
@@ -382,8 +390,8 @@ export default function CustomerModal({ onClose, onSuccess, initialMode = 'signu
               <input
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="Email address"
-                inputMode="email"
+                placeholder="Email address or phone number"
+                inputMode={email.includes('@') ? 'email' : 'tel'}
                 className="w-full rounded-xl border border-gray-200 py-3 pl-9 pr-4 text-sm outline-none transition-all focus:border-black"
               />
             </div>

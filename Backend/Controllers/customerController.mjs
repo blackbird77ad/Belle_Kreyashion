@@ -75,12 +75,24 @@ const buildFrontendBaseUrl = () => String(process.env.FRONTEND_URL || 'https://b
 const buildVerificationUrl = (token) => `${buildFrontendBaseUrl()}/account/verify?token=${encodeURIComponent(token)}`;
 const buildPasswordResetUrl = (token) => `${buildFrontendBaseUrl()}/account/reset-password?token=${encodeURIComponent(token)}`;
 
+const findCustomerByEmail = async (emailAddress = '') => {
+  const email = normalizeEmail(emailAddress);
+  if (!email) return null;
+
+  const exactMatch = await Customer.findOne({ email });
+  if (exactMatch) return exactMatch;
+
+  return Customer.findOne({
+    email: { $regex: `^${escapeRegex(email)}$`, $options: 'i' },
+  });
+};
+
 const findCustomerByIdentifier = async (identifier = '') => {
   const email = normalizeEmail(identifier);
   const phone = normalizePhone(identifier);
 
   if (email && email.includes('@')) {
-    return Customer.findOne({ email });
+    return findCustomerByEmail(email);
   }
   if (phone) {
     return Customer.findOne({ phone });
@@ -342,8 +354,15 @@ export const loginCustomer = async (req, res) => {
     }
 
     const customer = await findCustomerByIdentifier(identifier);
-    if (!customer || !customer.passwordHash) {
+    if (!customer) {
       return res.status(404).json({ message: 'No customer account was found. Please sign up with the same details you used for checkout.' });
+    }
+    if (!customer.passwordHash) {
+      return res.status(403).json({
+        message: customer.email
+          ? 'This account does not have a password yet. Use reset password to create one and then sign in.'
+          : 'This account does not have a password or email yet. Please contact support so we can finish setting it up safely.',
+      });
     }
 
     const matches = await bcrypt.compare(password, customer.passwordHash);
@@ -452,14 +471,19 @@ export const getCustomerHistory = async (req, res) => {
 
 export const requestCustomerPasswordReset = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
-    if (!email) {
-      return res.status(400).json({ message: 'Email address is required' });
+    const identifier = String(req.body.identifier || req.body.email || '').trim();
+    if (!identifier) {
+      return res.status(400).json({ message: 'Email address or phone number is required' });
     }
 
-    const customer = await Customer.findOne({ email });
-    if (!customer || !customer.passwordHash) {
+    const customer = await findCustomerByIdentifier(identifier);
+    if (!customer || !customer.email) {
       return res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
+    }
+
+    const normalizedCustomerEmail = normalizeEmail(customer.email);
+    if (normalizedCustomerEmail && customer.email !== normalizedCustomerEmail) {
+      customer.email = normalizedCustomerEmail;
     }
 
     const resetState = createPasswordResetState();
@@ -510,6 +534,11 @@ export const resetCustomerPassword = async (req, res) => {
     customer.passwordHash = await bcrypt.hash(password, 10);
     customer.passwordResetTokenHash = '';
     customer.passwordResetExpiresAt = null;
+    if (customer.email) {
+      customer.emailVerified = true;
+      customer.emailVerificationTokenHash = '';
+      customer.emailVerificationExpiresAt = null;
+    }
     customer.lastLoginAt = new Date();
     await customer.save();
 
