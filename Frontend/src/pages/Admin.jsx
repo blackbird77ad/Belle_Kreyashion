@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../hooks/useApi';
-import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List, Mic, Video, Square, Link2, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List, Mic, Video, Square, Link2, GripVertical, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { CATEGORY_VALUES } from '../data/categories';
 import {
   DIGITAL_TYPE_OPTIONS,
@@ -34,7 +34,7 @@ const getCollectionLayoutClass = (tab, viewMode) => {
 };
 
 const inp = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
-const certHelp = 'mt-1 text-[11px] leading-relaxed text-gray-500';
+const certHelp = 'mt-1 text-[10px] leading-relaxed text-gray-400';
 const DIGITAL_CONTENTS_FONT_OPTIONS = [
   { value:'Georgia, serif', label:'Georgia Serif' },
   { value:'"Times New Roman", serif', label:'Times New Roman' },
@@ -570,6 +570,31 @@ function RichTextEditor({
         />
       </div>
     </div>
+  );
+}
+
+function AdminHoverHint({
+  text = '',
+  align = 'left',
+  className = '',
+}) {
+  const positionClass = align === 'right' ? 'right-0' : 'left-0';
+  return (
+    <span className={`relative inline-flex shrink-0 group ${className}`}>
+      <button
+        type="button"
+        title={text}
+        aria-label="Show help"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 transition hover:border-gray-300 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-200"
+      >
+        <Info size={12} />
+      </button>
+      <span
+        className={`pointer-events-none absolute ${positionClass} top-full z-30 mt-2 hidden w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] leading-relaxed text-gray-500 shadow-[0_12px_28px_rgba(17,24,39,0.12)] group-hover:block group-focus-within:block sm:w-72`}
+      >
+        {text}
+      </span>
+    </span>
   );
 }
 
@@ -1770,11 +1795,15 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
 
   return (
     <div className="sm:col-span-2 space-y-3 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Record Media</p>
-        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-          Record a quick audio lesson, voice note, walkthrough, or video clip here, then upload it straight into this digital product as a secure media file.
-        </p>
+      <div className="flex flex-wrap items-start gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Record Media</p>
+          <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Quick audio or video capture.</p>
+        </div>
+        <AdminHoverHint
+          text="Record a quick audio lesson, voice note, walkthrough, or video clip here, then upload it straight into this digital product as a secure media file."
+          className="mt-0.5"
+        />
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -1819,7 +1848,7 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-extrabold text-black">Recorded {recordMode === 'video' ? 'video' : 'audio'} ready</p>
-              <p className="mt-1 text-xs text-gray-500">Preview it first, then upload it into the secure product files below.</p>
+              <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Preview before uploading.</p>
             </div>
             <span className="rounded-full bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-600 border border-gray-200">
               {formatBytes(recordedBlob.size)}
@@ -1916,10 +1945,23 @@ function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUpload
           ) : (
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-bold text-black">Add upload attachment</p>
-                <p className="mt-1 text-xs text-gray-500">Upload images, video, audio, PDFs, slides, workbooks, ZIPs, or other secure lesson attachments straight into this module.</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <p className="text-xs font-bold text-black">Add upload attachment</p>
+                  <AdminHoverHint
+                    text="Upload images, video, audio, PDFs, slides, workbooks, ZIPs, or other secure lesson attachments straight into this module."
+                    className="sm:hidden"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Secure lesson files.</p>
               </div>
-              <Upload size={16} className="shrink-0 text-gray-400" />
+              <div className="flex items-center gap-2">
+                <AdminHoverHint
+                  text="Upload images, video, audio, PDFs, slides, workbooks, ZIPs, or other secure lesson attachments straight into this module."
+                  align="right"
+                  className="hidden sm:inline-flex"
+                />
+                <Upload size={16} className="shrink-0 text-gray-400" />
+              </div>
             </div>
           )}
         </div>
@@ -2165,8 +2207,8 @@ function ModuleMediaRecorder({ token, uploadEndpoint, disabled = false, onRecord
                   ? 'Captured picture ready'
                   : `Recorded ${recordMode === 'video' ? 'video' : 'audio'} ready`}
               </p>
-              <p className="mt-1 text-xs text-gray-500">
-                Preview it, then add it as the next secure lesson item in this module.
+              <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
+                Preview before adding.
               </p>
             </div>
             <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-600">
@@ -2268,7 +2310,7 @@ function DigitalProductCustomerPreview({
       </div>
 
       {!orderedModules.length ? (
-        <div className="rounded-2xl border border-dashed border-white/80 bg-white/75 px-4 py-4 text-xs text-gray-500">
+        <div className="rounded-2xl border border-dashed border-white/80 bg-white/75 px-4 py-4 text-[10px] leading-relaxed text-gray-400">
           Add at least one module to see the learner preview here.
         </div>
       ) : (
@@ -4469,9 +4511,14 @@ const buildTrainingBody = (f) => ({
               <div className="space-y-3">
                 <div className="rounded-xl border border-[#FDC700]/30 bg-[#fcfbf7] px-4 py-3">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7a00] mb-1">Digital Product Setup</p>
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    Use this form for protected downloads like PDFs, videos, templates, audio files and bundled digital resources. Uploaded files here stay separate from regular shop products.
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-start gap-2">
+                    <p className="text-[10px] leading-relaxed text-gray-400">
+                      Protected files, lessons, and bundled digital resources.
+                    </p>
+                    <AdminHoverHint
+                      text="Use this form for protected downloads like PDFs, videos, templates, audio files and bundled digital resources. Uploaded files here stay separate from regular shop products."
+                    />
+                  </div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <input value={form.name||''} onChange={e => sf('name',e.target.value)} placeholder="Digital product name *" className={inp} />
@@ -4567,8 +4614,9 @@ const buildTrainingBody = (f) => ({
                     </div>
 
                     {!(form.digitalModules || []).length && (
-                      <div className="rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] px-4 py-4 text-xs text-gray-500">
-                        No modules yet. Add a module, give it a title and description, then start stacking the typed lesson parts, uploads, and recordings in the order the learner should consume them.
+                      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] px-4 py-3 text-[10px] leading-relaxed text-gray-400">
+                        <span>No modules yet.</span>
+                        <AdminHoverHint text="Add a module, give it a title and description, then start stacking the typed lesson parts, uploads, and recordings in the order the learner should consume them." />
                       </div>
                     )}
 
@@ -5105,9 +5153,12 @@ const buildTrainingBody = (f) => ({
                                                     <option key={option.value} value={option.value}>{option.label}</option>
                                                   ))}
                                                 </select>
-                                                <span className="rounded-2xl border border-dashed border-[#e6d8a6] bg-white px-3 py-2 text-[11px] font-bold text-[#8b6a00]">
-                                                  Use the writing tools above the main text box to style selected text only.
-                                                </span>
+                                                <div className="inline-flex items-center gap-1.5">
+                                                  <span className="rounded-2xl border border-dashed border-gray-200 bg-white px-3 py-1 text-[10px] font-medium text-gray-400">
+                                                    Selected text only
+                                                  </span>
+                                                  <AdminHoverHint text="Highlight the words you want to change, then use the writing tools above the editor." />
+                                                </div>
                                               </div>
 
                                               {writingBlockTitleEditorVisible && (
@@ -5166,10 +5217,10 @@ const buildTrainingBody = (f) => ({
                                               placeholder={'Type the lesson text for this block.\nUse blank lines for paragraphs.\nUse separate blocks when you want the learner to stop and watch, listen, or open something between written parts.'}
                                             />
                                             <div
-                                              className="rounded-2xl border border-dashed border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-500"
+                                              className="rounded-2xl border border-dashed border-gray-200 bg-white px-3 py-1 text-[10px] leading-relaxed text-gray-400"
                                               style={writingBlockEditorStyle}
                                             >
-                                              Select text in the main writing area, then use the writing tools right above it to change font, size, colour, highlight, bold, italic, underline, or clear formatting.
+                                              Select text above to format it.
                                             </div>
                                           </div>
                                         ) : block.kind === 'link' ? (
@@ -5488,19 +5539,31 @@ const buildTrainingBody = (f) => ({
                   )}
                   <div className="sm:col-span-2 space-y-3">
                     <input value={form.supportEmail||''} onChange={e => sf('supportEmail',e.target.value)} placeholder="Trainer / tutor support email" className={inp} />
-                    <p className={certHelp}>Learners will see this inside the digital library and secure viewer when they need help with lessons or modules.</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <p className="text-[10px] leading-relaxed text-gray-400">Shown to learners in the library.</p>
+                      <AdminHoverHint text="Learners will see this inside the digital library and secure viewer when they need help with lessons or modules." />
+                    </div>
                   </div>
                   <div className="sm:col-span-2 space-y-3">
                     <input value={form.supportWhatsApp||''} onChange={e => sf('supportWhatsApp',e.target.value)} placeholder="Trainer / tutor WhatsApp (optional)" className={inp} />
-                    <p className={certHelp}>Optional support line for quicker help. Example: `0594038888` or `+233594038888`.</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <p className="text-[10px] leading-relaxed text-gray-400">Optional quick support line.</p>
+                      <AdminHoverHint text="Example: `0594038888` or `+233594038888`." />
+                    </div>
                   </div>
                   <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4 space-y-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Table of Contents Page</p>
-                        <p className="mt-1 text-xs text-gray-500 leading-relaxed max-w-3xl">
-                          This page is generated from module titles, lesson titles, and their subtitles. Learners can open it in the library and tap any entry to jump straight to the right lesson.
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-start gap-2">
+                          <p className="text-[10px] leading-relaxed text-gray-400">
+                            Generated from your modules and lessons.
+                          </p>
+                          <AdminHoverHint
+                            text="This page is generated from module titles, lesson titles, and their subtitles. Learners can open it in the library and tap any entry to jump straight to the right lesson."
+                            align="right"
+                          />
+                        </div>
                       </div>
                       <button
                         type="button"
