@@ -8,6 +8,7 @@ import { useIntlPreferences } from '../context/IntlContext';
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
 import { buildBreadcrumbSchema, getProductPath, toAbsoluteUrl } from '../utils/seoPaths';
+import { buildDiscountPresentation } from '../utils/discounts';
 import { trackProductView } from '../utils/marketing';
 
 const normalizeSupportWhatsApp = (value = '') => {
@@ -88,12 +89,9 @@ export default function Product() {
   const supportWhatsAppLink = buildSupportWhatsAppLink(supportWhatsApp, product?.name || '');
   const isWholesale = tab === 'wholesale';
   const retailPrice  = product?.retailPrice;
-  const discountActive = !isWholesale && product?.discount?.active;
-  const finalPrice   = discountActive
-    ? product.discount.type === 'percent'
-      ? Math.round(retailPrice * (1 - product.discount.value / 100))
-      : Math.max(0, retailPrice - product.discount.value)
-    : retailPrice;
+  const discountPreview = buildDiscountPresentation(retailPrice, product?.discount || {}, { respectLiveState: true });
+  const discountActive = !isWholesale && discountPreview.discounted;
+  const finalPrice   = discountActive ? discountPreview.finalPrice : retailPrice;
   const price        = isWholesale ? product?.wholesalePrice : finalPrice;
   const digitalCartKey = product?._id ? `digital-${product._id}` : '';
   const isDigitalAlreadyInCart = !!(isDigital && digitalCartKey && cart.some((item) => item.key === digitalCartKey));
@@ -256,13 +254,33 @@ export default function Product() {
               </p>
               {discountActive && !isFreeDigital && (
                 <div className="flex flex-col">
-                  <span className="text-sm text-gray-400 line-through">{formatMoney(retailPrice)}</span>
-                  <span className="text-xs font-extrabold text-green-600">
-                    {product.discount.type === 'percent' ? `-${product.discount.value}% off` : `Save ${formatMoney(product.discount.value)}`}
-                  </span>
+                  <span className="text-sm text-gray-400 line-through">Was {formatMoney(discountPreview.basePrice)}</span>
+                  <span className="text-xs font-extrabold text-green-600">Now {formatMoney(discountPreview.finalPrice)}</span>
                 </div>
               )}
             </div>
+            {discountActive && !isFreeDigital && (
+              <div className="mb-3 max-w-md rounded-2xl border border-[#FDC700]/30 bg-[#fcfbf7] px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {!!discountPreview.label && (
+                    <span className="rounded-full border border-[#FDC700]/25 bg-white px-2.5 py-1 text-[11px] font-extrabold text-[#9a7a00]">
+                      {discountPreview.label}
+                    </span>
+                  )}
+                  {!!discountPreview.limitText && (
+                    <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
+                      {discountPreview.limitText}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-sm font-extrabold text-green-700">
+                  {discountPreview.offerText}{discountPreview.limitText ? ` ${discountPreview.limitText}` : ''}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Was {formatMoney(discountPreview.basePrice)}. Now {formatMoney(discountPreview.finalPrice)}.
+                </p>
+              </div>
+            )}
             {isTrialDigital && (
               <p className="text-sm text-gray-600 mb-3">
                 Start with {freeTrialDays} free day{freeTrialDays === 1 ? '' : 's'}, then we bill <span className="font-extrabold">{formatMoney(price)}</span> if the trial continues.

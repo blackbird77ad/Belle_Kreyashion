@@ -19,6 +19,7 @@ import { useCustomer } from '../context/CustomerContext';
 import { useIntlPreferences } from '../context/IntlContext';
 import { api } from '../hooks/useApi';
 import { buildBreadcrumbSchema, buildCollectionPageSchema, getProductPath } from '../utils/seoPaths';
+import { buildDiscountPresentation } from '../utils/discounts';
 import {
   DIGITAL_DURATION_OPTIONS,
   DIGITAL_FORMAT_OPTIONS,
@@ -45,12 +46,6 @@ const SPECIAL_FILTERS = [
   { key: 'fastSelling', label: 'Best Sellers', icon: <Zap size={13} /> },
   { key: 'discounted', label: 'On Sale', icon: <Tag size={13} /> },
 ];
-
-const calcDiscountedPrice = (product) => {
-  if (!product.discount?.active) return product.retailPrice;
-  if (product.discount.type === 'percent') return Math.round(product.retailPrice * (1 - product.discount.value / 100));
-  return Math.max(0, product.retailPrice - product.discount.value);
-};
 
 const formatType = (value) => {
   if (!value) return 'Digital Product';
@@ -288,7 +283,14 @@ export default function DigitalProducts() {
         const response = await api.get(`/api/products/public?${params.toString()}`, customer?.accessToken
           ? { headers: { 'x-customer-token': customer.accessToken } }
           : undefined);
-        if (!cancelled) setProducts(response.data || []);
+        if (!cancelled) {
+          const nextProducts = Array.isArray(response.data) ? response.data : [];
+          setProducts(
+            special === 'discounted'
+              ? nextProducts.filter((product) => buildDiscountPresentation(product.retailPrice, product.discount || {}, { respectLiveState: true }).discounted)
+              : nextProducts
+          );
+        }
       } catch {
         if (!cancelled) setProducts([]);
       } finally {
@@ -851,8 +853,9 @@ export default function DigitalProducts() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               {pagedProducts.map((product) => {
-                const discounted = product.discount?.active;
-                const finalPrice = calcDiscountedPrice(product);
+                const discountPreview = buildDiscountPresentation(product.retailPrice, product.discount || {}, { respectLiveState: true });
+                const discounted = discountPreview.discounted;
+                const finalPrice = discounted ? discountPreview.finalPrice : product.retailPrice;
                 const isFreeDigital = product.digitalAccessKind === 'free';
                 const isTrialDigital = product.digitalAccessKind === 'trial';
                 const customerHasAccess = !!product.customerHasAccess;
@@ -906,7 +909,7 @@ export default function DigitalProducts() {
                         )}
                         {discounted && (
                           <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2.5 py-1 text-[11px] font-extrabold text-black">
-                            Sale
+                            {discountPreview.label || discountPreview.offerText}
                           </span>
                         )}
                       </div>
@@ -978,12 +981,21 @@ export default function DigitalProducts() {
                               <p className="text-xs text-gray-500">Then {formatMoney(finalPrice)}</p>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xl font-extrabold text-black">{formatMoney(finalPrice)}</span>
-                              {discounted && (
-                                <span className="text-xs text-gray-400 line-through">
-                                  {formatMoney(product.retailPrice)}
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xl font-extrabold text-black">
+                                  {discounted ? `Now ${formatMoney(finalPrice)}` : formatMoney(finalPrice)}
                                 </span>
+                                {discounted && (
+                                  <span className="text-xs text-gray-400 line-through">
+                                    Was {formatMoney(discountPreview.basePrice)}
+                                  </span>
+                                )}
+                              </div>
+                              {discounted && (
+                                <p className="text-[11px] font-bold text-[#9a7a00]">
+                                  {[discountPreview.label, discountPreview.offerText, discountPreview.limitText].filter(Boolean).join(' - ')}
+                                </p>
                               )}
                             </div>
                           )}

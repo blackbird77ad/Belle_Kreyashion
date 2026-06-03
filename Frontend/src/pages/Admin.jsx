@@ -19,6 +19,7 @@ import {
 import { FRONTEND_CERTIFICATE_TEMPLATE_PRESETS } from '../data/certificateTemplatePresets';
 import { CertificateTemplatePreview } from '../components/CertificateTemplatePicker';
 import { generateCertificate } from '../utils/generateCertificate';
+import { buildDiscountPresentation } from '../utils/discounts';
 
 const TABS = ['Analytics','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Customers','Abandoned','Consultations','Blog','Featured','Invoice'];
 const PRODUCT_LIKE_TABS = new Set(['Products', 'Digital Products', 'Featured']);
@@ -740,6 +741,17 @@ const toDateInput = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+const normalizeDiscountForForm = (discount = null) => ({
+  type: discount?.type === 'fixed' ? 'fixed' : 'percent',
+  value: discount?.value ?? '',
+  label: discount?.label || '',
+  limitCustomers: discount?.limitCustomers ? String(discount.limitCustomers) : '',
+  startDate: toDateInput(discount?.startDate),
+  endDate: toDateInput(discount?.endDate),
+  active: discount?.active !== false,
+  usedCount: Number(discount?.usedCount) || 0,
+});
+
 const formatAdminDate = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -1010,6 +1022,19 @@ const buildDigitalContentsWritingBlockEntries = (item = {}) => {
       };
     })
     .filter(Boolean);
+};
+
+const getDigitalContentsModuleEntryCounts = (module = {}) => {
+  const lessons = Array.isArray(module?.items) ? module.items.length : 0;
+  const writingBlocks = (Array.isArray(module?.items) ? module.items : []).reduce(
+    (sum, item) => sum + buildDigitalContentsWritingBlockEntries(item).length,
+    0
+  );
+  return {
+    lessons,
+    writingBlocks,
+    totalEntries: lessons + writingBlocks,
+  };
 };
 
 const normalizeTextLessonBlockForForm = (block = {}, index = 0) => {
@@ -2839,9 +2864,12 @@ export default function Admin() {
   const [visibleDigitalWritingBlockTitles, setVisibleDigitalWritingBlockTitles] = useState({});
   const [showDigitalCustomerPreview, setShowDigitalCustomerPreview] = useState(false);
   const [expandedPreviewModules, setExpandedPreviewModules] = useState({});
+  const [showDigitalContentsPreviewEntries, setShowDigitalContentsPreviewEntries] = useState(true);
+  const [expandedDigitalContentsPreviewModules, setExpandedDigitalContentsPreviewModules] = useState({});
   const draggedModuleRef = useRef(null);
   const draggedModuleItemRef = useRef(null);
   const draggedLessonBlockRef = useRef(null);
+  const digitalModulesSectionRef = useRef(null);
   const digitalAutoSaveTimerRef = useRef(null);
   const digitalDraftTimerRef = useRef(null);
   const lastDigitalAutoSaveSnapshotRef = useRef('');
@@ -2851,6 +2879,7 @@ export default function Admin() {
   const auth = { headers: { Authorization: `Bearer ${token}` } };
   const visibleCertificateTemplates = mergeCertificateTemplates(certificateTemplates);
   const digitalContentsPagePreview = normalizeDigitalContentsPageForForm(form.digitalContentsPage || {});
+  const digitalDiscountPreview = buildDiscountPresentation(form.retailPrice, { ...(form.discount || {}), active: true }, { respectLiveState: false });
   const [orderFilter,    setOrderFilter]    = useState('all');
   const [customerSearch, setCustomerSearch] = useState('');
 
@@ -2993,7 +3022,9 @@ export default function Admin() {
     setExpandedDigitalModuleItems({});
     setExpandedDigitalWritingBlocks({});
     setExpandedPreviewModules({});
+    setExpandedDigitalContentsPreviewModules({});
     setShowDigitalCustomerPreview(false);
+    setShowDigitalContentsPreviewEntries(true);
     pendingDigitalItemScrollRef.current = '';
     if (digitalAutoSaveTimerRef.current) {
       clearTimeout(digitalAutoSaveTimerRef.current);
@@ -3082,6 +3113,9 @@ export default function Admin() {
   const togglePreviewModuleExpanded = (moduleKey) => {
     setExpandedPreviewModules((current) => ({ ...current, [moduleKey]: !current[moduleKey] }));
   };
+  const toggleDigitalContentsPreviewModuleExpanded = (moduleKey) => {
+    setExpandedDigitalContentsPreviewModules((current) => ({ ...current, [moduleKey]: !(current[moduleKey] ?? true) }));
+  };
   const expandAllDigitalModules = () => {
     const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
     setExpandedDigitalModules(Object.fromEntries(modules.map((module, index) => [getModuleUiKey(module, index), true])));
@@ -3097,6 +3131,11 @@ export default function Admin() {
   const collapseAllPreviewModules = () => {
     const modules = Array.isArray(form.digitalModules) ? form.digitalModules : [];
     setExpandedPreviewModules(Object.fromEntries(modules.map((module, index) => [getModuleUiKey(module, index), false])));
+  };
+  const scrollToDigitalModulesEditor = () => {
+    const target = digitalModulesSectionRef.current;
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   useEffect(() => {
@@ -3160,6 +3199,16 @@ export default function Admin() {
       });
       return next;
     });
+
+    setExpandedDigitalContentsPreviewModules((current) => {
+      const currentKeys = Object.keys(current || {});
+      const next = {};
+      modules.forEach((module, index) => {
+        const key = getModuleUiKey(module, index);
+        next[key] = current[key] ?? (currentKeys.length === 0 ? index === 0 : false);
+      });
+      return next;
+    });
   }, [form.digitalModules, showForm, tab]);
 
   useEffect(() => {
@@ -3191,7 +3240,9 @@ export default function Admin() {
     setExpandedDigitalModuleItems({});
     setExpandedDigitalWritingBlocks({});
     setExpandedPreviewModules({});
+    setExpandedDigitalContentsPreviewModules({});
     setShowDigitalCustomerPreview(false);
+    setShowDigitalContentsPreviewEntries(true);
     setDigitalAutoSave({
       status: restoredDraft ? 'saved' : 'idle',
       message: restoredDraft ? 'Unsaved draft restored locally.' : '',
@@ -3213,7 +3264,9 @@ export default function Admin() {
     setExpandedDigitalModuleSections({});
     setExpandedDigitalModuleItems({});
     setExpandedPreviewModules({});
+    setExpandedDigitalContentsPreviewModules({});
     setShowDigitalCustomerPreview(false);
+    setShowDigitalContentsPreviewEntries(true);
     if (tab === 'Products') {
       setForm({
         ...item,
@@ -3224,7 +3277,7 @@ export default function Admin() {
         stock:           item.stock !== null && item.stock !== undefined ? item.stock : '',
         preOrderType:    item.preOrderType    || '',
         hasDiscount:     !!item.discount,
-        discount:        item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
+        discount:        normalizeDiscountForForm(item.discount),
         variants:        item.variants?.length ? JSON.stringify(item.variants) : '',
       });
     } else if (tab === 'Digital Products') {
@@ -3237,7 +3290,7 @@ export default function Admin() {
         featured:        !!item.featured,
         fastSelling:     !!item.fastSelling,
         hasDiscount:     !!item.discount,
-        discount:        item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
+        discount:        normalizeDiscountForForm(item.discount),
         isDigital:       true,
         digitalType:     item.digitalType || 'mixed',
         digitalSkillLevel: item.digitalSkillLevel || 'all-levels',
@@ -3286,7 +3339,7 @@ export default function Admin() {
         preOrderType:   item.preOrderType    || '',
         depositPercent: item.depositPercent  || '',
         hasDiscount:    !!item.discount,
-        discount:       item.discount || { type:'percent',value:'',label:'',limitCustomers:'',startDate:'',endDate:'' },
+        discount:       normalizeDiscountForForm(item.discount),
         plan:           item.partnerPlanMonths || 1,
         isPartner:      true,
         partnerContact: item.partnerContact  || '',
@@ -3316,7 +3369,9 @@ export default function Admin() {
     setExpandedDigitalModuleItems({});
     setExpandedDigitalWritingBlocks({});
     setExpandedPreviewModules({});
+    setExpandedDigitalContentsPreviewModules({});
     setShowDigitalCustomerPreview(false);
+    setShowDigitalContentsPreviewEntries(true);
     setDigitalAutoSave({ status: 'idle', message: '' });
     if (digitalAutoSaveTimerRef.current) {
       clearTimeout(digitalAutoSaveTimerRef.current);
@@ -4765,7 +4820,7 @@ const buildTrainingBody = (f) => ({
                   )}
                   <textarea value={form.desc||''} onChange={e => sf('desc',e.target.value)} placeholder="Description" rows={3} className={inp+' resize-none sm:col-span-2'} />
                   <textarea value={form.accessNote||''} onChange={e => sf('accessNote',e.target.value)} placeholder="Access note or purchase guidance (optional)" rows={2} className={inp+' resize-none sm:col-span-2'} />
-                  <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+                  <div ref={digitalModulesSectionRef} className="sm:col-span-2 rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Modules / Series Flow</p>
@@ -5881,10 +5936,11 @@ const buildTrainingBody = (f) => ({
                       </div>
                       <button
                         type="button"
-                        onClick={() => sf('digitalContentsPage', createDefaultDigitalContentsPage())}
-                        className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                        onClick={scrollToDigitalModulesEditor}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
                       >
-                        Reset Contents Page
+                        <Pencil size={13} />
+                        Edit Content
                       </button>
                     </div>
 
@@ -5998,7 +6054,20 @@ const buildTrainingBody = (f) => ({
                       </div>
 
                       <div className="rounded-[24px] border border-black/10 bg-[linear-gradient(180deg,_#ffffff_0%,_#f7f3ea_100%)] p-4 shadow-[0_18px_40px_rgba(17,24,39,0.08)]">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Live Contents Preview</p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Live Contents Preview</p>
+                            <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Fold the list or open modules one at a time while you review the generated order.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowDigitalContentsPreviewEntries((current) => !current)}
+                            className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                          >
+                            {showDigitalContentsPreviewEntries ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            {showDigitalContentsPreviewEntries ? 'Fold Content' : 'Open Content'}
+                          </button>
+                        </div>
                         <div className="mt-3 rounded-[20px] border border-white/80 bg-white/90 p-4">
                           <p style={buildDigitalContentsInlineStyle(digitalContentsPagePreview.titleStyle, DEFAULT_DIGITAL_CONTENTS_TITLE_STYLE)}>
                             {digitalContentsPagePreview.title}
@@ -6008,19 +6077,78 @@ const buildTrainingBody = (f) => ({
                           </p>
 
                           {(form.digitalModules || []).length ? (
-                            <div className="mt-4 space-y-3">
-                              {(form.digitalModules || []).map((module, moduleIndex) => (
-                                <div key={module.clientKey || module._id || `contents-preview-module-${moduleIndex}`} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
-                                  <div className="flex items-start gap-3">
-                                    <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-2 text-[11px] font-extrabold text-white">
-                                      {module.moduleNumber || moduleIndex + 1}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-sm font-extrabold text-black">
-                                        {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
-                                      </p>
-                                      <div className="mt-3 space-y-2">
-                                        {(module.items || []).map((item, itemIndex) => {
+                            <>
+                              {!showDigitalContentsPreviewEntries && (
+                                <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                    {pluralize((form.digitalModules || []).length, 'module')}
+                                  </span>
+                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                    {pluralize(
+                                      (form.digitalModules || []).reduce((sum, module) => (
+                                        sum + getDigitalContentsModuleEntryCounts(module).lessons
+                                      ), 0),
+                                      'lesson'
+                                    )}
+                                  </span>
+                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                    {pluralize(
+                                      (form.digitalModules || []).reduce((sum, module) => (
+                                        sum + getDigitalContentsModuleEntryCounts(module).writingBlocks
+                                      ), 0),
+                                      'writing title'
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                              {showDigitalContentsPreviewEntries && (
+                                <div className="mt-4 space-y-3">
+                                  {(form.digitalModules || []).map((module, moduleIndex) => {
+                                    const moduleKey = getModuleUiKey(module, moduleIndex);
+                                    const isModuleExpanded = expandedDigitalContentsPreviewModules[moduleKey] ?? moduleIndex === 0;
+                                    const moduleCounts = getDigitalContentsModuleEntryCounts(module);
+                                    return (
+                                      <div key={module.clientKey || module._id || `contents-preview-module-${moduleIndex}`} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                          <div className="flex min-w-0 items-start gap-3">
+                                            <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-2 text-[11px] font-extrabold text-white">
+                                              {module.moduleNumber || moduleIndex + 1}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                              <p className="text-sm font-extrabold text-black">
+                                                {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
+                                              </p>
+                                              <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-bold text-gray-500">
+                                                <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                                  {pluralize(moduleCounts.lessons, 'lesson')}
+                                                </span>
+                                                {!!moduleCounts.writingBlocks && (
+                                                  <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1">
+                                                    {pluralize(moduleCounts.writingBlocks, 'writing title')}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {!isModuleExpanded && (
+                                                <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+                                                  {moduleCounts.totalEntries
+                                                    ? `${pluralize(moduleCounts.totalEntries, 'contents entry')} hidden in this module preview.`
+                                                    : 'No lesson entries added yet.'}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleDigitalContentsPreviewModuleExpanded(moduleKey)}
+                                            className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                                          >
+                                            {isModuleExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                            {isModuleExpanded ? 'Fold Module' : 'Open Module'}
+                                          </button>
+                                        </div>
+                                        {isModuleExpanded && (
+                                          <div className="mt-3 space-y-2">
+                                            {(module.items || []).map((item, itemIndex) => {
                                           const contentsWritingBlocks = buildDigitalContentsWritingBlockEntries(item);
                                           return (
                                             <div key={item.clientKey || item._id || `contents-preview-item-${moduleIndex}-${itemIndex}`} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
@@ -6061,12 +6189,14 @@ const buildTrainingBody = (f) => ({
                                             </div>
                                           );
                                         })}
+                                          </div>
+                                        )}
                                       </div>
-                                    </div>
-                                  </div>
+                                    );
+                                  })}
                                 </div>
-                              ))}
-                            </div>
+                              )}
+                            </>
                           ) : (
                             <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] px-4 py-4 text-xs text-gray-500">
                               Add modules and lesson items to generate the clickable contents page automatically.
@@ -6124,6 +6254,51 @@ const buildTrainingBody = (f) => ({
                     <input value={form.discount?.limitCustomers||''} onChange={e => sfd('limitCustomers',e.target.value)} placeholder="First N customers only (optional)" type="number" className={inp} />
                     <input value={form.discount?.startDate||''} onChange={e => sfd('startDate',e.target.value)} type="date" className={inp} />
                     <input value={form.discount?.endDate||''} onChange={e => sfd('endDate',e.target.value)} type="date" className={inp} />
+                    <div className="sm:col-span-2 rounded-2xl border border-green-200 bg-white/90 p-4">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-green-700">Discount Preview</p>
+                      {Number(form.retailPrice) > 0 && digitalDiscountPreview.isConfigured ? (
+                        <>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {!!digitalDiscountPreview.label && (
+                              <span className="rounded-full bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-extrabold text-[#9a7a00] border border-[#FDC700]/25">
+                                {digitalDiscountPreview.label}
+                              </span>
+                            )}
+                            {!!digitalDiscountPreview.limitText && (
+                              <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-[11px] font-bold text-green-700">
+                                {digitalDiscountPreview.limitText}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-end gap-5">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Was</p>
+                              <p className="text-sm font-bold text-gray-400 line-through">{formatMoney(digitalDiscountPreview.basePrice)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Now</p>
+                              <p className="text-2xl font-extrabold text-black">{formatMoney(digitalDiscountPreview.finalPrice)}</p>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm font-extrabold text-green-700">
+                            {digitalDiscountPreview.offerText}{digitalDiscountPreview.limitText ? ` ${digitalDiscountPreview.limitText}` : ''}
+                          </p>
+                          <p className="mt-1 text-xs text-green-700">
+                            This uses the set retail price of {formatMoney(form.retailPrice)} and saves {formatMoney(digitalDiscountPreview.savedAmount)}.
+                          </p>
+                          {(form.discount?.startDate || form.discount?.endDate) && (
+                            <p className="mt-1 text-[11px] text-gray-500">
+                              Runs {form.discount?.startDate ? formatAdminDate(form.discount.startDate) : 'now'}
+                              {form.discount?.endDate ? ` to ${formatAdminDate(form.discount.endDate)}` : ' until you stop it'}.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Set the retail price and discount value to preview the real storefront offer from the actual product price.
+                        </p>
+                      )}
+                    </div>
                     <p className="sm:col-span-2 text-xs text-green-700">Secure files stay protected after purchase while storefront discounts still work normally.</p>
                   </div>
                 )}
