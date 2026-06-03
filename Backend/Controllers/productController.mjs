@@ -195,6 +195,7 @@ const readOptionalCustomerId = (req) => {
 const decorateProductsWithAccess = async (req, docs = []) => {
   const customerId = readOptionalCustomerId(req);
   const publicProducts = docs.map((doc) => toPublicProduct(doc));
+  const originalProducts = docs.map((doc) => (doc?.toObject ? doc.toObject() : { ...doc }));
 
   if (!customerId) {
     return publicProducts.map((product) => ({
@@ -221,10 +222,21 @@ const decorateProductsWithAccess = async (req, docs = []) => {
   }).select('productId');
 
   const ownedIds = new Set(grants.map((grant) => String(grant.productId)));
-  return publicProducts.map((product) => ({
-    ...product,
-    customerHasAccess: product.isDigital ? ownedIds.has(String(product._id)) : false,
-  }));
+  return publicProducts.map((product, index) => {
+    const customerHasAccess = product.isDigital ? ownedIds.has(String(product._id)) : false;
+    const originalProduct = originalProducts[index] || {};
+
+    return {
+      ...product,
+      customerHasAccess,
+      ...(customerHasAccess
+        ? {
+          supportEmail: normalizeEmail(originalProduct.supportEmail || ''),
+          supportWhatsApp: normalizePhone(originalProduct.supportWhatsApp || ''),
+        }
+        : {}),
+    };
+  });
 };
 
 const buildDigitalPricing = (product) => {
@@ -367,6 +379,9 @@ const toPublicProduct = (doc) => {
     };
   }
 
+  delete product.supportEmail;
+  delete product.supportWhatsApp;
+  delete product.digitalContentsPage;
   delete product.digitalModules;
   delete product.digitalManualPages;
   delete product.digitalFiles;
@@ -583,14 +598,8 @@ export const getPublicProducts = async (req, res) => {
         { 'digitalModules.description': { $regex: search, $options: 'i' } },
         { 'digitalModules.items.title': { $regex: search, $options: 'i' } },
         { 'digitalModules.items.description': { $regex: search, $options: 'i' } },
-        { 'digitalModules.items.content': { $regex: search, $options: 'i' } },
-        { 'digitalModules.items.blocks.title': { $regex: search, $options: 'i' } },
-        { 'digitalModules.items.blocks.description': { $regex: search, $options: 'i' } },
-        { 'digitalModules.items.blocks.content': { $regex: search, $options: 'i' } },
-        { 'digitalModules.items.blocks.url': { $regex: search, $options: 'i' } },
         { 'digitalManualPages.title': { $regex: search, $options: 'i' } },
         { 'digitalManualPages.summary': { $regex: search, $options: 'i' } },
-        { 'digitalManualPages.content': { $regex: search, $options: 'i' } },
       ];
     }
 

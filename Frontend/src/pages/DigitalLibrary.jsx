@@ -143,6 +143,24 @@ const DEFAULT_WRITING_BLOCK_TEXT_STYLE = {
   textTransform: 'none',
   textDecoration: 'none',
 };
+const createWritingBlockTitleStyleFallback = (textStyle = DEFAULT_WRITING_BLOCK_TEXT_STYLE) => ({
+  color: String(textStyle?.color || DEFAULT_WRITING_BLOCK_TEXT_STYLE.color).trim() || DEFAULT_WRITING_BLOCK_TEXT_STYLE.color,
+  fontSize: Math.min(72, Math.max(12, (Number(textStyle?.fontSize) || DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontSize) + 4)),
+  fontFamily: textStyle?.fontFamily || DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontFamily,
+  fontWeight: '600',
+  fontStyle: textStyle?.fontStyle === 'italic' ? 'italic' : 'normal',
+  textTransform: textStyle?.textTransform || 'none',
+  textDecoration: textStyle?.textDecoration === 'underline' ? 'underline' : 'none',
+});
+const createWritingBlockSubtitleStyleFallback = (textStyle = DEFAULT_WRITING_BLOCK_TEXT_STYLE) => ({
+  color: '#6B7280',
+  fontSize: Math.max(12, Math.min(48, (Number(textStyle?.fontSize) || DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontSize) - 1)),
+  fontFamily: textStyle?.fontFamily || DEFAULT_WRITING_BLOCK_TEXT_STYLE.fontFamily,
+  fontWeight: '500',
+  fontStyle: textStyle?.fontStyle === 'italic' ? 'italic' : 'normal',
+  textTransform: textStyle?.textTransform || 'none',
+  textDecoration: textStyle?.textDecoration === 'underline' ? 'underline' : 'none',
+});
 
 const buildTextPresentationStyle = (style = {}, defaults = {}) => {
   const merged = { ...defaults, ...(style || {}) };
@@ -174,10 +192,17 @@ const normalizeWritingBlockTextStyle = (style = {}) => {
 
 const normalizeWritingBlockPresentation = (presentation = {}) => {
   const highlightColor = String(presentation?.highlightColor || '').trim();
+  const textStyle = normalizeWritingBlockTextStyle(presentation?.textStyle || {});
   return {
     labelMode: presentation?.labelMode === 'lesson' ? 'lesson' : 'none',
     highlightColor: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(highlightColor) ? highlightColor.toUpperCase() : '',
-    textStyle: normalizeWritingBlockTextStyle(presentation?.textStyle || {}),
+    textStyle,
+    titleStyle: normalizeWritingBlockTextStyle(
+      presentation?.titleStyle || createWritingBlockTitleStyleFallback(textStyle)
+    ),
+    subtitleStyle: normalizeWritingBlockTextStyle(
+      presentation?.subtitleStyle || createWritingBlockSubtitleStyleFallback(textStyle)
+    ),
   };
 };
 
@@ -201,9 +226,25 @@ const buildWritingBlockInlineStyle = (
 const buildWritingBlockTitleStyle = (presentation = {}) => {
   const normalized = normalizeWritingBlockPresentation(presentation);
   return {
-    ...buildWritingBlockInlineStyle(normalized, { includeHighlight: false }),
-    fontSize: `${Math.min(72, normalized.textStyle.fontSize + 4)}px`,
-    fontWeight: Number(normalized.textStyle.fontWeight) >= 600 ? normalized.textStyle.fontWeight : '600',
+    color: normalized.titleStyle.color,
+    fontSize: `${normalized.titleStyle.fontSize}px`,
+    fontFamily: normalized.titleStyle.fontFamily,
+    fontWeight: normalized.titleStyle.fontWeight,
+    fontStyle: normalized.titleStyle.fontStyle,
+    textTransform: normalized.titleStyle.textTransform,
+    textDecoration: normalized.titleStyle.textDecoration,
+  };
+};
+const buildWritingBlockSubtitleStyle = (presentation = {}) => {
+  const normalized = normalizeWritingBlockPresentation(presentation);
+  return {
+    color: normalized.subtitleStyle.color,
+    fontSize: `${normalized.subtitleStyle.fontSize}px`,
+    fontFamily: normalized.subtitleStyle.fontFamily,
+    fontWeight: normalized.subtitleStyle.fontWeight,
+    fontStyle: normalized.subtitleStyle.fontStyle,
+    textTransform: normalized.subtitleStyle.textTransform,
+    textDecoration: normalized.subtitleStyle.textDecoration,
   };
 };
 
@@ -396,6 +437,7 @@ const buildTextLessonReaderBlocks = (blocks = [], fallbackContent = '') => {
       order: block.order ?? blockIndex + 1,
       kind: 'text',
       titleLines: parseWritingBlockTitleLines(block.title || ''),
+      description: String(block.description || '').trim(),
       presentation,
       lessonLabel: presentation.labelMode === 'lesson' ? `LESSON ${textBlockIndex}` : '',
       contentHtml,
@@ -434,6 +476,7 @@ const buildContentsWritingBlockEntries = (lessonItem = {}) => {
         blockKey: String(block.blockId || block._id || `${lessonItem.itemId || 'lesson'}-contents-block-${blockIndex + 1}`),
         lessonLabel: presentation.labelMode === 'lesson' ? `LESSON ${textBlockCount}` : '',
         titleLines,
+        subtitle: String(block.description || '').trim(),
       };
     })
     .filter(Boolean);
@@ -1848,6 +1891,11 @@ export default function DigitalLibrary() {
                                                   {blockEntry.titleLines.slice(1).join(' • ')}
                                                 </p>
                                               )}
+                                              {blockEntry.subtitle && (
+                                                <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-gray-500">
+                                                  {blockEntry.subtitle}
+                                                </p>
+                                              )}
                                             </button>
                                           ))}
                                         </div>
@@ -1937,6 +1985,7 @@ export default function DigitalLibrary() {
                           });
                           const textFallbackStyle = buildWritingBlockInlineStyle(block.presentation || {});
                           const titleStyle = buildWritingBlockTitleStyle(block.presentation || {});
+                          const subtitleStyle = buildWritingBlockSubtitleStyle(block.presentation || {});
                           const richTextMarkerKey = `${manualReader.grantId}-${manualReader.itemId}-marker-${block.markerIndex}`;
                           const isSavedRichTextBlock = manualReader.savedSentenceIndex === block.markerIndex;
                           return (
@@ -1958,6 +2007,11 @@ export default function DigitalLibrary() {
                                     </p>
                                   ))}
                                 </div>
+                              )}
+                              {!!block.description && (
+                                <p className="mt-2 whitespace-pre-line break-words leading-relaxed" style={subtitleStyle}>
+                                  {block.description}
+                                </p>
                               )}
                               {block.usesRichText ? (
                                 <div className="space-y-3">

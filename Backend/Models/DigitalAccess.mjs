@@ -62,6 +62,30 @@ const digitalWritingBlockPresentationSchema = new mongoose.Schema({
       textDecoration: 'none',
     }),
   },
+  titleStyle: {
+    type: digitalWritingBlockTextStyleSchema,
+    default: () => ({
+      color: '#374151',
+      fontSize: 20,
+      fontFamily: 'Arial, sans-serif',
+      fontWeight: '600',
+      fontStyle: 'normal',
+      textTransform: 'none',
+      textDecoration: 'none',
+    }),
+  },
+  subtitleStyle: {
+    type: digitalWritingBlockTextStyleSchema,
+    default: () => ({
+      color: '#6B7280',
+      fontSize: 15,
+      fontFamily: 'Arial, sans-serif',
+      fontWeight: '500',
+      fontStyle: 'normal',
+      textTransform: 'none',
+      textDecoration: 'none',
+    }),
+  },
 }, { _id: false });
 
 const moduleItemBlockSchema = new mongoose.Schema({

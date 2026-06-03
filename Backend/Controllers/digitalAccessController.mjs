@@ -478,6 +478,7 @@ const toLibraryEntry = (grant, certificate = null, productMeta = null) => {
                   order: block.order ?? blockIndex + 1,
                   kind: 'text',
                   title: block.title || '',
+                  description: block.description || '',
                   presentation: block.presentation || undefined,
                   content: block.content || '',
                   contentHtml: block.contentHtml || '',

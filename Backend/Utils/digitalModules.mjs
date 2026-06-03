@@ -64,10 +64,35 @@ export const DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS = Object.freeze({
   textDecoration: 'none',
 });
 
+export const createDigitalWritingBlockTitleStyleDefaults = (textStyle = DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS) => ({
+  color: trimText(textStyle?.color || DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS.color) || DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS.color,
+  fontSize: clamp((Number(textStyle?.fontSize) || DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS.fontSize) + 4, 12, 72),
+  fontFamily: textStyle?.fontFamily || DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS.fontFamily,
+  fontWeight: '600',
+  fontStyle: textStyle?.fontStyle === 'italic' ? 'italic' : 'normal',
+  textTransform: textStyle?.textTransform || 'none',
+  textDecoration: textStyle?.textDecoration === 'underline' ? 'underline' : 'none',
+});
+
+export const createDigitalWritingBlockSubtitleStyleDefaults = (textStyle = DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS) => ({
+  color: '#6B7280',
+  fontSize: clamp((Number(textStyle?.fontSize) || DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS.fontSize) - 1, 12, 48),
+  fontFamily: textStyle?.fontFamily || DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS.fontFamily,
+  fontWeight: '500',
+  fontStyle: textStyle?.fontStyle === 'italic' ? 'italic' : 'normal',
+  textTransform: textStyle?.textTransform || 'none',
+  textDecoration: textStyle?.textDecoration === 'underline' ? 'underline' : 'none',
+});
+
+export const DIGITAL_WRITING_BLOCK_TITLE_STYLE_DEFAULTS = Object.freeze(createDigitalWritingBlockTitleStyleDefaults());
+export const DIGITAL_WRITING_BLOCK_SUBTITLE_STYLE_DEFAULTS = Object.freeze(createDigitalWritingBlockSubtitleStyleDefaults());
+
 export const DIGITAL_WRITING_BLOCK_PRESENTATION_DEFAULTS = Object.freeze({
   labelMode: 'none',
   highlightColor: '',
   textStyle: DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS,
+  titleStyle: DIGITAL_WRITING_BLOCK_TITLE_STYLE_DEFAULTS,
+  subtitleStyle: DIGITAL_WRITING_BLOCK_SUBTITLE_STYLE_DEFAULTS,
 });
 
 const normalizeHexColor = (value = '', fallback = '#111827') => {
@@ -122,14 +147,25 @@ export const normalizeDigitalContentsPage = (page = {}) => ({
   subtitleStyle: normalizeDigitalTextStyle(page?.subtitleStyle || {}, DIGITAL_CONTENTS_SUBTITLE_STYLE_DEFAULTS),
 });
 
-export const normalizeDigitalWritingBlockPresentation = (presentation = {}) => ({
-  labelMode: normalizeChoice(presentation?.labelMode, DIGITAL_WRITING_BLOCK_LABEL_MODES, DIGITAL_WRITING_BLOCK_PRESENTATION_DEFAULTS.labelMode),
-  highlightColor: normalizeOptionalHexColor(presentation?.highlightColor || ''),
-  textStyle: normalizeDigitalTextStyle(
+export const normalizeDigitalWritingBlockPresentation = (presentation = {}) => {
+  const textStyle = normalizeDigitalTextStyle(
     presentation?.textStyle || {},
     DIGITAL_WRITING_BLOCK_TEXT_STYLE_DEFAULTS
-  ),
-});
+  );
+  return {
+    labelMode: normalizeChoice(presentation?.labelMode, DIGITAL_WRITING_BLOCK_LABEL_MODES, DIGITAL_WRITING_BLOCK_PRESENTATION_DEFAULTS.labelMode),
+    highlightColor: normalizeOptionalHexColor(presentation?.highlightColor || ''),
+    textStyle,
+    titleStyle: normalizeDigitalTextStyle(
+      presentation?.titleStyle || {},
+      createDigitalWritingBlockTitleStyleDefaults(textStyle)
+    ),
+    subtitleStyle: normalizeDigitalTextStyle(
+      presentation?.subtitleStyle || {},
+      createDigitalWritingBlockSubtitleStyleDefaults(textStyle)
+    ),
+  };
+};
 
 export const buildModuleBlockAssetId = (itemId = '', blockId = '') => {
   const normalizedItemId = trimText(itemId);
