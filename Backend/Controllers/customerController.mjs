@@ -33,6 +33,27 @@ const normalizeCustomerLanguage = (value = '') => {
 const hashText = (value = '') => crypto.createHash('sha256').update(String(value || '')).digest('hex');
 const createToken = () => crypto.randomBytes(24).toString('hex');
 const escapeRegex = (value = '') => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const DEFAULT_FRONTEND_BASE_URL = 'https://bellekreyashon.com';
+
+const resolveCanonicalFrontendBaseUrl = () => {
+  const candidates = [
+    process.env.SITE_URL,
+    process.env.FRONTEND_URL,
+    DEFAULT_FRONTEND_BASE_URL,
+  ]
+    .map((value) => String(value || '').trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const nonPreviewUrl = candidates.find((value) => {
+    try {
+      return !/\.pages\.dev$/i.test(new URL(value).hostname);
+    } catch {
+      return /^https?:\/\//i.test(value) && !/\.pages\.dev(?:\/|$)/i.test(value);
+    }
+  });
+
+  return nonPreviewUrl || DEFAULT_FRONTEND_BASE_URL;
+};
 
 const serializeCustomer = (customer) => ({
   id: String(customer._id || ''),
@@ -71,7 +92,7 @@ const buildAuthResponse = async (customer, req, extra = {}, options = {}) => {
   }
 };
 
-const buildFrontendBaseUrl = () => String(process.env.FRONTEND_URL || 'https://bellekreyashon.com').trim().replace(/\/+$/, '');
+const buildFrontendBaseUrl = () => resolveCanonicalFrontendBaseUrl();
 const buildVerificationUrl = (token) => `${buildFrontendBaseUrl()}/account/verify?token=${encodeURIComponent(token)}`;
 const buildPasswordResetUrl = (token) => `${buildFrontendBaseUrl()}/account/reset-password?token=${encodeURIComponent(token)}`;
 

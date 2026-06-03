@@ -1,5 +1,24 @@
 const BRAND_NAME = 'Belle Kreyashon';
-const FRONTEND_BASE_URL = () => String(process.env.FRONTEND_URL || 'https://bellekreyashon.com').trim().replace(/\/+$/, '');
+const DEFAULT_FRONTEND_BASE_URL = 'https://bellekreyashon.com';
+const FRONTEND_BASE_URL = () => {
+  const candidates = [
+    process.env.SITE_URL,
+    process.env.FRONTEND_URL,
+    DEFAULT_FRONTEND_BASE_URL,
+  ]
+    .map((value) => String(value || '').trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const nonPreviewUrl = candidates.find((value) => {
+    try {
+      return !/\.pages\.dev$/i.test(new URL(value).hostname);
+    } catch {
+      return /^https?:\/\//i.test(value) && !/\.pages\.dev(?:\/|$)/i.test(value);
+    }
+  });
+
+  return nonPreviewUrl || DEFAULT_FRONTEND_BASE_URL;
+};
 
 const COLORS = {
   backdrop: '#f6f0e5',

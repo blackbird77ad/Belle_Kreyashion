@@ -10,8 +10,29 @@ import {
 } from './emailTemplateService.mjs';
 
 let transporter = null;
+const DEFAULT_FRONTEND_BASE_URL = 'https://bellekreyashon.com';
 
 const normalizeConfiguredValue = (value = '') => String(value || '').trim().replace(/^['"]|['"]$/g, '');
+
+const resolveCanonicalFrontendBaseUrl = () => {
+  const candidates = [
+    process.env.SITE_URL,
+    process.env.FRONTEND_URL,
+    DEFAULT_FRONTEND_BASE_URL,
+  ]
+    .map((value) => normalizeConfiguredValue(value).replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  const nonPreviewUrl = candidates.find((value) => {
+    try {
+      return !/\.pages\.dev$/i.test(new URL(value).hostname);
+    } catch {
+      return /^https?:\/\//i.test(value) && !/\.pages\.dev(?:\/|$)/i.test(value);
+    }
+  });
+
+  return nonPreviewUrl || DEFAULT_FRONTEND_BASE_URL;
+};
 
 const extractEmailAddress = (value = '') => {
   const input = normalizeConfiguredValue(value);
@@ -165,7 +186,7 @@ const sendCustomerEmail = async ({ to, subject, html, text }) => {
 };
 
 const buildFrontendLink = (path = '') => {
-  const base = String(process.env.FRONTEND_URL || 'https://bellekreyashon.com').trim().replace(/\/+$/, '');
+  const base = resolveCanonicalFrontendBaseUrl();
   const cleanPath = String(path || '').startsWith('/') ? path : `/${path}`;
   return `${base}${cleanPath}`;
 };
