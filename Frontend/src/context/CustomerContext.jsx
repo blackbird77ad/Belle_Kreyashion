@@ -48,7 +48,57 @@ export function CustomerProvider({ children }) {
     return mergedCustomer;
   }, [customer]);
 
-  const logout = () => setCustomer(null);
+  useEffect(() => {
+    if (!customer?.accessToken) return undefined;
+
+    let active = true;
+    api.get('/api/customers/me', {
+      headers: {
+        'x-customer-token': customer.accessToken,
+        Authorization: `Bearer ${customer.accessToken}`,
+      },
+    })
+      .then(({ data }) => {
+        if (!active || !data?.customer) return;
+        setCustomer((current) => {
+          if (!current?.accessToken || current.accessToken !== customer.accessToken) return current;
+          return {
+            ...current,
+            ...data.customer,
+            accessToken: current.accessToken,
+          };
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        const status = Number(error?.response?.status) || 0;
+        if (status === 401 || status === 404) {
+          setCustomer(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customer?.accessToken]);
+
+  const logout = useCallback(async () => {
+    const accessToken = customer?.accessToken || '';
+    try {
+      if (accessToken) {
+        await api.post('/api/customers/logout', {}, {
+          headers: {
+            'x-customer-token': accessToken,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+      }
+    } catch {
+      // Clear the local session even if the server cannot be reached right now.
+    } finally {
+      setCustomer(null);
+    }
+  }, [customer?.accessToken]);
 
   return (
     <CustomerContext.Provider value={{ customer, setCustomer, saveAddress, savePreferences, logout }}>

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import CertificateRecord from '../Models/CertificateRecord.mjs';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Product from '../Models/Product.mjs';
+import { hashRequestDevice, listActiveCustomerSessionDeviceHashes } from '../Middlewares/auth.mjs';
 import {
   buildModuleBlockAssetId,
   buildLegacyDigitalModulesFromCollections,
@@ -26,12 +27,6 @@ const normalizePhone = (value = '') => {
   return cleaned;
 };
 const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
-const hashDevice = (req) => hashText([
-  req.headers['user-agent'] || '',
-  req.headers['accept-language'] || '',
-  req.headers['sec-ch-ua-platform'] || '',
-  req.headers['sec-ch-ua-mobile'] || '',
-].join('|'));
 
 const isPreviewable = (file) => isPreviewableDigitalFile(file);
 const canDownloadAsset = (file) => !!file?.allowDownload || !isPreviewable(file);
@@ -274,7 +269,12 @@ const ensureActiveGrant = async (grant) => {
 };
 
 const authorizeDevice = async (grant, req) => {
-  const deviceHash = hashDevice(req);
+  const activeCustomerDeviceHashes = new Set(listActiveCustomerSessionDeviceHashes(req.customer || {}));
+  if (activeCustomerDeviceHashes.size) {
+    grant.approvedDevices = (grant.approvedDevices || []).filter((entry) => activeCustomerDeviceHashes.has(String(entry.deviceHash || '')));
+  }
+
+  const deviceHash = hashRequestDevice(req);
   const device = (grant.approvedDevices || []).find((entry) => entry.deviceHash === deviceHash);
 
   if (device) {
@@ -605,7 +605,7 @@ export const serveDigitalAsset = async (req, res) => {
     if (
       payload.grantId !== req.params.grantId ||
       payload.assetId !== req.params.assetId ||
-      payload.deviceHash !== hashDevice(req) ||
+      payload.deviceHash !== hashRequestDevice(req) ||
       payload.uaHash !== hashUserAgent(req.headers['user-agent'] || '')
     ) {
       return res.status(403).json({ message: 'This secure link is not valid on this device' });

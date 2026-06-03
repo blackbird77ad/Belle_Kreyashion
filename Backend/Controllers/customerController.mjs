@@ -4,7 +4,7 @@ import Booking from '../Models/Booking.mjs';
 import Customer from '../Models/Customer.mjs';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Order from '../Models/Order.mjs';
-import { signCustomerToken } from '../Middlewares/auth.mjs';
+import { registerCustomerSession, revokeCustomerSession, signCustomerToken } from '../Middlewares/auth.mjs';
 import {
   sendCustomerPasswordResetEmail,
   sendCustomerVerificationEmail,
@@ -49,11 +49,27 @@ const serializeCustomer = (customer) => ({
   createdAt: customer.createdAt || null,
 });
 
-const buildAuthResponse = (customer, extra = {}) => ({
-  customer: serializeCustomer(customer),
-  customerToken: signCustomerToken(customer),
-  ...extra,
-});
+const buildAuthResponse = async (customer, req, extra = {}, options = {}) => {
+  try {
+    const session = await registerCustomerSession(customer, req);
+    return {
+      customer: serializeCustomer(customer),
+      customerToken: signCustomerToken(customer, session),
+      ...extra,
+    };
+  } catch (err) {
+    if (options.allowSessionFallback && err?.status === 403) {
+      return {
+        customer: serializeCustomer(customer),
+        customerToken: '',
+        requiresSignIn: true,
+        ...extra,
+        message: options.sessionFallbackMessage || extra.message || 'Your account was updated. Sign in again to continue.',
+      };
+    }
+    throw err;
+  }
+};
 
 const buildFrontendBaseUrl = () => String(process.env.FRONTEND_URL || 'https://bellekreyashon.com').trim().replace(/\/+$/, '');
 const buildVerificationUrl = (token) => `${buildFrontendBaseUrl()}/account/verify?token=${encodeURIComponent(token)}`;
@@ -198,6 +214,7 @@ const buildCustomerAdminSummary = async (customer) => {
 };
 
 const getAuthenticatedCustomer = async (req) => {
+  if (req.customer) return req.customer;
   if (req.customerAuth?.id) {
     const byId = await Customer.findById(req.customerAuth.id);
     if (byId) return byId;
@@ -245,10 +262,10 @@ export const identifyCustomer = async (req, res) => {
       await customer.save();
     }
 
-    res.json(buildAuthResponse(customer));
+    res.json(await buildAuthResponse(customer, req));
   } catch (err) {
     const message = err.message || 'Could not identify customer right now';
-    const status = /already linked/.test(message) ? 409 : 500;
+    const status = err?.status || (/already linked/.test(message) ? 409 : 500);
     res.status(status).json({ message });
   }
 };
@@ -306,12 +323,12 @@ export const signupCustomer = async (req, res) => {
       emailWarning = error.message || 'Account created, but the confirmation email could not be sent right now.';
     });
 
-    res.status(201).json(buildAuthResponse(customer, emailWarning ? { emailWarning } : {}));
+    res.status(201).json(await buildAuthResponse(customer, req, emailWarning ? { emailWarning } : {}));
   } catch (err) {
     if (err?.code === 11000) {
       return res.status(409).json({ message: 'That email or phone number is already linked to another customer account' });
     }
-    res.status(500).json({ message: err.message || 'Could not create account right now' });
+    res.status(err?.status || 500).json({ message: err.message || 'Could not create account right now' });
   }
 };
 
@@ -337,9 +354,9 @@ export const loginCustomer = async (req, res) => {
     customer.lastLoginAt = new Date();
     await customer.save();
 
-    res.json(buildAuthResponse(customer));
+    res.json(await buildAuthResponse(customer, req));
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Could not sign in right now' });
+    res.status(err?.status || 500).json({ message: err.message || 'Could not sign in right now' });
   }
 };
 
@@ -496,9 +513,17 @@ export const resetCustomerPassword = async (req, res) => {
     customer.lastLoginAt = new Date();
     await customer.save();
 
-    res.json(buildAuthResponse(customer));
+    res.json(await buildAuthResponse(
+      customer,
+      req,
+      { message: 'Your password has been updated and you are now signed in.' },
+      {
+        allowSessionFallback: true,
+        sessionFallbackMessage: 'Your password has been updated. Sign in on one of your two active devices or wait for a session to expire to continue.',
+      }
+    ));
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Could not reset password right now' });
+    res.status(err?.status || 500).json({ message: err.message || 'Could not reset password right now' });
   }
 };
 
@@ -522,9 +547,29 @@ export const verifyCustomerEmail = async (req, res) => {
     customer.lastLoginAt = new Date();
     await customer.save();
 
-    res.json(buildAuthResponse(customer, { message: 'Your email address has been confirmed.' }));
+    res.json(await buildAuthResponse(
+      customer,
+      req,
+      { message: 'Your email address has been confirmed.' },
+      {
+        allowSessionFallback: true,
+        sessionFallbackMessage: 'Your email address has been confirmed. Sign in on one of your two active devices or wait for a session to expire to continue.',
+      }
+    ));
   } catch (err) {
-    res.status(500).json({ message: err.message || 'Could not confirm email right now' });
+    res.status(err?.status || 500).json({ message: err.message || 'Could not confirm email right now' });
+  }
+};
+
+export const logoutCustomer = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.json({ message: 'Signed out.' });
+
+    await revokeCustomerSession(customer, req.customerAuth?.sessionId || '');
+    res.json({ message: 'Signed out.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Could not sign out right now' });
   }
 };
 

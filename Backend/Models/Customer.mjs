@@ -6,6 +6,16 @@ const buildCustomerCode = (customer) => {
   return `CUST-${year}-${suffix || '000000'}`;
 };
 
+const customerSessionSchema = new mongoose.Schema({
+  sessionId: { type: String, required: true },
+  deviceHash: { type: String, required: true },
+  userAgentHash: { type: String, default: '' },
+  label: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now },
+  lastSeenAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true },
+}, { _id: false });
+
 const customerSchema = new mongoose.Schema({
   customerId: { type: String, unique: true },
   name: { type: String, required: true, trim: true },
@@ -21,6 +31,7 @@ const customerSchema = new mongoose.Schema({
   passwordResetTokenHash: { type: String, default: '' },
   passwordResetExpiresAt: { type: Date, default: null },
   lastLoginAt: { type: Date, default: null },
+  customerSessions: { type: [customerSessionSchema], default: [] },
 }, { timestamps: true });
 
 customerSchema.pre('validate', function (next) {

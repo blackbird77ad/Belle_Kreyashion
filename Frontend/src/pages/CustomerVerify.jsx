@@ -17,10 +17,12 @@ export default function CustomerVerify() {
 
     api.post('/api/customers/verify', { token })
       .then(({ data }) => {
-        setCustomer({
-          ...data.customer,
-          accessToken: data.customerToken,
-        });
+        if (data.customerToken) {
+          setCustomer({
+            ...data.customer,
+            accessToken: data.customerToken,
+          });
+        }
         setState('success');
         setMessage(data.message || 'Your email address has been confirmed.');
       })

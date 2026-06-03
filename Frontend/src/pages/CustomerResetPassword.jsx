@@ -43,11 +43,13 @@ export default function CustomerResetPassword() {
         token,
         password,
       });
-      setCustomer({
-        ...data.customer,
-        accessToken: data.customerToken,
-      });
-      setSuccess('Your password has been updated and you are now signed in.');
+      if (data.customerToken) {
+        setCustomer({
+          ...data.customer,
+          accessToken: data.customerToken,
+        });
+      }
+      setSuccess(data.message || 'Your password has been updated and you are now signed in.');
     } catch (submitError) {
       setError(getApiErrorMessage(submitError, 'Could not reset your password right now.'));
     } finally {

@@ -1,4 +1,3 @@
-import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
 import Product from '../Models/Product.mjs';
@@ -17,11 +16,11 @@ import {
   normalizeDigitalModules,
   sortDigitalLessonBlocks,
 } from '../Utils/digitalModules.mjs';
+import { readOptionalCustomerAuth } from '../Middlewares/auth.mjs';
 import { syncDigitalAccessGrantsForProduct } from '../Services/digitalAccessService.mjs';
 import { buildGoogleMerchantFeedXml, isMerchantFeedEligible } from '../Utils/googleMerchantFeed.mjs';
 
 const LIFETIME_SURCHARGE_PERCENT = 20;
-const CUSTOMER_JWT_SECRET = process.env.JWT_SECRET;
 const DIGITAL_TYPE_DEFAULTS = ['document', 'video', 'audio', 'bundle', 'template', 'mixed', 'other'];
 
 const convertDrive = (url) => {
@@ -181,19 +180,9 @@ const buildPublicIdentifierQuery = (value = '') => {
   };
 };
 
-const readOptionalCustomerId = (req) => {
-  const token = req.headers['x-customer-token'];
-  if (!token || !CUSTOMER_JWT_SECRET) return null;
-
-  try {
-    return jwt.verify(token, CUSTOMER_JWT_SECRET)?.customerId || null;
-  } catch {
-    return null;
-  }
-};
-
 const decorateProductsWithAccess = async (req, docs = []) => {
-  const customerId = readOptionalCustomerId(req);
+  const customerAuth = await readOptionalCustomerAuth(req);
+  const customerId = customerAuth?.customerId || null;
   const publicProducts = docs.map((doc) => toPublicProduct(doc));
   const originalProducts = docs.map((doc) => (doc?.toObject ? doc.toObject() : { ...doc }));
 

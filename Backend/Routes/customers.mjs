@@ -7,6 +7,7 @@ import {
   getOrderHistory,
   identifyCustomer,
   loginCustomer,
+  logoutCustomer,
   requestCustomerPasswordReset,
   resendCustomerVerification,
   resetCustomerPassword,
@@ -20,6 +21,7 @@ const router = Router();
 
 router.post('/signup', signupCustomer);
 router.post('/login', loginCustomer);
+router.post('/logout', protectCustomer, logoutCustomer);
 router.get('/me', protectCustomer, getCurrentCustomer);
 router.patch('/preferences', protectCustomer, updateCustomerPreferences);
 router.get('/dashboard', protectCustomer, getCustomerDashboard);
