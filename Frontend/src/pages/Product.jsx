@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Minus, Plus, ChevronLeft, ShieldCheck, Mail, Phone } from 'lucide-react';
+import { ShoppingBag, Minus, Plus, ChevronLeft, ChevronDown, ChevronUp, ShieldCheck, Mail, Phone } from 'lucide-react';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
@@ -48,6 +48,7 @@ export default function Product() {
   const [showModal, setShowModal] = useState(false);
   const [added,     setAdded]     = useState(false);
   const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
+  const [showModulePreview, setShowModulePreview] = useState(false);
 
   useEffect(() => {
     api.get(`/api/products/public/${slugOrId}`, customer?.accessToken
@@ -68,6 +69,7 @@ export default function Product() {
   useEffect(() => {
     setAdded(false);
     setShowCheckoutPrompt(false);
+    setShowModulePreview(false);
   }, [slugOrId]);
 
   useEffect(() => {
@@ -411,80 +413,58 @@ export default function Product() {
             {product.desc && <p className="text-gray-600 text-sm leading-relaxed mb-6">{product.desc}</p>}
 
             {isDigital && digitalModulesOutline.length > 0 && (
-              <div className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 bg-[#fcfbf7]">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00] mb-1">Module Preview</p>
-                  <p className="font-extrabold text-sm">Standalone module cards and ordered lesson flow</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {customerHasAccess
-                      ? 'You already own this product. Full module cards, text lessons, and secure media are waiting in your library.'
-                      : 'This is the learning structure preview. Full modules unlock in the secure library after purchase.'}
-                  </p>
-                </div>
-                <div className="grid gap-4 p-4 lg:grid-cols-2">
-                  {digitalModulesOutline.map((module, moduleIndex) => (
-                    <div key={module.moduleId || `${module.title}-${moduleIndex}`} className="rounded-[24px] border border-gray-100 bg-[#fcfbf7] p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center text-xs font-extrabold shrink-0">
-                          {module.moduleNumber || moduleIndex + 1}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-bold text-sm text-black">{module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}</p>
-                            <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-600">
-                              {module.itemCount || 0} step{module.itemCount === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                          {module.description && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{module.description}</p>}
-                          <div className="mt-3 space-y-2">
-                            {(module.items || []).map((lessonItem, lessonIndex) => (
-                              <div key={lessonItem.itemId || `${moduleIndex}-${lessonIndex}`} className="rounded-2xl border border-gray-100 bg-white px-3 py-3">
-                                <div className="flex items-start gap-3">
-                                  <div className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-black px-1.5 text-[10px] font-extrabold text-white shrink-0">
-                                    {lessonItem.order || lessonIndex + 1}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="text-sm font-bold text-black">
-                                        {lessonItem.title || (lessonItem.kind === 'file' ? 'Secure lesson file' : `Lesson ${lessonItem.order || lessonIndex + 1}`)}
-                                      </p>
-                                      <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 text-[10px] font-bold capitalize text-gray-600">
-                                        {lessonItem.kind === 'file' ? lessonItem.fileKind || 'file' : 'text'}
-                                      </span>
-                                    </div>
-                                    {lessonItem.description && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{lessonItem.description}</p>}
-                                    {!lessonItem.description && lessonItem.kind === 'text' && lessonItem.hasContent && (
-                                      <p className="text-xs text-gray-500 mt-1">Written lesson content is included for this step.</p>
-                                    )}
-                                    {lessonItem.kind === 'text' && (lessonItem.blockCount > 0 || lessonItem.inlineAttachmentCount > 0 || lessonItem.linkCount > 0) && (
-                                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-gray-500">
-                                        {lessonItem.blockCount > 0 && (
-                                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 font-bold">
-                                            {lessonItem.blockCount} block{lessonItem.blockCount === 1 ? '' : 's'}
-                                          </span>
-                                        )}
-                                        {lessonItem.inlineAttachmentCount > 0 && (
-                                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 font-bold">
-                                            {lessonItem.inlineAttachmentCount} inline attachment{lessonItem.inlineAttachmentCount === 1 ? '' : 's'}
-                                          </span>
-                                        )}
-                                        {lessonItem.linkCount > 0 && (
-                                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-1 font-bold">
-                                            {lessonItem.linkCount} link{lessonItem.linkCount === 1 ? '' : 's'}
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
+              <div className="mb-6 max-w-xl rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                <div className="bg-[#fcfbf7] px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Program Snapshot</p>
+                      <p className="mt-1 text-sm font-extrabold text-black">Module Titles</p>
+                      <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                        {customerHasAccess
+                          ? 'Keep this page simple here and open your library for the full lesson experience.'
+                          : 'Preview the module names only here. Full lessons and secure files open after purchase inside the library.'}
+                      </p>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setShowModulePreview((current) => !current)}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                    >
+                      {showModulePreview ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      {showModulePreview ? 'Hide List' : 'View List'}
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-[#FDC700]/25 bg-white px-2.5 py-1 text-[11px] font-bold text-[#9a7a00]">
+                      {product.digitalModuleCount} module{product.digitalModuleCount === 1 ? '' : 's'}
+                    </span>
+                    {isCertifiedDigital && (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                        Certificate included
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {showModulePreview && (
+                  <div className="border-t border-gray-100 px-4 py-4">
+                    <div className="space-y-2.5">
+                      {digitalModulesOutline.map((module, moduleIndex) => (
+                        <div
+                          key={module.moduleId || `${module.title}-${moduleIndex}`}
+                          className="flex items-center gap-3 rounded-xl border border-gray-100 bg-[#fcfbf7] px-3 py-2.5"
+                        >
+                          <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-2 text-[11px] font-extrabold text-white">
+                            {module.moduleNumber || moduleIndex + 1}
+                          </div>
+                          <p className="min-w-0 text-sm font-bold text-black">
+                            {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

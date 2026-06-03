@@ -25,6 +25,7 @@ const TABS = ['Analytics','Products','Digital Products','Certificates','Training
 const PRODUCT_LIKE_TABS = new Set(['Products', 'Digital Products', 'Featured']);
 const BLOG_LIKE_TABS = new Set(['Blog']);
 const WIDE_GRID_TABS = new Set(['Certificates', 'Orders', 'Bookings', 'Customers']);
+const ADMIN_ACTIVE_TAB_STORAGE_KEY = 'bk_admin_active_tab';
 
 const getCollectionLayoutClass = (tab, viewMode) => {
   if (viewMode === 'list') return 'flex flex-col gap-3';
@@ -2835,7 +2836,10 @@ export default function Admin() {
   const [reset,   setReset]   = useState(false);
   const [authErr, setAuthErr] = useState('');
   const [sessionMsg, setSessionMsg] = useState('');
-  const [tab,     setTab]     = useState('Products');
+  const [tab,     setTab]     = useState(() => {
+    const savedTab = localStorage.getItem(ADMIN_ACTIVE_TAB_STORAGE_KEY) || '';
+    return TABS.includes(savedTab) ? savedTab : 'Products';
+  });
   const [search,  setSearch]  = useState('');
   const [customCat, setCustomCat] = useState('');
   const [savedCategories, setSavedCategories] = useState([]);
@@ -2870,6 +2874,7 @@ export default function Admin() {
   const draggedModuleItemRef = useRef(null);
   const draggedLessonBlockRef = useRef(null);
   const digitalModulesSectionRef = useRef(null);
+  const latestAdminLoadRef = useRef(0);
   const digitalAutoSaveTimerRef = useRef(null);
   const digitalDraftTimerRef = useRef(null);
   const lastDigitalAutoSaveSnapshotRef = useRef('');
@@ -2963,6 +2968,8 @@ export default function Admin() {
 
   const load = useCallback(async (t, s) => {
     if (!token) return;
+    const requestId = latestAdminLoadRef.current + 1;
+    latestAdminLoadRef.current = requestId;
     setLoading(true);
     setData([]);
     let ep = ENDPOINTS[t];
@@ -2974,6 +2981,7 @@ export default function Admin() {
     try {
       if (t === 'Analytics') {
         const { data: analytics } = await api.get(ep, auth);
+        if (latestAdminLoadRef.current !== requestId) return;
         setSalesAnalytics(analytics);
         setLoading(false);
         return;
@@ -2981,6 +2989,7 @@ export default function Admin() {
       const requests = [api.get(ep + q, auth)];
       if (t === 'Certificates') requests.push(api.get('/api/certificates/templates', auth));
       const [r, templatesResponse] = await Promise.all(requests);
+      if (latestAdminLoadRef.current !== requestId) return;
       const items = Array.isArray(r.data) ? r.data : [];
       if (t === 'Digital Products') {
         setData(items.filter(item => item?.isDigital || item?.category === 'Digital Products'));
@@ -3003,10 +3012,12 @@ export default function Admin() {
         );
         return;
       }
+      if (latestAdminLoadRef.current !== requestId) return;
       setData([]);
       if (t === 'Analytics') setSalesAnalytics(null);
       if (t === 'Certificates') setCertificateTemplates([]);
     }
+    if (latestAdminLoadRef.current !== requestId) return;
     setLoading(false);
   }, [expireSession, token]);
 
@@ -3034,10 +3045,18 @@ export default function Admin() {
       clearTimeout(digitalDraftTimerRef.current);
       digitalDraftTimerRef.current = null;
     }
-  }, [tab]);
+  }, [load, tab]);
 
   useEffect(() => {
     setShowTabMenu(false);
+  }, [tab]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ADMIN_ACTIVE_TAB_STORAGE_KEY, tab);
+    } catch {
+      // ignore tab persistence issues
+    }
   }, [tab]);
 
   useEffect(() => {
@@ -4488,9 +4507,13 @@ const buildTrainingBody = (f) => ({
       </div>
     </div>
   );
-
-  const pagedData  = data.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
-  const totalPages = Math.ceil(data.length / PAGE_SIZE);
+  const collectionData = tab === 'Digital Products'
+    ? data.filter((item) => item?.isDigital || item?.category === 'Digital Products')
+    : tab === 'Products'
+      ? data.filter((item) => !item?.isDigital)
+      : data;
+  const pagedData  = collectionData.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  const totalPages = Math.ceil(collectionData.length / PAGE_SIZE);
   const tabsWithoutSearch = ['Analytics', 'Abandoned', 'Delivery', 'Invoice'];
   const canToggleView = !['Analytics', 'Invoice'].includes(tab);
   const collectionLayoutClass = getCollectionLayoutClass(tab, viewMode);

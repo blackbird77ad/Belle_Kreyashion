@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, User, Phone, Mail, Lock } from 'lucide-react';
 import { api, getApiErrorMessage } from '../hooks/useApi';
 import { useCustomer } from '../context/CustomerContext';
@@ -68,8 +68,8 @@ const ACCOUNT_COPY = {
   },
 };
 
-export default function CustomerModal({ onClose, onSuccess }) {
-  const [mode, setMode] = useState('signup');
+export default function CustomerModal({ onClose, onSuccess, initialMode = 'signup' }) {
+  const [mode, setMode] = useState(initialMode === 'login' ? 'login' : initialMode === 'forgot' ? 'forgot' : 'signup');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -90,6 +90,10 @@ export default function CustomerModal({ onClose, onSuccess }) {
   } = useIntlPreferences();
   const [preferredCurrency, setPreferredCurrency] = useState(selectedCurrency);
   const [preferredLanguage, setPreferredLanguage] = useState(selectedLanguage);
+
+  useEffect(() => {
+    setMode(initialMode === 'login' ? 'login' : initialMode === 'forgot' ? 'forgot' : 'signup');
+  }, [initialMode]);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
