@@ -440,7 +440,7 @@ export default function Product() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Program Snapshot:</p>
-                      <p className="mt-1 text-sm font-extrabold text-black">{`Module (${digitalModules.length})`}</p>
+                      <p className="mt-1 text-sm font-extrabold text-black">{`Module (${digitalModulesOutline.length})`}</p>
                       <p className="mt-1 text-xs leading-relaxed text-gray-500">
                         {customerHasAccess
                           ? 'Keep this page simple here and open your library for the full lesson experience.'

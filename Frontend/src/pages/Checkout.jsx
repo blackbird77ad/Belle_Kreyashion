@@ -189,6 +189,11 @@ export default function Checkout() {
       browserData: getMarketingBrowserData(),
     };
 
+    const paystackItemSummary = orderData.items
+      .map((item) => `${item.name || 'Item'} x${Number(item.qty) || 0}`)
+      .slice(0, 6)
+      .join(', ');
+
     if (freeOnlyDigital) {
       trackBeginCheckout({
         items: orderData.items,
@@ -252,6 +257,48 @@ export default function Checkout() {
         amount: Math.round(payableNow * 100),
         currency: 'GHS',
         ref,
+        metadata: {
+          checkout_context: 'shop_order',
+          payment_purpose: orderData.paymentPurpose || 'purchase',
+          customer_name: activeCustomer.name || '',
+          customer_phone: activeCustomer.phone || '',
+          customer_id: activeCustomer.customerId || '',
+          fulfillment: orderData.fulfillment || '',
+          delivery_zone: orderData.deliveryZone || '',
+          item_count: orderData.items.length,
+          item_summary: paystackItemSummary,
+          order_total_ghs: Number(total || 0),
+          payable_now_ghs: Number(payableNow || 0),
+          source_page: primaryAttribution?.sourcePath || primaryAttribution?.sourcePage || '',
+          custom_fields: [
+            {
+              display_name: 'Customer',
+              variable_name: 'customer_name',
+              value: activeCustomer.name || 'Unknown customer',
+            },
+            {
+              display_name: 'Phone',
+              variable_name: 'customer_phone',
+              value: activeCustomer.phone || 'No phone',
+            },
+            {
+              display_name: 'Items',
+              variable_name: 'order_items',
+              value: paystackItemSummary || 'No items recorded',
+            },
+            {
+              display_name: 'Payment For',
+              variable_name: 'payment_for',
+              value: orderData.fulfillment === 'digital'
+                ? 'Digital product order'
+                : orderData.fulfillment === 'pickup'
+                  ? 'Pickup order'
+                  : orderData.fulfillment === 'international'
+                    ? 'International order'
+                    : 'Shop order',
+            },
+          ],
+        },
         channels: hasTrialItems ? ['card'] : undefined,
         callback: onPaymentSuccess,
         onClose: onPaymentClose,

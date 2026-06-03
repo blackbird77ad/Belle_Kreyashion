@@ -4,6 +4,7 @@ import Booking from '../Models/Booking.mjs';
 import Customer from '../Models/Customer.mjs';
 import Order from '../Models/Order.mjs';
 import { grantDigitalAccessForOrder, processDueTrialCharges } from '../Services/digitalAccessService.mjs';
+import { sendAdminOrderNotificationEmail, sendCustomerOrderEmail } from '../Services/customerMailService.mjs';
 import { sendMetaOrderEvent } from '../Services/metaConversionsService.mjs';
 import { reduceStock } from './productController.mjs';
 
@@ -15,6 +16,21 @@ const getMarketingRequestContext = (req, browserData = {}) => ({
   clientIp: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '',
   userAgent: req.get('user-agent') || '',
 });
+
+const dispatchOrderEmails = (order) => {
+  Promise.allSettled([
+    sendAdminOrderNotificationEmail({ order }),
+    sendCustomerOrderEmail({ order }),
+  ]).then((results) => {
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(index === 0 ? 'Admin order email failed:' : 'Customer order email failed:', result.reason?.message || result.reason);
+      }
+    });
+  }).catch((err) => {
+    console.error('Order email dispatch failed:', err.message);
+  });
+};
 
 const buildOrderResponse = (order, paymentRef = '') => {
   const msg = buildWhatsAppMessage(order, paymentRef || order.paymentRef || '');
@@ -530,6 +546,7 @@ export const verifyAndCreateOrder = async (req, res) => {
     sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
       console.error('Meta purchase tracking error:', metaErr.message);
     });
+    dispatchOrderEmails(order);
 
     await AbandonedCart.findOneAndDelete({ phone: order.customer?.phone || normalizedOrderData.customer?.phone });
     res.json(buildOrderResponse(order, paymentRef));
@@ -573,6 +590,7 @@ export const createFreeDigitalOrder = async (req, res) => {
     sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
       console.error('Meta free digital tracking error:', metaErr.message);
     });
+    dispatchOrderEmails(order);
 
     await AbandonedCart.findOneAndDelete({ phone: order.customer?.phone || normalizedOrderData.customer?.phone });
     res.status(201).json(buildOrderResponse(order, paymentRef));

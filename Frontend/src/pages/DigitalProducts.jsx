@@ -90,7 +90,7 @@ const FilterToggle = ({ label, count = 0, open, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-bold transition-all ${
+    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition-all ${
       open
         ? 'border-black bg-black text-white'
         : 'border-gray-200 bg-[#fcfbf7] text-gray-700 hover:border-black hover:text-black'
@@ -109,9 +109,9 @@ const FilterToggle = ({ label, count = 0, open, onClick }) => (
 );
 
 const FilterPanel = ({ title, subtitle, children }) => (
-  <div className="rounded-2xl border border-gray-200 bg-[#fcfbf7] p-4">
-    <div className="mb-3">
-      <p className="text-sm font-extrabold text-black">{title}</p>
+  <div className="rounded-2xl border border-gray-200 bg-[#fcfbf7] p-3">
+    <div className="mb-2.5">
+      <p className="text-[13px] font-extrabold text-black">{title}</p>
       {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
     </div>
     {children}
@@ -155,7 +155,7 @@ export default function DigitalProducts() {
     digitalTopics: [],
     digitalInclusions: [],
   });
-  const PAGE_SIZE = 16;
+  const PAGE_SIZE = 20;
 
   const digitalTypeOptions = mergeDigitalOptions(
     DIGITAL_TYPE_OPTIONS,
@@ -483,29 +483,29 @@ export default function DigitalProducts() {
         </div>
       </section>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-6 rounded-3xl border border-gray-200 bg-white p-4 sm:p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:py-8">
+        <div className="mb-5 rounded-[1.75rem] border border-gray-200 bg-white px-4 py-3.5 sm:px-5 sm:py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">
                 {customer?.accessToken ? 'Customer Session Active' : 'Check Your Access'}
               </p>
-              <h2 className="text-lg font-extrabold text-black mt-1">
+              <h2 className="mt-1 text-base font-extrabold text-black sm:text-lg">
                 {customer?.accessToken
                   ? `Signed in${customer?.name ? ` as ${customer.name}` : ''}`
                   : 'Sign in to see which digital products you already own'}
               </h2>
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-2xl">
+              <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-gray-500 sm:text-[13px]">
                 {customer?.accessToken
-                  ? 'Products you already paid for will show an owned badge here. Open any cover for the fuller details, then move into your library when you are ready to learn.'
+                  ? 'Owned products carry a badge here. Open a cover for details, then continue in your library.'
                   : 'Use your customer details to reconnect, confirm your existing digital access, and browse these digital covers without guessing what you already bought.'}
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               {customer?.accessToken ? (
                 <Link
                   to="/digital-library"
-                  className="inline-flex items-center justify-center rounded-2xl bg-black px-5 py-3 text-sm font-extrabold text-white hover:bg-gray-900"
+                  className="inline-flex items-center justify-center rounded-xl bg-black px-4 py-2.5 text-xs font-extrabold text-white hover:bg-gray-900 sm:text-sm"
                 >
                   Open My Library
                 </Link>
@@ -513,14 +513,14 @@ export default function DigitalProducts() {
                 <button
                   type="button"
                   onClick={() => setShowCustomerModal(true)}
-                  className="inline-flex items-center justify-center rounded-2xl bg-black px-5 py-3 text-sm font-extrabold text-white hover:bg-gray-900"
+                  className="inline-flex items-center justify-center rounded-xl bg-black px-4 py-2.5 text-xs font-extrabold text-white hover:bg-gray-900 sm:text-sm"
                 >
                   Sign In As Customer
                 </button>
               )}
               <Link
                 to="/track"
-                className="inline-flex items-center justify-center rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+                className="inline-flex items-center justify-center rounded-xl border border-gray-200 px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black sm:text-sm"
               >
                 View Orders
               </Link>
@@ -528,20 +528,20 @@ export default function DigitalProducts() {
           </div>
         </div>
 
-        <div className="mb-6 space-y-4">
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
+        <div className="mb-5 space-y-3">
+          <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
             <div className="relative flex-1">
-              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search guides, videos, templates, coding resources and bundles..."
-                className="w-full rounded-2xl border border-gray-200 bg-white pl-10 pr-10 py-3 text-sm outline-none focus:border-black"
+                className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-9 text-sm outline-none focus:border-black"
               />
               {search && (
                 <button
                   onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
                 >
                   <RotateCcw size={15} />
                 </button>
@@ -550,7 +550,7 @@ export default function DigitalProducts() {
 
             <button
               onClick={() => setShowFilters((current) => !current)}
-              className="lg:hidden inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs font-bold text-gray-700 lg:hidden sm:text-sm"
             >
               <SlidersHorizontal size={16} />
               Refine
@@ -563,8 +563,8 @@ export default function DigitalProducts() {
           </div>
 
           <div className={`${showFilters ? 'block' : 'hidden'} lg:block`}>
-            <div className="rounded-3xl border border-gray-200 bg-white p-4 sm:p-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="rounded-[1.75rem] border border-gray-200 bg-white p-3 sm:p-4">
+              <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap gap-2">
                   <FilterToggle
                     label="Core Filters"
@@ -604,7 +604,7 @@ export default function DigitalProducts() {
                   </p>
                   <button
                     onClick={clearAll}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-[#fcfbf7] px-4 py-2.5 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-[#fcfbf7] px-3.5 py-2 text-xs font-bold text-gray-700 hover:border-black hover:text-black sm:text-sm"
                   >
                     <RotateCcw size={15} />
                     Clear All
@@ -625,7 +625,7 @@ export default function DigitalProducts() {
                           <select
                             value={digitalType}
                             onChange={(event) => setDigitalType(event.target.value)}
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           >
                             {digitalTypeOptions.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -638,7 +638,7 @@ export default function DigitalProducts() {
                           <select
                             value={skillLevel}
                             onChange={(event) => setSkillLevel(event.target.value)}
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           >
                             {skillLevelOptions.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -651,7 +651,7 @@ export default function DigitalProducts() {
                           <select
                             value={formatFilter}
                             onChange={(event) => setFormatFilter(event.target.value)}
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           >
                             {formatOptions.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -673,7 +673,7 @@ export default function DigitalProducts() {
                           <select
                             value={sort}
                             onChange={(event) => setSort(event.target.value)}
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           >
                             {SORT_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -686,7 +686,7 @@ export default function DigitalProducts() {
                           <select
                             value={durationFilter}
                             onChange={(event) => setDurationFilter(event.target.value)}
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           >
                             {durationOptions.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -699,7 +699,7 @@ export default function DigitalProducts() {
                           <select
                             value={priceType}
                             onChange={(event) => setPriceType(event.target.value)}
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           >
                             {DIGITAL_PRICE_TYPE_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -716,7 +716,7 @@ export default function DigitalProducts() {
                             value={minPrice}
                             onChange={(event) => setMinPrice(event.target.value)}
                             placeholder="0"
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           />
                         </label>
 
@@ -729,7 +729,7 @@ export default function DigitalProducts() {
                             value={maxPrice}
                             onChange={(event) => setMaxPrice(event.target.value)}
                             placeholder="Any"
-                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] outline-none focus:border-black"
                           />
                         </label>
                       </div>
@@ -802,31 +802,31 @@ export default function DigitalProducts() {
 
         {!loading && activeFilterCount > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            {search.trim() && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Search: {search.trim()}</span>}
-            {digitalType !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Type: {formatType(digitalType)}</span>}
-            {skillLevel !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Skill: {getDigitalOptionLabel(skillLevelOptions, skillLevel)}</span>}
-            {formatFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Format: {getDigitalOptionLabel(formatOptions, formatFilter)}</span>}
-            {durationFilter !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Duration: {getDigitalOptionLabel(durationOptions, durationFilter)}</span>}
-            {priceType !== 'all' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Price Type: {getDigitalOptionLabel(DIGITAL_PRICE_TYPE_OPTIONS, priceType)}</span>}
-            {topics.map((topic) => <span key={topic} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Topic: {getDigitalOptionLabel(topicOptions, topic)}</span>)}
-            {inclusions.map((inclusion) => <span key={inclusion} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Inclusion: {getDigitalOptionLabel(inclusionOptions, inclusion)}</span>)}
-            {special && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Filter: {SPECIAL_FILTERS.find((item) => item.key === special)?.label}</span>}
-            {sort !== 'newest' && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Sort: {SORT_OPTIONS.find((item) => item.value === sort)?.label}</span>}
-            {minPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Min: {formatBaseMoney(Number(minPrice))}</span>}
-            {maxPrice && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-gray-700 border border-gray-200">Max: {formatBaseMoney(Number(maxPrice))}</span>}
+            {search.trim() && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Search: {search.trim()}</span>}
+            {digitalType !== 'all' && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Type: {formatType(digitalType)}</span>}
+            {skillLevel !== 'all' && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Skill: {getDigitalOptionLabel(skillLevelOptions, skillLevel)}</span>}
+            {formatFilter !== 'all' && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Format: {getDigitalOptionLabel(formatOptions, formatFilter)}</span>}
+            {durationFilter !== 'all' && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Duration: {getDigitalOptionLabel(durationOptions, durationFilter)}</span>}
+            {priceType !== 'all' && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Price Type: {getDigitalOptionLabel(DIGITAL_PRICE_TYPE_OPTIONS, priceType)}</span>}
+            {topics.map((topic) => <span key={topic} className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Topic: {getDigitalOptionLabel(topicOptions, topic)}</span>)}
+            {inclusions.map((inclusion) => <span key={inclusion} className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Inclusion: {getDigitalOptionLabel(inclusionOptions, inclusion)}</span>)}
+            {special && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Filter: {SPECIAL_FILTERS.find((item) => item.key === special)?.label}</span>}
+            {sort !== 'newest' && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Sort: {SORT_OPTIONS.find((item) => item.value === sort)?.label}</span>}
+            {minPrice && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Min: {formatBaseMoney(Number(minPrice))}</span>}
+            {maxPrice && <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700">Max: {formatBaseMoney(Number(maxPrice))}</span>}
           </div>
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {[...Array(6)].map((_, index) => (
-              <div key={index} className="overflow-hidden rounded-[28px] border border-gray-100 bg-white animate-pulse">
-                <div className="aspect-[4/5] bg-gray-200" />
-                <div className="p-4 space-y-2.5">
-                  <div className="h-4 bg-gray-200 rounded" />
-                  <div className="h-3 bg-gray-100 rounded w-3/4" />
+              <div key={index} className="overflow-hidden rounded-[24px] border border-gray-100 bg-white animate-pulse">
+                <div className="aspect-[5/6] bg-gray-200" />
+                <div className="space-y-2 p-3">
+                  <div className="h-3.5 rounded bg-gray-200" />
+                  <div className="h-2.5 w-3/4 rounded bg-gray-100" />
                   <div className="h-8 bg-gray-100 rounded-full mt-3" />
-                  <div className="h-10 bg-gray-100 rounded-2xl mt-4" />
+                  <div className="mt-3 h-9 rounded-xl bg-gray-100" />
                 </div>
               </div>
             ))}
@@ -868,7 +868,7 @@ export default function DigitalProducts() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {pagedProducts.map((product) => {
                 const discountPreview = buildDiscountPresentation(product.retailPrice, product.discount || {}, { respectLiveState: true });
                 const discounted = discountPreview.discounted;
@@ -891,17 +891,17 @@ export default function DigitalProducts() {
                   <Link
                     key={product._id}
                     to={getProductPath(product)}
-                    className={`group overflow-hidden rounded-[28px] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_60px_rgba(17,24,39,0.12)] ${
+                    className={`group overflow-hidden rounded-[24px] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_40px_rgba(17,24,39,0.1)] ${
                       customerHasAccess ? 'border-emerald-300' : discounted ? 'border-[#FDC700]' : 'border-gray-100'
                     }`}
                   >
-                    <div className="relative aspect-[4/5] overflow-hidden bg-[radial-gradient(circle_at_top,_#fff9df_0%,_#f8f3e6_58%,_#f2ede2_100%)]">
+                    <div className="relative aspect-[5/6] overflow-hidden bg-[radial-gradient(circle_at_top,_#fff9df_0%,_#f8f3e6_58%,_#f2ede2_100%)]">
                       <div className="absolute inset-y-0 left-0 w-1.5 bg-black/80" />
                       {product.images?.[0] ? (
                         <img
                           src={product.images[0]}
                           alt={product.name}
-                          className="h-full w-full object-contain p-4 transition-transform duration-300 group-hover:scale-[1.03]"
+                          className="h-full w-full object-contain p-3 transition-transform duration-300 group-hover:scale-[1.03]"
                           onError={(event) => { event.target.style.display = 'none'; }}
                         />
                       ) : (
@@ -910,41 +910,41 @@ export default function DigitalProducts() {
                         </div>
                       )}
 
-                      <div className="absolute top-3 left-3 flex flex-wrap gap-2">
-                        <span className="inline-flex items-center rounded-full bg-black px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#FDC700]">
+                      <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center rounded-full bg-black px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#FDC700]">
                           {formatType(product.digitalType)}
                         </span>
                         {product.digitalFormat && (
-                          <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-gray-700">
+                          <span className="inline-flex items-center rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-gray-700">
                             {getDigitalOptionLabel(formatOptions, product.digitalFormat)}
                           </span>
                         )}
                         {product.isCertified && (
-                          <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-amber-700">
+                          <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-amber-700">
                             Certified
                           </span>
                         )}
                         {customerHasAccess && (
-                          <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-700">
+                          <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-emerald-700">
                             Owned
                           </span>
                         )}
                         {discounted && (
-                          <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-black">
+                          <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-black">
                             {discountPreview.label || 'Sale'}
                           </span>
                         )}
                       </div>
 
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent px-3 pb-3 pt-10">
-                        <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent px-2.5 pb-2.5 pt-8">
+                        <div className="flex flex-wrap gap-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-white">
                           {product.digitalModuleCount > 0 && (
-                            <span className="rounded-full bg-white/15 px-2.5 py-1 backdrop-blur-sm">
+                            <span className="rounded-full bg-white/15 px-2 py-0.5 backdrop-blur-sm">
                               {product.digitalModuleCount} module{product.digitalModuleCount === 1 ? '' : 's'}
                             </span>
                           )}
                           {product.digitalFileCount > 0 && (
-                            <span className="rounded-full bg-white/15 px-2.5 py-1 backdrop-blur-sm">
+                            <span className="rounded-full bg-white/15 px-2 py-0.5 backdrop-blur-sm">
                               {product.digitalFileCount} file{product.digitalFileCount === 1 ? '' : 's'}
                             </span>
                           )}
@@ -952,87 +952,87 @@ export default function DigitalProducts() {
                       </div>
                     </div>
 
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
-                        <ShieldCheck size={13} className="text-[#B88900]" />
+                    <div className="p-3">
+                      <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                        <ShieldCheck size={12} className="text-[#B88900]" />
                         {customerHasAccess ? 'Owned Access' : 'Secure Digital Access'}
                       </div>
 
-                      <h2 className="mt-2 text-[1.02rem] font-extrabold leading-tight line-clamp-2 min-h-[2.7rem]">{product.name}</h2>
-                      <p className="mt-2 min-h-[3rem] text-[12px] leading-5 text-gray-500 line-clamp-2">
+                      <h2 className="mt-1.5 min-h-[2.4rem] text-[0.94rem] font-extrabold leading-tight line-clamp-2">{product.name}</h2>
+                      <p className="mt-1.5 min-h-[2.35rem] text-[11px] leading-[1.15rem] text-gray-500 line-clamp-2">
                         {product.desc || product.certificateDescription || product.accessNote || 'Open this digital product to view the full description and secure purchase details.'}
                       </p>
 
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
                         {product.digitalSkillLevel && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-600">
                             {getDigitalOptionLabel(skillLevelOptions, product.digitalSkillLevel)}
                           </span>
                         )}
                         {product.digitalDuration && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-600">
                             {getDigitalOptionLabel(durationOptions, product.digitalDuration)}
                           </span>
                         )}
                         {(product.digitalTopics || []).slice(0, 2).map((topic) => (
-                          <span key={topic} className="rounded-full border border-[#FDC700]/25 bg-[#fcfbf7] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7a00]">
+                          <span key={topic} className="rounded-full border border-[#FDC700]/25 bg-[#fcfbf7] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[#9a7a00]">
                             {getDigitalOptionLabel(topicOptions, topic)}
                           </span>
                         ))}
                       </div>
 
                       {(product.digitalInclusions || []).length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
+                        <div className="mt-2 flex flex-wrap gap-1.5">
                           {product.digitalInclusions.slice(0, 2).map((inclusion) => (
-                            <span key={inclusion} className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">
+                            <span key={inclusion} className="rounded-full border border-gray-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-500">
                               {getDigitalOptionLabel(inclusionOptions, inclusion)}
                             </span>
                           ))}
                         </div>
                       )}
 
-                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-500">
                         {product.digitalModuleCount > 0 && (
-                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2 py-0.5">
                             {product.digitalModuleItemCount || 0} lesson item{product.digitalModuleItemCount === 1 ? '' : 's'}
                           </span>
                         )}
                         {product.downloadableDigitalFileCount > 0 && (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
                             {product.downloadableDigitalFileCount} download{product.downloadableDigitalFileCount === 1 ? '' : 's'}
                           </span>
                         )}
                         {!product.downloadableDigitalFileCount && product.digitalFileCount > 0 && (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
                             View-only files
                           </span>
                         )}
                       </div>
 
-                      <div className="mt-4 flex items-end justify-between gap-3">
+                      <div className="mt-3 flex items-end justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Price</p>
+                          <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.16em] text-gray-400">Price</p>
                           {customerHasAccess ? (
                             <div className="space-y-1">
                               {customerTrialIsActive ? (
                                 <>
-                                  <span className="text-base font-extrabold text-emerald-700">Your access: Trial active</span>
+                                  <span className="text-[15px] font-extrabold text-emerald-700">Your access: Trial active</span>
                                   {customerOwnedPrice !== null && (
-                                    <p className="text-[11px] text-gray-500">Then {formatMoney(customerOwnedPrice)}</p>
+                                    <p className="text-[10px] text-gray-500">Then {formatMoney(customerOwnedPrice)}</p>
                                   )}
                                 </>
                               ) : customerOwnedAccessKind === 'free' || customerOwnedPrice === 0 ? (
-                                <span className="text-base font-extrabold text-emerald-700">Your access: Free claim</span>
+                                <span className="text-[15px] font-extrabold text-emerald-700">Your access: Free claim</span>
                               ) : (
-                                <span className="text-base font-extrabold text-emerald-700">
+                                <span className="text-[15px] font-extrabold text-emerald-700">
                                   Bought at {formatMoney(customerOwnedPrice || 0)}
                                 </span>
                               )}
-                              <p className="text-[11px] text-gray-500">
+                              <p className="text-[10px] text-gray-500">
                                 {liveSellingText}
                               </p>
                               {!isFreeDigital && !isTrialDigital && discounted && (
-                                <p className="text-[11px] text-gray-400 line-through">
+                                <p className="text-[10px] text-gray-400 line-through">
                                   Was {formatMoney(discountPreview.basePrice)}
                                 </p>
                               )}
@@ -1043,20 +1043,20 @@ export default function DigitalProducts() {
                               )}
                             </div>
                           ) : isFreeDigital ? (
-                            <span className="text-lg font-extrabold text-emerald-600">Free</span>
+                            <span className="text-[17px] font-extrabold text-emerald-600">Free</span>
                           ) : isTrialDigital ? (
                             <div className="space-y-0.5">
-                              <span className="text-base font-extrabold text-black">{product.freeTrialDays || 7}-day free trial</span>
-                              <p className="text-[11px] text-gray-500">Then {formatMoney(finalPrice)}</p>
+                              <span className="text-[15px] font-extrabold text-black">{product.freeTrialDays || 7}-day free trial</span>
+                              <p className="text-[10px] text-gray-500">Then {formatMoney(finalPrice)}</p>
                             </div>
                           ) : (
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-lg font-extrabold text-black">
+                                <span className="text-[17px] font-extrabold text-black">
                                   {discounted ? `Now ${formatMoney(finalPrice)}` : formatMoney(finalPrice)}
                                 </span>
                                 {discounted && (
-                                  <span className="text-[11px] text-gray-400 line-through">
+                                  <span className="text-[10px] text-gray-400 line-through">
                                     Was {formatMoney(discountPreview.basePrice)}
                                   </span>
                                 )}
@@ -1069,7 +1069,7 @@ export default function DigitalProducts() {
                             </div>
                           )}
                         </div>
-                        <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.12em] transition-colors ${
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] transition-colors ${
                           customerHasAccess
                             ? 'bg-emerald-600 text-white group-hover:bg-emerald-700'
                             : 'bg-black text-white group-hover:bg-[#1f1f1f]'
@@ -1080,7 +1080,7 @@ export default function DigitalProducts() {
                       </div>
 
                       {customerHasAccess && (
-                        <p className="mt-2 text-[11px] font-bold text-emerald-700">
+                        <p className="mt-1.5 text-[10px] font-bold text-emerald-700">
                           Open this product to review details, then continue in your library.
                         </p>
                       )}

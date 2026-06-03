@@ -11,6 +11,10 @@ import {
 
 let transporter = null;
 const DEFAULT_FRONTEND_BASE_URL = 'https://bellekreyashon.com';
+const OWNER_NOTIFICATION_RECIPIENTS = Object.freeze([
+  { formatted: 'blackbird77ad@gmail.com', email: 'blackbird77ad@gmail.com' },
+  { formatted: 'bellekreyashon@gmail.com', email: 'bellekreyashon@gmail.com' },
+]);
 
 const normalizeConfiguredValue = (value = '') => String(value || '').trim().replace(/^['"]|['"]$/g, '');
 
@@ -202,6 +206,111 @@ const toTitleCase = (value = '') => {
     .join(' ');
 };
 
+const formatMoney = (value = 0) => `GHS ${Number(value || 0).toLocaleString()}`;
+
+const normalizeWhatsAppPhone = (value = '') => {
+  const cleaned = String(value || '').trim().replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('+')) return cleaned.slice(1);
+  if (cleaned.startsWith('0') && cleaned.length === 10) return `233${cleaned.slice(1)}`;
+  return cleaned;
+};
+
+const buildCustomerWhatsAppLink = (phone = '', order = {}) => {
+  const normalized = normalizeWhatsAppPhone(phone);
+  if (!normalized) return '';
+  const text = encodeURIComponent(
+    `Hello ${order.customer?.name || 'there'}, this is Belle Kreyashon following up on your order ${order.orderId || ''}.`
+  );
+  return `https://wa.me/${normalized}?text=${text}`;
+};
+
+const buildCustomerReplyLink = (email = '', order = {}) => {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return '';
+  const subject = encodeURIComponent(`Regarding Belle Kreyashon order ${order.orderId || ''}`);
+  return `mailto:${normalized}?subject=${subject}`;
+};
+
+const describeOrderFulfillment = (order = {}) => {
+  switch (order.fulfillment) {
+    case 'digital':
+      return 'Digital delivery';
+    case 'pickup':
+      return 'Pickup';
+    case 'arranged-delivery':
+      return 'Customer-arranged delivery';
+    case 'international':
+      return 'International shipping';
+    case 'delivery':
+      return order.deliveryZone ? `Delivery - ${order.deliveryZone}` : 'Delivery';
+    default:
+      return toTitleCase(order.fulfillment || order.orderType || 'Order');
+  }
+};
+
+const buildOrderItemLines = (order = {}) => (
+  (order.items || []).map((item) => {
+    const qty = Math.max(Number(item.qty) || 0, 1);
+    const unitPrice = Number(item.price) || 0;
+    const lineTotal = unitPrice * qty;
+    const details = [];
+
+    if (item.variant) details.push(item.variant);
+    if (item.isDigital) {
+      if (item.digitalAccessKind === 'trial') {
+        details.push(`${item.trialDays || 7}-day trial`);
+        if (Number(item.trialChargeAmount) > 0) {
+          details.push(`then ${formatMoney(item.trialChargeAmount)}`);
+        }
+      } else if (item.digitalAccessKind === 'free') {
+        details.push('free digital access');
+      } else {
+        details.push('digital access');
+      }
+    } else if (item.category) {
+      details.push(item.category);
+    }
+
+    return `${item.name || 'Item'}${details.length ? ` (${details.join(' • ')})` : ''} x${qty} - ${formatMoney(unitPrice)} each - ${formatMoney(lineTotal)}`;
+  })
+);
+
+const buildCustomerOrderNote = (order = {}) => {
+  if ((order.items || []).every((item) => item.isDigital)) {
+    return 'Your digital purchase opens inside your secure Belle Kreyashon library after confirmation. Sign in anytime to continue learning.';
+  }
+  if (order.fulfillment === 'pickup') {
+    return 'We will prepare your order for pickup and you can use your dashboard or contact us if you need help confirming the collection details.';
+  }
+  if (order.fulfillment === 'arranged-delivery') {
+    return 'Your order is confirmed. Please use WhatsApp with Belle Kreyashon to confirm the rider or courier details for delivery.';
+  }
+  if (order.fulfillment === 'international') {
+    return 'Your order is confirmed. We will follow up with the shipping details and final international delivery arrangement.';
+  }
+  return 'Your order is confirmed and the Belle Kreyashon team will continue with the next delivery or processing step.';
+};
+
+const buildAdminOrderNextStep = (order = {}) => {
+  if ((order.items || []).every((item) => item.isDigital)) {
+    return 'Next step: verify the learner access grant, watch for support requests, and be ready to approve certificates if this product includes one.';
+  }
+  if (order.fulfillment === 'pickup') {
+    return 'Next step: prepare the order and contact the customer to confirm pickup time and location.';
+  }
+  if (order.fulfillment === 'arranged-delivery') {
+    return 'Next step: contact the customer and confirm the rider or courier arrangement before dispatch.';
+  }
+  if (order.fulfillment === 'international') {
+    return 'Next step: contact the customer with shipping options, cost, and dispatch timeline.';
+  }
+  if (order.fulfillment === 'delivery') {
+    return 'Next step: prepare, package, and move the order into the delivery flow for the selected zone.';
+  }
+  return 'Next step: review the order, contact the customer if needed, and move it into processing.';
+};
+
 export const sendCustomerWelcomeEmail = async ({ customer, verificationUrl = '' }) => {
   if (!customer?.email) return null;
 
@@ -339,9 +448,7 @@ export const sendCustomerOrderEmail = async ({ order }) => {
   const libraryUrl = buildFrontendLink('/digital-library');
   const hasDigitalItems = (order.items || []).some((item) => item.isDigital);
   const itemCount = (order.items || []).reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-  const itemLines = (order.items || []).map((item) => (
-    `${item.name || 'Item'}${item.variant ? ` (${item.variant})` : ''} x${Number(item.qty) || 0}`
-  ));
+  const itemLines = buildOrderItemLines(order);
   const actions = [
     { label: 'View My Dashboard', href: dashboardUrl, tone: 'primary' },
     ...(hasDigitalItems ? [{ label: 'Open My Digital Library', href: libraryUrl, tone: 'secondary' }] : []),
@@ -360,27 +467,36 @@ export const sendCustomerOrderEmail = async ({ order }) => {
       <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
         Your Belle Kreyashon order <strong style="color:#111111;">${escapeHtml(order.orderId || '')}</strong> has been received successfully.
       </p>
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        ${escapeHtml(buildCustomerOrderNote(order))}
+      </p>
       ${buildEmailList(itemLines)}
     `,
     metaHtml: buildEmailMetaTable([
       { label: 'Order ID', value: order.orderId || 'Pending' },
-      { label: 'Total', value: `GHS ${Number(order.total || 0).toLocaleString()}` },
+      { label: 'Payment Ref', value: order.paymentRef || 'Pending' },
+      { label: 'Subtotal', value: formatMoney(order.subtotal || 0) },
+      { label: 'Delivery', value: formatMoney(order.deliveryFee || 0) },
+      { label: 'Total', value: formatMoney(order.total || 0) },
       { label: 'Items', value: `${itemCount} item${itemCount === 1 ? '' : 's'}` },
-      { label: 'Fulfillment', value: toTitleCase(order.fulfillment || order.orderType || 'Order') },
+      { label: 'Fulfillment', value: describeOrderFulfillment(order) },
     ]),
     actions,
-    noteHtml: buildEmailNote('We will keep you updated as your order moves forward.'),
+    noteHtml: buildEmailNote(buildCustomerOrderNote(order)),
   });
 
   const text = buildEmailText({
     greeting: `Hello ${order.customer?.name || 'there'},`,
     lines: [
       `Your Belle Kreyashon order ${order.orderId || ''} has been received successfully.`,
+      buildCustomerOrderNote(order),
       ...itemLines.map((item) => `- ${item}`),
-      `Total: GHS ${Number(order.total || 0).toLocaleString()}`,
+      `Payment ref: ${order.paymentRef || 'Pending'}`,
+      `Subtotal: ${formatMoney(order.subtotal || 0)}`,
+      `Delivery: ${formatMoney(order.deliveryFee || 0)}`,
+      `Total: ${formatMoney(order.total || 0)}`,
       `Items: ${itemCount}`,
-      `Fulfillment: ${toTitleCase(order.fulfillment || order.orderType || 'Order')}`,
-      'We will keep you updated as your order moves forward.',
+      `Fulfillment: ${describeOrderFulfillment(order)}`,
     ],
     actions,
   });
@@ -388,6 +504,85 @@ export const sendCustomerOrderEmail = async ({ order }) => {
   return sendCustomerEmail({
     to: email,
     subject: `Order received - ${order.orderId || 'Belle Kreyashon'}`,
+    html,
+    text,
+  });
+};
+
+export const sendAdminOrderNotificationEmail = async ({ order }) => {
+  if (!order?.orderId) return null;
+
+  const dashboardUrl = buildFrontendLink('/admin');
+  const itemLines = buildOrderItemLines(order);
+  const itemCount = (order.items || []).reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const customerWhatsAppLink = buildCustomerWhatsAppLink(order.customer?.phone || '', order);
+  const customerReplyLink = buildCustomerReplyLink(order.customer?.email || '', order);
+  const actions = [
+    { label: 'Open Admin Dashboard', href: dashboardUrl, tone: 'primary' },
+    ...(customerWhatsAppLink ? [{ label: 'WhatsApp Customer', href: customerWhatsAppLink, tone: 'secondary' }] : []),
+    ...(!customerWhatsAppLink && customerReplyLink ? [{ label: 'Email Customer', href: customerReplyLink, tone: 'secondary' }] : []),
+  ];
+
+  const html = buildEmailLayout({
+    previewText: `New order ${order.orderId || ''} from ${order.customer?.name || 'a customer'}.`,
+    eyebrow: 'New Order Alert',
+    title: `New order ${order.orderId || ''}`,
+    greetingHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        A new Belle Kreyashon order has been paid for and is ready for follow-up.
+      </p>
+    `,
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        Customer: <strong style="color:#111111;">${escapeHtml(order.customer?.name || 'Unknown customer')}</strong>
+      </p>
+      ${buildEmailList(itemLines)}
+    `,
+    metaHtml: buildEmailMetaTable([
+      { label: 'Order ID', value: order.orderId || 'Pending' },
+      { label: 'Payment Ref', value: order.paymentRef || 'Pending' },
+      { label: 'Payment Purpose', value: toTitleCase(order.paymentPurpose || 'purchase') },
+      { label: 'Charged Now', value: formatMoney(order.paystackChargedAmount || order.total || 0) },
+      { label: 'Subtotal', value: formatMoney(order.subtotal || 0) },
+      { label: 'Delivery', value: formatMoney(order.deliveryFee || 0) },
+      { label: 'Total', value: formatMoney(order.total || 0) },
+      { label: 'Items', value: `${itemCount} item${itemCount === 1 ? '' : 's'}` },
+      { label: 'Fulfillment', value: describeOrderFulfillment(order) },
+      { label: 'Customer Phone', value: order.customer?.phone || 'Not provided' },
+      { label: 'Customer Email', value: order.customer?.email || 'Not provided' },
+      { label: 'Customer Address', value: order.customer?.address || 'Not provided' },
+    ]),
+    actions,
+    noteHtml: buildEmailNote(buildAdminOrderNextStep(order)),
+    footerText: 'Belle Kreyashon order notification for co-owners.',
+  });
+
+  const text = buildEmailText({
+    greeting: 'A new Belle Kreyashon order has been paid for and is ready for follow-up.',
+    lines: [
+      `Order ID: ${order.orderId || 'Pending'}`,
+      `Payment Ref: ${order.paymentRef || 'Pending'}`,
+      `Payment Purpose: ${toTitleCase(order.paymentPurpose || 'purchase')}`,
+      `Customer: ${order.customer?.name || 'Unknown customer'}`,
+      `Phone: ${order.customer?.phone || 'Not provided'}`,
+      `Email: ${order.customer?.email || 'Not provided'}`,
+      `Address: ${order.customer?.address || 'Not provided'}`,
+      `Fulfillment: ${describeOrderFulfillment(order)}`,
+      `Charged now: ${formatMoney(order.paystackChargedAmount || order.total || 0)}`,
+      `Subtotal: ${formatMoney(order.subtotal || 0)}`,
+      `Delivery: ${formatMoney(order.deliveryFee || 0)}`,
+      `Total: ${formatMoney(order.total || 0)}`,
+      '',
+      ...itemLines.map((item) => `- ${item}`),
+      '',
+      buildAdminOrderNextStep(order),
+    ],
+    actions,
+  });
+
+  return sendCustomerEmail({
+    to: OWNER_NOTIFICATION_RECIPIENTS.map((recipient) => recipient.formatted),
+    subject: `New paid order - ${order.orderId || 'Belle Kreyashon'}`,
     html,
     text,
   });
