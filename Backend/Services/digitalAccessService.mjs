@@ -358,6 +358,9 @@ export const grantDigitalAccessForOrder = async (order, context = {}) => {
     const billingAmount = digitalAccessKind === 'trial'
       ? Number(item.trialChargeAmount ?? item.price ?? product.retailPrice) || 0
       : 0;
+    const purchasePrice = digitalAccessKind === 'trial'
+      ? Number(item.trialChargeAmount ?? item.price ?? product.retailPrice) || 0
+      : Number(item.price ?? 0) || 0;
     const billingAuthorization = digitalAccessKind === 'trial'
       ? buildBillingAuthorization(context, order.customer?.email || '')
       : null;
@@ -388,6 +391,8 @@ export const grantDigitalAccessForOrder = async (order, context = {}) => {
         trialConvertedAt: null,
         billingAmount,
         billingCurrency: 'GHS',
+        purchasePrice,
+        purchaseCurrency: 'GHS',
         billingAuthorization,
         accessType,
         accessMonths,

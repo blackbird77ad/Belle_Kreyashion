@@ -2868,6 +2868,7 @@ export default function Admin() {
   const [visibleDigitalWritingBlockTitles, setVisibleDigitalWritingBlockTitles] = useState({});
   const [showDigitalCustomerPreview, setShowDigitalCustomerPreview] = useState(false);
   const [expandedPreviewModules, setExpandedPreviewModules] = useState({});
+  const [showDigitalContentsPageEditor, setShowDigitalContentsPageEditor] = useState(true);
   const [showDigitalContentsPreviewEntries, setShowDigitalContentsPreviewEntries] = useState(true);
   const [expandedDigitalContentsPreviewModules, setExpandedDigitalContentsPreviewModules] = useState({});
   const draggedModuleRef = useRef(null);
@@ -5957,16 +5958,27 @@ const buildTrainingBody = (f) => ({
                           />
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={scrollToDigitalModulesEditor}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
-                      >
-                        <Pencil size={13} />
-                        Edit Content
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowDigitalContentsPageEditor((current) => !current)}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                        >
+                          {showDigitalContentsPageEditor ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          {showDigitalContentsPageEditor ? 'Fold Section' : 'Open Section'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={scrollToDigitalModulesEditor}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                        >
+                          <Pencil size={13} />
+                          Edit Content
+                        </button>
+                      </div>
                     </div>
 
+                    {showDigitalContentsPageEditor ? (
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
                       <div className="space-y-4">
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -6228,6 +6240,26 @@ const buildTrainingBody = (f) => ({
                         </div>
                       </div>
                     </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-gray-600">
+                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                            {pluralize((form.digitalModules || []).length, 'module')}
+                          </span>
+                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                            {pluralize(
+                              (form.digitalModules || []).reduce((sum, module) => (
+                                sum + getDigitalContentsModuleEntryCounts(module).totalEntries
+                              ), 0),
+                              'contents entry'
+                            )}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+                          Open this section to edit the contents page title, subtitle, styling, and preview.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <ImageUploader

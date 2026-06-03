@@ -253,6 +253,8 @@ const digitalAccessSchema = new mongoose.Schema({
   trialConvertedAt: { type: Date, default: null },
   billingAmount: { type: Number, default: 0 },
   billingCurrency: { type: String, default: 'GHS' },
+  purchasePrice: { type: Number, default: 0 },
+  purchaseCurrency: { type: String, default: 'GHS' },
   billingAuthorization: { type: billingAuthorizationSchema, default: null },
   lastChargeReference: { type: String, default: '' },
   lastChargeError: { type: String, default: '' },

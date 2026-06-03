@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShoppingBag, Minus, Plus, ChevronLeft, ChevronDown, ChevronUp, ShieldCheck, Mail, Phone } from 'lucide-react';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
@@ -7,7 +7,7 @@ import { useCustomer } from '../context/CustomerContext';
 import { useIntlPreferences } from '../context/IntlContext';
 import CustomerModal from '../components/CustomerModal';
 import SEO from '../components/SEO';
-import { buildBreadcrumbSchema, getProductPath, toAbsoluteUrl } from '../utils/seoPaths';
+import { buildBreadcrumbSchema, getDigitalCheckoutPath, getProductPath, toAbsoluteUrl } from '../utils/seoPaths';
 import { buildDiscountPresentation } from '../utils/discounts';
 import { trackProductView } from '../utils/marketing';
 
@@ -36,6 +36,7 @@ const buildSupportWhatsAppLink = (phone = '', productName = '') => {
 export default function Product() {
   const { slugOrId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { cart, addToCart, removeOwnedDigitalItems } = useCart();
   const { customer } = useCustomer();
   const { formatMoney, ghanaCheckoutNote, isConvertedDisplay } = useIntlPreferences();
@@ -49,6 +50,8 @@ export default function Product() {
   const [added,     setAdded]     = useState(false);
   const [showCheckoutPrompt, setShowCheckoutPrompt] = useState(false);
   const [showModulePreview, setShowModulePreview] = useState(false);
+  const autoCheckoutHandledRef = useRef('');
+  const checkoutIntent = searchParams.get('checkout') === '1';
 
   useEffect(() => {
     api.get(`/api/products/public/${slugOrId}`, customer?.accessToken
@@ -60,16 +63,17 @@ export default function Product() {
 
         const canonicalPath = getProductPath(r.data);
         if (r.data?.slug && canonicalPath !== `/shop/${slugOrId}`) {
-          navigate(canonicalPath, { replace: true });
+          navigate(checkoutIntent ? `${canonicalPath}?checkout=1` : canonicalPath, { replace: true });
         }
       })
       .catch(() => { setLoading(false); navigate('/shop'); });
-  }, [slugOrId, navigate, customer?.accessToken]);
+  }, [slugOrId, navigate, customer?.accessToken, checkoutIntent]);
 
   useEffect(() => {
     setAdded(false);
     setShowCheckoutPrompt(false);
     setShowModulePreview(false);
+    autoCheckoutHandledRef.current = '';
   }, [slugOrId]);
 
   useEffect(() => {
@@ -97,6 +101,24 @@ export default function Product() {
   const price        = isWholesale ? product?.wholesalePrice : finalPrice;
   const digitalCartKey = product?._id ? `digital-${product._id}` : '';
   const isDigitalAlreadyInCart = !!(isDigital && digitalCartKey && cart.some((item) => item.key === digitalCartKey));
+  const directCheckoutPath = isDigital ? getDigitalCheckoutPath(product || { _id: slugOrId }) : '';
+
+  useEffect(() => {
+    if (!checkoutIntent || !product?._id || !isDigital) return;
+    const handledKey = `${product._id}:${checkoutIntent}`;
+    if (autoCheckoutHandledRef.current === handledKey) return;
+    autoCheckoutHandledRef.current = handledKey;
+
+    if (customerHasAccess) {
+      navigate(`/digital-library?product=${product._id}`, { replace: true });
+      return;
+    }
+
+    if (!isDigitalAlreadyInCart) {
+      addToCart(product, 1, false, null);
+    }
+    navigate('/shop/checkout', { replace: true });
+  }, [checkoutIntent, product, isDigital, customerHasAccess, isDigitalAlreadyInCart, addToCart, navigate]);
 
   useEffect(() => {
     if (!product?._id) return;
@@ -417,12 +439,12 @@ export default function Product() {
                 <div className="bg-[#fcfbf7] px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Program Snapshot</p>
-                      <p className="mt-1 text-sm font-extrabold text-black">Module Titles</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Program Snapshot:</p>
+                      <p className="mt-1 text-sm font-extrabold text-black">{`Module (${digitalModules.length})`}</p>
                       <p className="mt-1 text-xs leading-relaxed text-gray-500">
                         {customerHasAccess
                           ? 'Keep this page simple here and open your library for the full lesson experience.'
-                          : 'Preview the module names only here. Full lessons and secure files open after purchase inside the library.'}
+                          : 'Click to view module names only.'}
                       </p>
                     </div>
                     <button
@@ -570,6 +592,14 @@ export default function Product() {
                   </button>
                 </div>
               </div>
+            )}
+            {isDigital && !customerHasAccess && directCheckoutPath && (
+              <a
+                href={directCheckoutPath}
+                className="mt-3 inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+              >
+                Direct Checkout Link
+              </a>
             )}
             {product.stock !== null && product.stock > 0 && product.stock <= 5 && (
               <p className="text-center text-xs text-red-500 font-bold mt-2">Only {product.stock} left in stock!</p>

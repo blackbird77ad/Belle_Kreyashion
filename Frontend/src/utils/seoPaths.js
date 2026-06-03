@@ -19,6 +19,11 @@ export const getProductPath = (product = {}) => {
   return slugOrId ? `/shop/${slugOrId}` : '/shop';
 };
 
+export const getDigitalCheckoutPath = (product = {}) => {
+  const stableId = product?._id || product?.slug || '';
+  return stableId ? `/shop/${stableId}?checkout=1` : '/shop';
+};
+
 export const getBlogPath = (post = {}) => {
   const slugOrId = post?.slug || post?._id || '';
   return slugOrId ? `/blog/${slugOrId}` : '/blog';

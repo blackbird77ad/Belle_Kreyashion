@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  ArrowRight,
   Award,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   Circle,
   CheckCircle2,
   Download,
@@ -112,6 +115,57 @@ const buildSupportWhatsAppLink = (phone = '', productName = '') => {
   if (!normalized) return '';
   const text = encodeURIComponent(`Hello trainer, I need help with ${productName || 'my digital training'} inside the Belle Kreyashon web library.`);
   return `https://wa.me/${normalized}?text=${text}`;
+};
+
+const pluralize = (value = 0, label = 'item') => `${value} ${label}${value === 1 ? '' : 's'}`;
+
+const formatAccessKindLabel = (kind = '') => {
+  if (kind === 'free') return 'Free access';
+  if (kind === 'trial') return 'Free trial';
+  return 'Paid access';
+};
+
+const getLibraryItemStats = (item = {}) => {
+  const moduleCount = item.modules?.length || 0;
+  const lessonItemCount = (item.modules || []).reduce((sum, module) => sum + (module.items?.length || 0), 0);
+  const manualPageCount = item.manualPages?.length || 0;
+  const fileCount = item.files?.length || 0;
+  const hasModuleFlow = moduleCount > 0;
+  const progressPercent = Number(item.progress?.percent || 0);
+  return {
+    moduleCount,
+    lessonItemCount,
+    manualPageCount,
+    fileCount,
+    hasModuleFlow,
+    progressPercent,
+  };
+};
+
+const getLibraryCoverSummary = (item = {}) => (
+  item.productDesc
+  || item.seriesDescription
+  || item.digitalContentsPage?.subtitle
+  || item.certificateDescription
+  || 'Open this title to continue learning inside your protected Belle Kreyashon library.'
+);
+
+const getPrimaryResumeModule = (item = {}) => (
+  (item.modules || []).find((module) => module.lastItemId || module.openedAt || !module.completedAt)
+  || item.modules?.[0]
+  || null
+);
+
+const getContentsReaderModuleStats = (module = {}) => {
+  const lessons = module.items?.length || 0;
+  const writingTitles = (module.items || []).reduce((sum, lessonItem) => (
+    sum + buildContentsWritingBlockEntries(lessonItem).length
+  ), 0);
+  return {
+    lessons,
+    writingTitles,
+    totalEntries: lessons + writingTitles,
+  };
 };
 
 const DEFAULT_CONTENTS_TITLE_STYLE = {
@@ -577,6 +631,9 @@ export default function DigitalLibrary() {
   const [libraryPage, setLibraryPage] = useState(1);
   const [viewer, setViewer] = useState(null);
   const [manualReader, setManualReader] = useState(null);
+  const [showContentsReaderEntries, setShowContentsReaderEntries] = useState(false);
+  const [expandedContentsReaderModules, setExpandedContentsReaderModules] = useState({});
+  const [expandedCoverSections, setExpandedCoverSections] = useState({});
   const [certificateTarget, setCertificateTarget] = useState(null);
   const [certificateForm, setCertificateForm] = useState({
     learnerName: '',
@@ -652,7 +709,10 @@ export default function DigitalLibrary() {
     const bFocused = focusedProductId && String(b.productId) === focusedProductId ? 1 : 0;
     return bFocused - aFocused;
   });
-  const LIBRARY_PAGE_SIZE = 4;
+  const selectedLibraryItem = focusedProductId
+    ? visibleLibrary.find((item) => String(item.productId) === focusedProductId) || null
+    : null;
+  const LIBRARY_PAGE_SIZE = 8;
   const totalLibraryPages = Math.ceil(visibleLibrary.length / LIBRARY_PAGE_SIZE);
   const pagedLibrary = visibleLibrary.slice(
     (libraryPage - 1) * LIBRARY_PAGE_SIZE,
@@ -662,6 +722,32 @@ export default function DigitalLibrary() {
   useEffect(() => {
     setLibraryPage(1);
   }, [search, libraryFilter, focusedProductId]);
+
+  useEffect(() => {
+    setExpandedCoverSections({});
+  }, [focusedProductId]);
+
+  const focusLibraryProduct = useCallback((productId = '') => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (productId) next.set('product', productId);
+    else next.delete('product');
+    setSearchParams(next, { replace: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [searchParams, setSearchParams]);
+
+  const toggleCoverSection = useCallback((sectionKey) => {
+    setExpandedCoverSections((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }));
+  }, []);
+
+  const toggleContentsReaderModuleExpanded = useCallback((moduleKey) => {
+    setExpandedContentsReaderModules((current) => ({
+      ...current,
+      [moduleKey]: !current[moduleKey],
+    }));
+  }, []);
 
   const openAsset = async (grantId, assetId, mode = 'inline') => {
     if (!customer?.accessToken) {
@@ -824,11 +910,25 @@ export default function DigitalLibrary() {
     openModuleResumeTarget(libraryItem._id, module);
   };
 
+  const openManualPage = (libraryItem, page) => {
+    if (!libraryItem || !page) return;
+    setManualReader({
+      ...page,
+      productId: libraryItem.productId,
+      grantId: libraryItem._id,
+      productName: libraryItem.productName,
+      supportEmail: libraryItem.supportEmail || '',
+      supportWhatsApp: libraryItem.supportWhatsApp || '',
+    });
+  };
+
   const openContentsPage = (libraryItem) => {
     if (!customer?.accessToken) {
       setShowCustomerModal(true);
       return;
     }
+    setShowContentsReaderEntries(false);
+    setExpandedContentsReaderModules({});
     setManualReader(buildContentsReaderState({ libraryItem }));
   };
 
@@ -998,23 +1098,19 @@ export default function DigitalLibrary() {
 
         {!loading && library.length > 0 && (
           <div className="grid gap-5">
-            {focusedProductId && (
+            {selectedLibraryItem && (
               <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Focused Library Access</p>
-                    <p className="text-sm font-bold text-emerald-900 mt-1">Your selected product is pinned to the top of the library list below.</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Selected Cover</p>
+                    <p className="text-sm font-bold text-emerald-900 mt-1">The cover page for your chosen digital product is open below.</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      const next = new URLSearchParams(searchParams);
-                      next.delete('product');
-                      setSearchParams(next, { replace: true });
-                    }}
+                    onClick={() => focusLibraryProduct('')}
                     className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 hover:border-emerald-400"
                   >
-                    Clear Focus
+                    Back To Shelf
                   </button>
                 </div>
               </div>
@@ -1049,7 +1145,7 @@ export default function DigitalLibrary() {
                 </div>
               </div>
               <p className="mt-3 text-xs text-gray-500">
-                {filteredLibrary.length} of {library.length} product{library.length === 1 ? '' : 's'} shown. Open modules on-site, and only files marked downloadable by admin will show a download action.
+                {filteredLibrary.length} of {library.length} product{library.length === 1 ? '' : 's'} shown. Pick a cover to open the cleaner reading view, then move into contents, pages, or secure resources from there.
                 {filteredLibrary.length > LIBRARY_PAGE_SIZE ? ` Page ${libraryPage} of ${totalLibraryPages}.` : ''}
               </p>
             </div>
@@ -1071,7 +1167,511 @@ export default function DigitalLibrary() {
               </div>
             )}
 
-            {pagedLibrary.map((item) => {
+            {filteredLibrary.length > 0 && (
+              <>
+                {selectedLibraryItem ? (() => {
+                  const item = selectedLibraryItem;
+                  const stats = getLibraryItemStats(item);
+                  const resumeModule = getPrimaryResumeModule(item);
+                  const certificateIssued = item.certificateStatus === 'generated' && (
+                    item.certificateIssued || item.certificate?.issued || item.certificate?.emailStatus === 'sent'
+                  );
+                  const supportEmailLink = buildSupportEmailLink(item.supportEmail || '', item.productName || '');
+                  const supportWhatsAppLink = buildSupportWhatsAppLink(item.supportWhatsApp || '', item.productName || '');
+                  const firstManualPage = item.manualPages?.[0] || null;
+                  const firstFile = item.files?.[0] || null;
+                  const isPagesExpanded = !!expandedCoverSections.pages;
+                  const isResourcesExpanded = !!expandedCoverSections.resources;
+
+                  return (
+                    <div className="overflow-hidden rounded-[30px] border border-gray-200 bg-white shadow-[0_24px_60px_rgba(17,24,39,0.08)]">
+                      <div className="grid gap-0 lg:grid-cols-[minmax(260px,320px)_1fr]">
+                        <div className="border-b border-gray-100 bg-[radial-gradient(circle_at_top,_#fff8d9_0%,_#f8f3e7_58%,_#efe9dd_100%)] px-5 py-6 lg:border-b-0 lg:border-r">
+                          <div className="mx-auto max-w-[240px]">
+                            <div className="relative overflow-hidden rounded-[28px] border border-black/10 bg-white shadow-[0_20px_45px_rgba(17,24,39,0.12)]">
+                              <div className="absolute inset-y-0 left-0 w-2 bg-black/85" />
+                              {item.productImage ? (
+                                <img
+                                  src={item.productImage}
+                                  alt={item.productName}
+                                  className="aspect-[4/5] w-full object-contain p-5"
+                                  onError={(event) => { event.target.style.display = 'none'; }}
+                                />
+                              ) : (
+                                <div className="flex aspect-[4/5] items-center justify-center text-gray-300">
+                                  <BookOpen size={42} />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <span className="rounded-full bg-black px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#FDC700]">
+                              {item.digitalType || 'Digital Product'}
+                            </span>
+                            <span className="rounded-full border border-gray-200 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">
+                              {formatAccessKindLabel(item.digitalAccessKind)}
+                            </span>
+                            {item.isSeries && (
+                              <span className="rounded-full border border-purple-100 bg-purple-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-purple-700">
+                                Series
+                              </span>
+                            )}
+                            {item.isCertified && (
+                              <span className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-700">
+                                Certified
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="p-5 md:p-6">
+                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Selected Book Cover</p>
+                              <h2 className="mt-2 text-2xl font-extrabold text-black">{item.productName}</h2>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-3 py-1 text-[11px] font-bold text-gray-600">
+                                  {item.accessType === 'lifetime' ? 'Lifetime access' : `${item.accessMonths || 6} month access`}
+                                </span>
+                                {item.trialStatus === 'trialing' && item.trialEndsAt && (
+                                  <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
+                                    Trial ends {formatShortDate(item.trialEndsAt)}
+                                  </span>
+                                )}
+                                {item.expiresAt && (
+                                  <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-3 py-1 text-[11px] font-bold text-gray-600">
+                                    Expires {formatShortDate(item.expiresAt)}
+                                  </span>
+                                )}
+                              </div>
+                              {item.isSeries && item.seriesTitle && (
+                                <p className="mt-3 text-sm font-bold text-gray-800">{item.seriesTitle}</p>
+                              )}
+                              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-500">
+                                {getLibraryCoverSummary(item)}
+                              </p>
+                              <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">
+                                Order {item.orderId}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => focusLibraryProduct('')}
+                              className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
+                            >
+                              Back To Shelf
+                            </button>
+                          </div>
+
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Progress</p>
+                              <p className="mt-1 text-lg font-extrabold text-black">{stats.progressPercent}%</p>
+                              <div className="mt-3 h-2 overflow-hidden rounded-full border border-gray-200 bg-white">
+                                <div className="h-full bg-black transition-all" style={{ width: `${stats.progressPercent}%` }} />
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Modules</p>
+                              <p className="mt-1 text-lg font-extrabold text-black">{stats.moduleCount}</p>
+                              <p className="mt-1 text-xs text-gray-500">{pluralize(stats.lessonItemCount, 'lesson item')}</p>
+                            </div>
+                            <div className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Pages</p>
+                              <p className="mt-1 text-lg font-extrabold text-black">{stats.manualPageCount}</p>
+                              <p className="mt-1 text-xs text-gray-500">Written lesson pages</p>
+                            </div>
+                            <div className="rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Resources</p>
+                              <p className="mt-1 text-lg font-extrabold text-black">{stats.fileCount}</p>
+                              <p className="mt-1 text-xs text-gray-500">Protected files</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 rounded-[24px] border border-amber-100 bg-[#fffdf4] p-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">
+                                  {stats.hasModuleFlow ? 'Read Like A Book' : 'Open Your Learning Materials'}
+                                </p>
+                                <p className="mt-2 text-sm font-extrabold text-black">
+                                  {stats.hasModuleFlow
+                                    ? (item?.digitalContentsPage?.title || 'Table of Contents')
+                                    : 'Use the foldable sections below to open the right page or file.'}
+                                </p>
+                                <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                                  {stats.hasModuleFlow
+                                    ? 'Start from the table of contents so every module stays neat, clear, and easy to follow like an online book.'
+                                    : 'Open only the pages or resources you need so the dashboard stays tidy and easy to understand.'}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {stats.hasModuleFlow && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openContentsPage(item)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                  >
+                                    <FileText size={14} />
+                                    Open Table Of Contents
+                                  </button>
+                                )}
+                                {resumeModule && (
+                                  <button
+                                    type="button"
+                                    onClick={() => continueModule(item, resumeModule)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                  >
+                                    <BookOpen size={14} />
+                                    {resumeModule.lastItemId ? 'Continue Reading' : 'Start Reading'}
+                                  </button>
+                                )}
+                                {!stats.hasModuleFlow && firstManualPage && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openManualPage(item, firstManualPage)}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                  >
+                                    <BookOpen size={14} />
+                                    Open First Page
+                                  </button>
+                                )}
+                                {!stats.hasModuleFlow && firstFile && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openAsset(
+                                      item._id,
+                                      firstFile.assetId,
+                                      firstFile.canPreview ? 'inline' : (firstFile.allowDownload ? 'download' : 'inline')
+                                    )}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                  >
+                                    <PlayCircle size={14} />
+                                    Open First Resource
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 flex flex-wrap gap-2">
+                            {item.isCertified && item.certificateStatus === 'eligible' && (
+                              <button
+                                type="button"
+                                onClick={() => openCertificateRequest(item)}
+                                disabled={actioning === `${item._id}-certificate`}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900 disabled:opacity-60"
+                              >
+                                {actioning === `${item._id}-certificate` ? <Loader2 size={14} className="animate-spin" /> : <Award size={14} />}
+                                Request Certificate
+                              </button>
+                            )}
+                            {item.isCertified && item.certificateStatus === 'generated' && item.certificate && (
+                              <button
+                                type="button"
+                                onClick={() => generateCertificate(item.certificate)}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                              >
+                                <Award size={14} />
+                                View Certificate
+                              </button>
+                            )}
+                            {supportEmailLink && (
+                              <a
+                                href={supportEmailLink}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                              >
+                                <Mail size={14} />
+                                Email Trainer
+                              </a>
+                            )}
+                            {supportWhatsAppLink && (
+                              <a
+                                href={supportWhatsAppLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                              >
+                                <Phone size={14} />
+                                WhatsApp Trainer
+                              </a>
+                            )}
+                          </div>
+
+                          {item.isCertified && (
+                            <div className={`mt-4 rounded-2xl border px-4 py-3 text-xs leading-relaxed ${
+                              certificateIssued
+                                ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
+                                : 'border-amber-100 bg-amber-50 text-amber-800'
+                            }`}>
+                              {item.certificateStatus === 'generated'
+                                ? (certificateIssued
+                                  ? 'Certificate issued successfully. Keep a backup after downloading it from your email or viewer.'
+                                  : 'Certificate is ready and waiting for you.')
+                                : item.certificateStatus === 'requested'
+                                  ? 'Your certificate request has been sent for admin review.'
+                                  : item.certificateDescription || 'Complete the learning path, then request your certificate here.'}
+                            </div>
+                          )}
+
+                          {!!item.manualPages?.length && (
+                            <div className="mt-5 rounded-2xl border border-gray-100 bg-[#fcfbf7] p-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Written Pages</p>
+                                  <p className="mt-1 text-sm font-extrabold text-black">{pluralize(item.manualPages.length, 'page')}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCoverSection('pages')}
+                                  className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                                >
+                                  {isPagesExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  {isPagesExpanded ? 'Fold Pages' : 'Open Pages'}
+                                </button>
+                              </div>
+                              {isPagesExpanded && (
+                                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                  {item.manualPages.map((page, index) => (
+                                    <div key={page.pageId || `${page.title}-${index}`} className="rounded-2xl border border-gray-100 bg-white p-4">
+                                      <div className="flex items-start gap-3">
+                                        <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-black px-1.5 text-xs font-extrabold text-white">
+                                          {page.pageNumber || index + 1}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-sm font-extrabold text-black">{page.title || `Page ${page.pageNumber || index + 1}`}</p>
+                                          {(page.summary || page.content) && (
+                                            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-gray-500">
+                                              {page.summary || page.content}
+                                            </p>
+                                          )}
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => openManualPage(item, page)}
+                                              className="inline-flex items-center justify-center rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                            >
+                                              Open Page
+                                            </button>
+                                            {page.attachedMedia && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openAsset(item._id, page.attachedMedia.assetId, 'inline')}
+                                                className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                              >
+                                                Open Attached {page.attachedMedia.fileKind}
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {!!item.files?.length && (
+                            <div className="mt-5 rounded-2xl border border-gray-100 bg-[#fcfbf7] p-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Secure Resources</p>
+                                  <p className="mt-1 text-sm font-extrabold text-black">{pluralize(item.files.length, 'resource')}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCoverSection('resources')}
+                                  className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                                >
+                                  {isResourcesExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  {isResourcesExpanded ? 'Fold Resources' : 'Open Resources'}
+                                </button>
+                              </div>
+                              {isResourcesExpanded && (
+                                <div className="mt-4 grid gap-3">
+                                  {item.files.map((file) => {
+                                    const previewKey = `${item._id}-${file.assetId}-inline`;
+                                    const downloadKey = `${item._id}-${file.assetId}-download`;
+                                    const completeKey = `${item._id}-${file.moduleId || file.assetId}-complete`;
+                                    return (
+                                      <div key={file.assetId} className="rounded-2xl border border-gray-100 bg-white p-4">
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                          <div className="min-w-0">
+                                            <div className="flex items-center gap-2 text-sm font-bold text-gray-800">
+                                              <span className="text-[#FDC700]">{fileIcon(file.fileKind)}</span>
+                                              <span className="truncate">{file.label || file.originalFilename}</span>
+                                            </div>
+                                            {(file.stepTitle || file.stepSummary) && (
+                                              <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                                                {file.stepTitle && file.stepTitle !== file.label ? file.stepTitle : file.stepSummary}
+                                              </p>
+                                            )}
+                                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 capitalize">
+                                                {file.fileKind}
+                                              </span>
+                                              {file.bytes > 0 && (
+                                                <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                  {formatBytes(file.bytes)}
+                                                </span>
+                                              )}
+                                              <span className={`rounded-full border px-2.5 py-1 ${
+                                                file.allowDownload
+                                                  ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                                  : 'border-amber-100 bg-amber-50 text-amber-700'
+                                              }`}>
+                                                {file.allowDownload ? 'Download allowed' : 'View only'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {file.canPreview && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openAsset(item._id, file.assetId, 'inline')}
+                                                disabled={opening === previewKey}
+                                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900 disabled:opacity-60"
+                                              >
+                                                {opening === previewKey ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+                                                Open Securely
+                                              </button>
+                                            )}
+                                            {file.allowDownload && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openAsset(item._id, file.assetId, 'download')}
+                                                disabled={opening === downloadKey}
+                                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-60"
+                                              >
+                                                {opening === downloadKey ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                                Download
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={() => markModuleComplete(item._id, file.moduleId || file.assetId)}
+                                              disabled={!file.openedAt || file.isCompleted || actioning === completeKey}
+                                              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                              {actioning === completeKey ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                              {file.isCompleted ? 'Completed' : 'Mark Complete'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className="rounded-[30px] border border-gray-200 bg-white px-5 py-6">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Your Bookshelf</p>
+                    <h2 className="mt-2 text-xl font-extrabold text-black">Choose a digital title to open its cover page</h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-500">
+                      Keep the shelf clean, then select any cover below to open a neater product view with the important details, tags, and reading actions.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">
+                    {visibleLibrary.length} title{visibleLibrary.length === 1 ? '' : 's'} in your bookshelf
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Page {libraryPage} of {totalLibraryPages}. Open a cover first, then move into its contents or lessons.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {pagedLibrary.map((item) => {
+                    const stats = getLibraryItemStats(item);
+                    const isFocusedProduct = focusedProductId && String(item.productId) === focusedProductId;
+                    return (
+                      <button
+                        key={item._id}
+                        type="button"
+                        onClick={() => focusLibraryProduct(String(item.productId))}
+                        className={`group overflow-hidden rounded-[28px] border bg-white text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_rgba(17,24,39,0.10)] ${
+                          isFocusedProduct ? 'border-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.08)]' : 'border-gray-100'
+                        }`}
+                      >
+                        <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top,_#fff8d9_0%,_#f8f3e7_58%,_#efe9dd_100%)]">
+                          <div className="absolute inset-y-0 left-0 w-1.5 bg-black/80" />
+                          {item.productImage ? (
+                            <img
+                              src={item.productImage}
+                              alt={item.productName}
+                              className="aspect-[4/5] w-full object-contain p-4"
+                              onError={(event) => { event.target.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className="flex aspect-[4/5] items-center justify-center text-gray-300">
+                              <BookOpen size={36} />
+                            </div>
+                          )}
+                          <div className="absolute inset-x-0 top-0 flex flex-wrap gap-2 p-3">
+                            <span className="rounded-full bg-black px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#FDC700]">
+                              {item.digitalType || 'Digital Product'}
+                            </span>
+                            <span className="rounded-full border border-white/70 bg-white/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-700">
+                              {formatAccessKindLabel(item.digitalAccessKind)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="p-4">
+                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                            <ShieldCheck size={13} className="text-[#B88900]" />
+                            {isFocusedProduct ? 'Open Cover' : 'Protected Title'}
+                          </div>
+                          <h3 className="mt-2 min-h-[2.8rem] text-base font-extrabold leading-tight text-black line-clamp-2">
+                            {item.productName}
+                          </h3>
+                          <p className="mt-2 min-h-[3rem] text-xs leading-5 text-gray-500 line-clamp-3">
+                            {getLibraryCoverSummary(item)}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                              {pluralize(stats.moduleCount, 'module')}
+                            </span>
+                            {!!stats.manualPageCount && (
+                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                                {pluralize(stats.manualPageCount, 'page')}
+                              </span>
+                            )}
+                            {!!stats.fileCount && (
+                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
+                                {pluralize(stats.fileCount, 'resource')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Progress</p>
+                              <p className="mt-1 text-sm font-extrabold text-black">{stats.progressPercent}% complete</p>
+                            </div>
+                            <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.12em] ${
+                              isFocusedProduct ? 'bg-emerald-600 text-white' : 'bg-black text-white'
+                            }`}>
+                              Open Cover
+                              <ArrowRight size={14} />
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {false && pagedLibrary.map((item) => {
               const certificateIssued = item.certificateStatus === 'generated' && (
                 item.certificateIssued || item.certificate?.issued || item.certificate?.emailStatus === 'sent'
               );
@@ -1794,7 +2394,234 @@ export default function DigitalLibrary() {
                   )}
 
                   <div className="rounded-3xl border border-gray-100 bg-[#fcfbf7] px-5 py-5">
-                    {isContentsReader ? (
+                    {isContentsReader && (
+                      <div className="space-y-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Foldable Contents View</p>
+                            <p className="mt-1 text-sm font-extrabold text-black">Open only the module you want to read next.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowContentsReaderEntries((current) => !current)}
+                            className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-bold text-gray-700 hover:border-black hover:text-black"
+                          >
+                            {showContentsReaderEntries ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            {showContentsReaderEntries ? 'Fold Contents' : 'Open Contents'}
+                          </button>
+                        </div>
+
+                        {!showContentsReaderEntries && (
+                          <div className="rounded-2xl border border-gray-100 bg-white px-4 py-4">
+                            <div className="flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                {pluralize((manualReader.modules || []).length, 'module')}
+                              </span>
+                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                {pluralize(
+                                  (manualReader.modules || []).reduce((sum, module) => sum + getContentsReaderModuleStats(module).lessons, 0),
+                                  'lesson'
+                                )}
+                              </span>
+                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                {pluralize(
+                                  (manualReader.modules || []).reduce((sum, module) => sum + getContentsReaderModuleStats(module).writingTitles, 0),
+                                  'writing title'
+                                )}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                              Open the contents list when you want to browse the module names, lesson names, and writing titles in order.
+                            </p>
+                          </div>
+                        )}
+
+                        {showContentsReaderEntries && (
+                          <div className="space-y-4">
+                            {(manualReader.modules || []).map((module, moduleIndex) => {
+                              const moduleKey = module.moduleId || `contents-module-${moduleIndex}`;
+                              const moduleStats = getContentsReaderModuleStats(module);
+                              const isModuleExpanded = !!expandedContentsReaderModules[moduleKey];
+                              const orderedItems = sortModuleItems(module.items || []);
+                              const resumeItem = findLibraryModuleItem(module, module.lastItemId) || orderedItems[0] || null;
+                              const completeKey = `${manualReader.grantId}-${module.moduleId}-complete`;
+
+                              return (
+                                <div key={moduleKey} className="rounded-2xl border border-gray-100 bg-white p-4">
+                                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start gap-3">
+                                        <div className="inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-black px-2 text-xs font-extrabold text-white shrink-0">
+                                          {module.moduleNumber || moduleIndex + 1}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setManualReader(null);
+                                              window.setTimeout(() => openModuleResumeTarget(manualReader.grantId, module), 0);
+                                            }}
+                                            className="text-left text-base font-extrabold text-black hover:text-[#9a7a00]"
+                                          >
+                                            {module.title || `Module ${module.moduleNumber || moduleIndex + 1}`}
+                                          </button>
+                                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-gray-500">
+                                            <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                              {pluralize(moduleStats.lessons, 'lesson')}
+                                            </span>
+                                            {!!moduleStats.writingTitles && (
+                                              <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                                                {pluralize(moduleStats.writingTitles, 'writing title')}
+                                              </span>
+                                            )}
+                                            {module.completedAt && (
+                                              <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                                                Completed
+                                              </span>
+                                            )}
+                                          </div>
+                                          {!isModuleExpanded && (
+                                            <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                                              {moduleStats.totalEntries
+                                                ? `${pluralize(moduleStats.totalEntries, 'contents entry')} hidden until you open this module.`
+                                                : 'No lesson entries were added to this module yet.'}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {resumeItem && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setManualReader(null);
+                                            window.setTimeout(() => openModuleResumeTarget(manualReader.grantId, module), 0);
+                                          }}
+                                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                        >
+                                          <BookOpen size={14} />
+                                          {module.lastItemId ? 'Continue Module' : 'Start Module'}
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleContentsReaderModuleExpanded(moduleKey)}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                      >
+                                        {isModuleExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        {isModuleExpanded ? 'Fold Module' : 'Open Module'}
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {isModuleExpanded && (
+                                    <div className="mt-4 space-y-3">
+                                      {(module.items || []).map((lessonItem, lessonIndex) => {
+                                        const contentsWritingBlocks = buildContentsWritingBlockEntries(lessonItem);
+                                        return (
+                                          <div key={lessonItem.itemId || `${module.moduleId || moduleIndex}-lesson-${lessonIndex}`} className="space-y-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setManualReader(null);
+                                                window.setTimeout(() => openModuleItem(manualReader.grantId, module.moduleId, lessonItem), 0);
+                                              }}
+                                              className="w-full rounded-2xl border border-gray-100 bg-[#fcfbf7] px-4 py-3 text-left hover:border-black"
+                                            >
+                                              <div className="flex items-start gap-3">
+                                                <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-gray-200 bg-white px-2 text-[11px] font-extrabold text-gray-700 shrink-0">
+                                                  {lessonItem.order || lessonIndex + 1}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="flex flex-wrap items-center gap-2">
+                                                    <p className="text-sm font-extrabold text-black">
+                                                      {lessonItem.title || (lessonItem.kind === 'file' ? lessonItem.label || 'Attachment' : `Text Lesson ${lessonIndex + 1}`)}
+                                                    </p>
+                                                    <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-bold capitalize text-gray-600">
+                                                      {lessonItem.kind === 'file' ? `${lessonItem.fileKind || 'file'} attachment` : 'text lesson'}
+                                                    </span>
+                                                  </div>
+                                                  {lessonItem.description && (
+                                                    <p className="mt-2 text-xs leading-relaxed text-gray-500">{lessonItem.description}</p>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </button>
+                                            {!!contentsWritingBlocks.length && (
+                                              <div className="space-y-2 pl-11">
+                                                {contentsWritingBlocks.map((blockEntry) => (
+                                                  <button
+                                                    key={blockEntry.blockKey}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setManualReader(null);
+                                                      window.setTimeout(() => openModuleItem(manualReader.grantId, module.moduleId, lessonItem), 0);
+                                                    }}
+                                                    className="w-full rounded-xl border border-gray-100 bg-white px-3 py-2 text-left hover:border-black"
+                                                  >
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                      {blockEntry.lessonLabel && (
+                                                        <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                                                          {blockEntry.lessonLabel}
+                                                        </span>
+                                                      )}
+                                                      <p className="text-xs font-bold text-gray-700">
+                                                        {blockEntry.titleLines[0]}
+                                                      </p>
+                                                    </div>
+                                                    {blockEntry.titleLines.length > 1 && (
+                                                      <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+                                                        {blockEntry.titleLines.slice(1).join(' • ')}
+                                                      </p>
+                                                    )}
+                                                    {blockEntry.subtitle && (
+                                                      <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-gray-500">
+                                                        {blockEntry.subtitle}
+                                                      </p>
+                                                    )}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+
+                                      <div className="flex flex-wrap gap-2 pt-1">
+                                        {resumeItem && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setManualReader(null);
+                                              window.setTimeout(() => openModuleResumeTarget(manualReader.grantId, module), 0);
+                                            }}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                          >
+                                            <BookOpen size={14} />
+                                            {module.lastItemId ? 'Continue Module' : 'Start Module'}
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => markModuleComplete(manualReader.grantId, module.moduleId)}
+                                          disabled={!module.openedAt || !!module.completedAt || actioning === completeKey}
+                                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          {actioning === completeKey ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                          {module.completedAt ? 'Completed' : 'Mark Module Complete'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {false && isContentsReader ? (
                       <div className="space-y-4">
                         {(manualReader.modules || []).map((module, moduleIndex) => (
                           <div key={module.moduleId || `contents-module-${moduleIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">

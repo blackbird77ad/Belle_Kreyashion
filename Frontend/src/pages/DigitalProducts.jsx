@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
@@ -122,7 +122,6 @@ export default function DigitalProducts() {
   const { customer } = useCustomer();
   const { removeOwnedDigitalItems } = useCart();
   const { formatMoney, formatBaseMoney } = useIntlPreferences();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,7 +138,7 @@ export default function DigitalProducts() {
   const [special, setSpecial] = useState(searchParams.get('filter') || '');
   const [minPrice, setMinPrice] = useState(searchParams.get('minPrice') || '');
   const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(Math.max(1, Number(searchParams.get('page')) || 1));
   const [showFilters, setShowFilters] = useState(false);
   const [openFilterPanels, setOpenFilterPanels] = useState({
     basics: false,
@@ -156,7 +155,7 @@ export default function DigitalProducts() {
     digitalTopics: [],
     digitalInclusions: [],
   });
-  const PAGE_SIZE = 12;
+  const PAGE_SIZE = 16;
 
   const digitalTypeOptions = mergeDigitalOptions(
     DIGITAL_TYPE_OPTIONS,
@@ -212,6 +211,7 @@ export default function DigitalProducts() {
       setSpecial(searchParams.get('filter') || '');
       setMinPrice(searchParams.get('minPrice') || '');
       setMaxPrice(searchParams.get('maxPrice') || '');
+      setPage(Math.max(1, Number(searchParams.get('page')) || 1));
     };
 
     syncFiltersFromQuery();
@@ -231,6 +231,7 @@ export default function DigitalProducts() {
     if (special) params.set('filter', special);
     if (minPrice) params.set('minPrice', minPrice);
     if (maxPrice) params.set('maxPrice', maxPrice);
+    if (page > 1) params.set('page', String(page));
     const nextString = params.toString();
     if (nextString !== searchParams.toString()) {
       setSearchParams(params, { replace: true });
@@ -242,6 +243,7 @@ export default function DigitalProducts() {
     inclusions,
     maxPrice,
     minPrice,
+    page,
     priceType,
     search,
     searchParams,
@@ -257,7 +259,6 @@ export default function DigitalProducts() {
 
     const loadProducts = async () => {
       setLoading(true);
-      setPage(1);
 
       const params = new URLSearchParams({
         category: 'Digital Products',
@@ -432,6 +433,12 @@ export default function DigitalProducts() {
     ]),
   ];
 
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   return (
     <div className="pt-16 min-h-screen bg-[#fcfbf7]">
       <SEO
@@ -490,8 +497,8 @@ export default function DigitalProducts() {
               </h2>
               <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-2xl">
                 {customer?.accessToken
-                  ? 'Products you already paid for will show a clear access state here and can be opened from your digital library.'
-                  : 'Use your customer details to reconnect, confirm your existing digital access, and move straight into your library without guessing what you already bought.'}
+                  ? 'Products you already paid for will show an owned badge here. Open any cover for the fuller details, then move into your library when you are ready to learn.'
+                  : 'Use your customer details to reconnect, confirm your existing digital access, and browse these digital covers without guessing what you already bought.'}
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -811,13 +818,14 @@ export default function DigitalProducts() {
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[...Array(6)].map((_, index) => (
-              <div key={index} className="overflow-hidden rounded-3xl border border-gray-100 bg-white animate-pulse">
-                <div className="aspect-[4/3] bg-gray-200" />
-                <div className="p-4 space-y-2">
+              <div key={index} className="overflow-hidden rounded-[28px] border border-gray-100 bg-white animate-pulse">
+                <div className="aspect-[4/5] bg-gray-200" />
+                <div className="p-4 space-y-2.5">
                   <div className="h-4 bg-gray-200 rounded" />
                   <div className="h-3 bg-gray-100 rounded w-3/4" />
+                  <div className="h-8 bg-gray-100 rounded-full mt-3" />
                   <div className="h-10 bg-gray-100 rounded-2xl mt-4" />
                 </div>
               </div>
@@ -851,7 +859,16 @@ export default function DigitalProducts() {
 
         {!loading && products.length > 0 && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">
+                Page {page} of {totalPages}
+              </p>
+              <p className="text-xs text-gray-500">
+                Open a cover to view full details before checkout or before jumping into your library.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {pagedProducts.map((product) => {
                 const discountPreview = buildDiscountPresentation(product.retailPrice, product.discount || {}, { respectLiveState: true });
                 const discounted = discountPreview.discounted;
@@ -859,27 +876,32 @@ export default function DigitalProducts() {
                 const isFreeDigital = product.digitalAccessKind === 'free';
                 const isTrialDigital = product.digitalAccessKind === 'trial';
                 const customerHasAccess = !!product.customerHasAccess;
+                const customerOwnedPrice = Number.isFinite(Number(product.customerOwnedPrice))
+                  ? Number(product.customerOwnedPrice)
+                  : null;
+                const customerOwnedAccessKind = product.customerOwnedAccessKind || (customerHasAccess ? product.digitalAccessKind : '');
+                const customerTrialIsActive = customerOwnedAccessKind === 'trial' && product.customerOwnedTrialStatus === 'trialing';
+                const liveSellingText = isFreeDigital
+                  ? 'Now selling as free access'
+                  : isTrialDigital
+                    ? `Now selling as ${product.freeTrialDays || 7}-day free trial${finalPrice > 0 ? `, then ${formatMoney(finalPrice)}` : ''}`
+                    : `Now selling at ${formatMoney(finalPrice)}`;
 
                 return (
                   <Link
                     key={product._id}
                     to={getProductPath(product)}
-                    onClick={(event) => {
-                      if (customerHasAccess) {
-                        event.preventDefault();
-                        navigate(`/digital-library?product=${product._id}`);
-                      }
-                    }}
-                    className={`group overflow-hidden rounded-3xl border-2 bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${
+                    className={`group overflow-hidden rounded-[28px] border bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_60px_rgba(17,24,39,0.12)] ${
                       customerHasAccess ? 'border-emerald-300' : discounted ? 'border-[#FDC700]' : 'border-gray-100'
                     }`}
                   >
-                    <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#f7f0d7] via-white to-gray-100">
+                    <div className="relative aspect-[4/5] overflow-hidden bg-[radial-gradient(circle_at_top,_#fff9df_0%,_#f8f3e6_58%,_#f2ede2_100%)]">
+                      <div className="absolute inset-y-0 left-0 w-1.5 bg-black/80" />
                       {product.images?.[0] ? (
                         <img
                           src={product.images[0]}
                           alt={product.name}
-                          className="w-full h-full object-contain p-4 transition-transform duration-300 group-hover:scale-[1.03]"
+                          className="h-full w-full object-contain p-4 transition-transform duration-300 group-hover:scale-[1.03]"
                           onError={(event) => { event.target.style.display = 'none'; }}
                         />
                       ) : (
@@ -889,126 +911,179 @@ export default function DigitalProducts() {
                       )}
 
                       <div className="absolute top-3 left-3 flex flex-wrap gap-2">
-                        <span className="inline-flex items-center rounded-full bg-black px-2.5 py-1 text-[11px] font-extrabold text-[#FDC700]">
+                        <span className="inline-flex items-center rounded-full bg-black px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#FDC700]">
                           {formatType(product.digitalType)}
                         </span>
                         {product.digitalFormat && (
-                          <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-gray-700">
+                          <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-gray-700">
                             {getDigitalOptionLabel(formatOptions, product.digitalFormat)}
                           </span>
                         )}
                         {product.isCertified && (
-                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-extrabold text-amber-700 border border-amber-100">
+                          <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-amber-700">
                             Certified
                           </span>
                         )}
                         {customerHasAccess && (
-                          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700 border border-emerald-100">
-                            You have access
+                          <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-700">
+                            Owned
                           </span>
                         )}
                         {discounted && (
-                          <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2.5 py-1 text-[11px] font-extrabold text-black">
-                            {discountPreview.label || discountPreview.offerText}
+                          <span className="inline-flex items-center rounded-full bg-[#FDC700] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-black">
+                            {discountPreview.label || 'Sale'}
                           </span>
                         )}
                       </div>
 
-                      <div className="absolute right-3 bottom-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-gray-700 shadow-sm">
-                        {product.digitalFileCount || 0} file{product.digitalFileCount === 1 ? '' : 's'}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent px-3 pb-3 pt-10">
+                        <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+                          {product.digitalModuleCount > 0 && (
+                            <span className="rounded-full bg-white/15 px-2.5 py-1 backdrop-blur-sm">
+                              {product.digitalModuleCount} module{product.digitalModuleCount === 1 ? '' : 's'}
+                            </span>
+                          )}
+                          {product.digitalFileCount > 0 && (
+                            <span className="rounded-full bg-white/15 px-2.5 py-1 backdrop-blur-sm">
+                              {product.digitalFileCount} file{product.digitalFileCount === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     <div className="p-4">
-                      <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400 mb-2">
+                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
                         <ShieldCheck size={13} className="text-[#B88900]" />
-                        {customerHasAccess ? 'Library access ready' : 'Secure digital access'}
+                        {customerHasAccess ? 'Owned Access' : 'Secure Digital Access'}
                       </div>
 
-                      <h2 className="text-lg font-extrabold leading-tight mb-2 line-clamp-2">{product.name}</h2>
-                      <div className="flex flex-wrap gap-2 mb-3">
+                      <h2 className="mt-2 text-[1.02rem] font-extrabold leading-tight line-clamp-2 min-h-[2.7rem]">{product.name}</h2>
+                      <p className="mt-2 min-h-[3rem] text-[12px] leading-5 text-gray-500 line-clamp-2">
+                        {product.desc || product.certificateDescription || product.accessNote || 'Open this digital product to view the full description and secure purchase details.'}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
                         {product.digitalSkillLevel && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
                             {getDigitalOptionLabel(skillLevelOptions, product.digitalSkillLevel)}
                           </span>
                         )}
                         {product.digitalDuration && (
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-600">
                             {getDigitalOptionLabel(durationOptions, product.digitalDuration)}
                           </span>
                         )}
                         {(product.digitalTopics || []).slice(0, 2).map((topic) => (
-                          <span key={topic} className="rounded-full bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-[#9a7a00] border border-[#FDC700]/25">
+                          <span key={topic} className="rounded-full border border-[#FDC700]/25 bg-[#fcfbf7] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7a00]">
                             {getDigitalOptionLabel(topicOptions, topic)}
                           </span>
                         ))}
                       </div>
-                      <p className="text-sm text-gray-500 leading-relaxed line-clamp-3 min-h-[4rem]">
-                        {product.desc || product.certificateDescription || product.accessNote || 'Open this digital product to view the full description and secure purchase details.'}
-                      </p>
 
                       {(product.digitalInclusions || []).length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {product.digitalInclusions.slice(0, 3).map((inclusion) => (
-                            <span key={inclusion} className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-bold text-gray-500">
+                          {product.digitalInclusions.slice(0, 2).map((inclusion) => (
+                            <span key={inclusion} className="rounded-full border border-gray-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">
                               {getDigitalOptionLabel(inclusionOptions, inclusion)}
                             </span>
                           ))}
                         </div>
                       )}
 
-                      {product.digitalFileCount > 0 && (
-                        <p className="mt-3 text-xs text-gray-500">
-                          {product.downloadableDigitalFileCount > 0
-                            ? `${product.downloadableDigitalFileCount} file${product.downloadableDigitalFileCount === 1 ? '' : 's'} can be downloaded after access. Other files stay view-only in the library.`
-                            : 'Files stay view-only inside the digital library unless the admin allows download.'}
-                        </p>
-                      )}
-                      {product.digitalModuleCount > 0 && (
-                        <p className="mt-2 text-xs text-gray-500">
-                          Includes {product.digitalModuleCount} module{product.digitalModuleCount === 1 ? '' : 's'} with {product.digitalModuleItemCount || 0} ordered lesson item{product.digitalModuleItemCount === 1 ? '' : 's'} in the secure library.
-                        </p>
-                      )}
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">
+                        {product.digitalModuleCount > 0 && (
+                          <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1">
+                            {product.digitalModuleItemCount || 0} lesson item{product.digitalModuleItemCount === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {product.downloadableDigitalFileCount > 0 && (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                            {product.downloadableDigitalFileCount} download{product.downloadableDigitalFileCount === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        {!product.downloadableDigitalFileCount && product.digitalFileCount > 0 && (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">
+                            View-only files
+                          </span>
+                        )}
+                      </div>
 
                       <div className="mt-4 flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-400 mb-1">Price</p>
-                          {isFreeDigital ? (
-                            <span className="text-xl font-extrabold text-emerald-600">Free</span>
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">Price</p>
+                          {customerHasAccess ? (
+                            <div className="space-y-1">
+                              {customerTrialIsActive ? (
+                                <>
+                                  <span className="text-base font-extrabold text-emerald-700">Your access: Trial active</span>
+                                  {customerOwnedPrice !== null && (
+                                    <p className="text-[11px] text-gray-500">Then {formatMoney(customerOwnedPrice)}</p>
+                                  )}
+                                </>
+                              ) : customerOwnedAccessKind === 'free' || customerOwnedPrice === 0 ? (
+                                <span className="text-base font-extrabold text-emerald-700">Your access: Free claim</span>
+                              ) : (
+                                <span className="text-base font-extrabold text-emerald-700">
+                                  Bought at {formatMoney(customerOwnedPrice || 0)}
+                                </span>
+                              )}
+                              <p className="text-[11px] text-gray-500">
+                                {liveSellingText}
+                              </p>
+                              {!isFreeDigital && !isTrialDigital && discounted && (
+                                <p className="text-[11px] text-gray-400 line-through">
+                                  Was {formatMoney(discountPreview.basePrice)}
+                                </p>
+                              )}
+                              {!isFreeDigital && !isTrialDigital && discounted && (
+                                <p className="line-clamp-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7a00]">
+                                  {[discountPreview.label, discountPreview.offerText, discountPreview.limitText].filter(Boolean).join(' - ')}
+                                </p>
+                              )}
+                            </div>
+                          ) : isFreeDigital ? (
+                            <span className="text-lg font-extrabold text-emerald-600">Free</span>
                           ) : isTrialDigital ? (
                             <div className="space-y-0.5">
-                              <span className="text-lg font-extrabold text-black">{product.freeTrialDays || 7}-day free trial</span>
-                              <p className="text-xs text-gray-500">Then {formatMoney(finalPrice)}</p>
+                              <span className="text-base font-extrabold text-black">{product.freeTrialDays || 7}-day free trial</span>
+                              <p className="text-[11px] text-gray-500">Then {formatMoney(finalPrice)}</p>
                             </div>
                           ) : (
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xl font-extrabold text-black">
+                                <span className="text-lg font-extrabold text-black">
                                   {discounted ? `Now ${formatMoney(finalPrice)}` : formatMoney(finalPrice)}
                                 </span>
                                 {discounted && (
-                                  <span className="text-xs text-gray-400 line-through">
+                                  <span className="text-[11px] text-gray-400 line-through">
                                     Was {formatMoney(discountPreview.basePrice)}
                                   </span>
                                 )}
                               </div>
                               {discounted && (
-                                <p className="text-[11px] font-bold text-[#9a7a00]">
+                                <p className="line-clamp-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a7a00]">
                                   {[discountPreview.label, discountPreview.offerText, discountPreview.limitText].filter(Boolean).join(' - ')}
                                 </p>
                               )}
                             </div>
                           )}
                         </div>
-                        <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-extrabold transition-colors ${
+                        <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.12em] transition-colors ${
                           customerHasAccess
                             ? 'bg-emerald-600 text-white group-hover:bg-emerald-700'
                             : 'bg-black text-white group-hover:bg-[#1f1f1f]'
                         }`}>
-                          {customerHasAccess ? 'Open In Library' : 'Open Product'}
+                          View Details
                           <ArrowRight size={14} />
                         </span>
                       </div>
+
+                      {customerHasAccess && (
+                        <p className="mt-2 text-[11px] font-bold text-emerald-700">
+                          Open this product to review details, then continue in your library.
+                        </p>
+                      )}
                     </div>
                   </Link>
                 );

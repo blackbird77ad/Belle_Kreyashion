@@ -674,7 +674,7 @@ export const getAllCustomers = async (req, res) => {
       : {};
 
     const customers = await Customer.find(filter)
-      .select('-passwordHash -emailVerificationTokenHash -passwordResetTokenHash')
+      .select('-emailVerificationTokenHash -passwordResetTokenHash')
       .sort({ createdAt: -1 });
 
     const items = await Promise.all(customers.map(async (customer) => ({

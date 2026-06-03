@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import DigitalAccess from '../Models/DigitalAccess.mjs';
+import Order from '../Models/Order.mjs';
 import Product from '../Models/Product.mjs';
 import {
   DIGITAL_DURATIONS,
@@ -208,12 +209,46 @@ const decorateProductsWithAccess = async (req, docs = []) => {
     customerId,
     productId: { $in: digitalProductIds },
     status: 'active',
-  }).select('productId');
+  }).select('productId purchasePrice purchaseCurrency digitalAccessKind trialStatus billingAmount order createdAt');
 
   const ownedIds = new Set(grants.map((grant) => String(grant.productId)));
+  const grantsByProductId = new Map(grants.map((grant) => [String(grant.productId), grant]));
+  const fallbackOrderIds = grants
+    .filter((grant) => !Number.isFinite(Number(grant.purchasePrice)) && grant.order)
+    .map((grant) => String(grant.order))
+    .filter(Boolean);
+  const orderPriceLookup = new Map();
+
+  if (fallbackOrderIds.length) {
+    const fallbackOrders = await Order.find({ _id: { $in: fallbackOrderIds } }).select('items');
+    fallbackOrders.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        if (!item?.productId) return;
+        orderPriceLookup.set(`${String(order._id)}:${String(item.productId)}`, Number(item.price) || 0);
+      });
+    });
+  }
+
   return publicProducts.map((product, index) => {
     const customerHasAccess = product.isDigital ? ownedIds.has(String(product._id)) : false;
     const originalProduct = originalProducts[index] || {};
+    const accessGrant = grantsByProductId.get(String(product._id)) || null;
+    const fallbackPurchasePrice = accessGrant?.order
+      ? orderPriceLookup.get(`${String(accessGrant.order)}:${String(product._id)}`)
+      : undefined;
+    const ownedPrice = accessGrant
+      ? (
+        Number.isFinite(Number(accessGrant.purchasePrice))
+          ? Number(accessGrant.purchasePrice)
+          : (Number.isFinite(Number(fallbackPurchasePrice)) ? Number(fallbackPurchasePrice) : (
+            accessGrant.digitalAccessKind === 'trial'
+              ? Number(accessGrant.billingAmount) || 0
+              : accessGrant.digitalAccessKind === 'free'
+                ? 0
+                : null
+          ))
+      )
+      : null;
 
     return {
       ...product,
@@ -222,6 +257,11 @@ const decorateProductsWithAccess = async (req, docs = []) => {
         ? {
           supportEmail: normalizeEmail(originalProduct.supportEmail || ''),
           supportWhatsApp: normalizePhone(originalProduct.supportWhatsApp || ''),
+          customerOwnedPrice: ownedPrice,
+          customerOwnedCurrency: accessGrant?.purchaseCurrency || 'GHS',
+          customerOwnedAccessKind: accessGrant?.digitalAccessKind || product.digitalAccessKind || 'paid',
+          customerOwnedTrialStatus: accessGrant?.trialStatus || 'none',
+          customerOwnedAt: accessGrant?.createdAt || null,
         }
         : {}),
     };
