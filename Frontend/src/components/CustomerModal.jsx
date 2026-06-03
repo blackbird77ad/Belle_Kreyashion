@@ -63,7 +63,7 @@ const ACCOUNT_COPY = {
   },
   forgot: {
     title: 'Reset your password',
-    subtitle: 'Enter the email or phone linked to your account and we will send the reset link to the saved email on that profile.',
+    subtitle: 'Enter the email or phone linked to your account and we will send the reset link to the saved email on that profile. The link expires in 15 minutes.',
     button: 'Send Reset Link',
   },
 };
@@ -181,7 +181,7 @@ export default function CustomerModal({ onClose, onSuccess, initialMode = 'signu
       identifier: identifierValue,
     });
 
-    setMessage(data.message || 'If an account exists for those details, a reset link has been sent.');
+    setMessage(data.message || 'If an account exists for those details, a reset link has been sent. Please check your email and use it within 15 minutes.');
     setError('');
   };
 

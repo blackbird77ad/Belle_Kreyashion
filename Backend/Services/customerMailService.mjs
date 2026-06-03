@@ -290,14 +290,14 @@ export const sendCustomerPasswordResetEmail = async ({ customer, resetUrl }) => 
       </p>
     `,
     actions,
-    noteHtml: buildEmailNote('This link expires soon. If you did not request a password reset, you can ignore this email.'),
+    noteHtml: buildEmailNote('This link expires in 15 minutes. If you did not request a password reset, you can ignore this email.'),
   });
 
   const text = buildEmailText({
     greeting: `Hello ${customer.name || 'there'},`,
     lines: [
       'We received a request to reset your Belle Kreyashon password.',
-      'This link expires soon. If you did not request a password reset, you can ignore this email.',
+      'This link expires in 15 minutes. If you did not request a password reset, you can ignore this email.',
     ],
     actions,
   });

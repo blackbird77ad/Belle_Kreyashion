@@ -123,7 +123,7 @@ const createEmailVerificationState = () => ({
 
 const createPasswordResetState = () => ({
   token: createToken(),
-  expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  expiresAt: new Date(Date.now() + 15 * 60 * 1000),
 });
 
 const buildCustomerLookupQuery = (customer) => {
