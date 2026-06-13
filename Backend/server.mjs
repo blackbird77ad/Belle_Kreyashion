@@ -14,11 +14,23 @@ import featuredRoutes     from './Routes/featured.mjs';
 import certificateRoutes  from './Routes/certificates.mjs';
 import marketingRoutes    from './Routes/marketing.mjs';
 import contactRoutes      from './Routes/contact.mjs';
+import couponRoutes       from './Routes/coupons.mjs';
 import { startDigitalTrialBillingWorker } from './Services/digitalAccessService.mjs';
+import { startAbandonedCartRecoveryWorker } from './Services/abandonedRecoveryService.mjs';
 
 await connectDB();
 
 const app = express();
+
+app.disable('x-powered-by');
+app.use((_, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+  next();
+});
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -34,7 +46,12 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buffer) => {
+    if (req.originalUrl === '/api/orders/paystack/webhook') req.rawBody = Buffer.from(buffer);
+  },
+}));
 app.get('/', (_, res) => res.json({ message: 'Belle Kreyashon API ✅' }));
 
 app.use('/api/auth',         authRoutes);
@@ -49,7 +66,9 @@ app.use('/api/featured',     featuredRoutes);
 app.use('/api/certificates', certificateRoutes);
 app.use('/api/marketing',    marketingRoutes);
 app.use('/api/contact',      contactRoutes);
+app.use('/api/coupons',      couponRoutes);
 
 const PORT = process.env.PORT || 8002;
 startDigitalTrialBillingWorker();
+startAbandonedCartRecoveryWorker();
 app.listen(PORT, () => console.log(`Belle Kreyashon API running on port ${PORT}`));

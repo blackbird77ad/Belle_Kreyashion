@@ -29,6 +29,7 @@ const OrderHistory     = lazy(() => import('./pages/OrderHistory'));
 const DigitalLibrary   = lazy(() => import('./pages/DigitalLibrary'));
 const CustomerVerify   = lazy(() => import('./pages/CustomerVerify'));
 const CustomerResetPassword = lazy(() => import('./pages/CustomerResetPassword'));
+const RecoverCart       = lazy(() => import('./pages/RecoverCart'));
 const Admin            = lazy(() => import('./pages/Admin'));
 
 // Simple loading spinner shown while a page is being loaded
@@ -85,6 +86,7 @@ function Layout() {
             <Route path="/digital-library" element={<DigitalLibrary />} />
             <Route path="/account/verify"  element={<CustomerVerify />} />
             <Route path="/account/reset-password" element={<CustomerResetPassword />} />
+            <Route path="/recover-cart"      element={<RecoverCart />} />
             <Route path="/admin"           element={<Admin />} />
           </Routes>
         </Suspense>

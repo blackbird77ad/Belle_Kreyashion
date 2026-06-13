@@ -1,19 +1,42 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import {
-  saveAbandonedCart, getAbandonedCarts, toggleFollowUp,
-  verifyAndCreateOrder, createFreeDigitalOrder, getAllOrders, getSalesAnalytics, updateOrderStatus, getCustomerOrders,
+  getAllOrders, getSalesAnalytics, updateOrderStatus, getCustomerOrders,
   runDigitalTrialBillingTrigger,
 } from '../Controllers/orderController.mjs';
+import { getAbandonedCarts, recoverCart, saveAbandonedCart, sendRecoveryNow, toggleFollowUp } from '../Controllers/abandonedCartController.mjs';
+import {
+  confirmManualPayment,
+  getAdminPayments,
+  getPaymentState,
+  initializeCheckout,
+  quoteCheckout,
+  receivePaystackWebhook,
+  rejectManualPayment,
+  retryOrderFinalization,
+  verifyCheckoutPayment,
+} from '../Controllers/checkoutController.mjs';
 import { protect, protectAdminOrCron } from '../Middlewares/auth.mjs';
 
 const router = Router();
-router.post('/abandoned',               saveAbandonedCart);
+const checkoutLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 80, standardHeaders: true, legacyHeaders: false });
+const recoveryLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false });
+router.post('/abandoned', recoveryLimiter, saveAbandonedCart);
 router.get('/abandoned',      protect,  getAbandonedCarts);
 router.patch('/abandoned/:id/toggle', protect, toggleFollowUp);
+router.post('/abandoned/:id/send-recovery', protect, sendRecoveryNow);
+router.get('/recover/:token', recoveryLimiter, recoverCart);
 router.get('/trial-billing/run', protectAdminOrCron, runDigitalTrialBillingTrigger);
 router.post('/trial-billing/run', protectAdminOrCron, runDigitalTrialBillingTrigger);
-router.post('/free-digital',            createFreeDigitalOrder);
-router.post('/verify',                  verifyAndCreateOrder);
+router.post('/quote', checkoutLimiter, quoteCheckout);
+router.post('/checkout', checkoutLimiter, initializeCheckout);
+router.post('/verify', checkoutLimiter, verifyCheckoutPayment);
+router.post('/paystack/webhook', receivePaystackWebhook);
+router.get('/payments/admin', protect, getAdminPayments);
+router.get('/payments/:reference', getPaymentState);
+router.post('/:id/payment/confirm', protect, confirmManualPayment);
+router.post('/:id/payment/reject', protect, rejectManualPayment);
+router.post('/:id/payment/retry', protect, retryOrderFinalization);
 router.get('/',               protect,  getAllOrders);
 router.get('/analytics',      protect,  getSalesAnalytics);
 router.patch('/:id/status',   protect,  updateOrderStatus);

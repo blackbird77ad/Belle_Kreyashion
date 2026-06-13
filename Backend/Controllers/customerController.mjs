@@ -64,6 +64,10 @@ const serializeCustomer = (customer) => ({
   paystackCustomerCode: customer.paystackCustomerCode || '',
   preferredCurrency: normalizeCustomerCurrency(customer.preferredCurrency),
   preferredLanguage: normalizeCustomerLanguage(customer.preferredLanguage),
+  savedAddress: customer.savedAddress || '',
+  billingAddress: customer.billingAddress || '',
+  birthday: customer.birthday || null,
+  notificationPreferences: customer.notificationPreferences || {},
   emailVerified: !!customer.emailVerified,
   hasPassword: !!customer.passwordHash,
   lastLoginAt: customer.lastLoginAt || null,
@@ -417,11 +421,48 @@ export const updateCustomerPreferences = async (req, res) => {
 
     customer.preferredCurrency = normalizeCustomerCurrency(req.body.preferredCurrency || customer.preferredCurrency);
     customer.preferredLanguage = normalizeCustomerLanguage(req.body.preferredLanguage || customer.preferredLanguage);
+    if (req.body.savedAddress !== undefined) customer.savedAddress = String(req.body.savedAddress || '').trim();
+    if (req.body.billingAddress !== undefined) customer.billingAddress = String(req.body.billingAddress || '').trim();
+    if (req.body.birthday !== undefined) customer.birthday = req.body.birthday || null;
+    if (req.body.notificationPreferences && typeof req.body.notificationPreferences === 'object') {
+      customer.notificationPreferences = {
+        ...(customer.notificationPreferences?.toObject?.() || customer.notificationPreferences || {}),
+        ...req.body.notificationPreferences,
+      };
+    }
     await customer.save();
 
     res.json({ customer: serializeCustomer(customer) });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Could not update customer preferences right now' });
+  }
+};
+
+export const updateCustomerProfile = async (req, res) => {
+  try {
+    const customer = await getAuthenticatedCustomer(req);
+    if (!customer) return res.status(404).json({ message: 'Customer account not found' });
+    const name = String(req.body.name || customer.name || '').trim();
+    const phone = normalizePhone(req.body.phone || customer.phone);
+    const email = normalizeEmail(req.body.email || customer.email);
+    if (!name || !phone || !email) return res.status(400).json({ message: 'Name, phone and email are required' });
+    await ensureUniqueIdentity({ email, phone, customerId: customer._id });
+    customer.name = name;
+    customer.phone = phone;
+    customer.email = email;
+    customer.savedAddress = String(req.body.savedAddress ?? customer.savedAddress ?? '').trim();
+    customer.billingAddress = String(req.body.billingAddress ?? customer.billingAddress ?? '').trim();
+    customer.birthday = req.body.birthday === undefined ? customer.birthday : (req.body.birthday || null);
+    if (req.body.notificationPreferences && typeof req.body.notificationPreferences === 'object') {
+      customer.notificationPreferences = {
+        ...(customer.notificationPreferences?.toObject?.() || customer.notificationPreferences || {}),
+        ...req.body.notificationPreferences,
+      };
+    }
+    await customer.save();
+    res.json({ customer: serializeCustomer(customer) });
+  } catch (error) {
+    res.status(/already linked/i.test(error.message || '') ? 409 : 400).json({ message: error.message || 'Could not update profile' });
   }
 };
 

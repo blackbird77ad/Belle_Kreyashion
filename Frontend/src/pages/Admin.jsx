@@ -20,8 +20,11 @@ import { FRONTEND_CERTIFICATE_TEMPLATE_PRESETS } from '../data/certificateTempla
 import { CertificateTemplatePreview } from '../components/CertificateTemplatePicker';
 import { generateCertificate } from '../utils/generateCertificate';
 import { buildDiscountPresentation } from '../utils/discounts';
+import AdminAdsDashboard from '../components/AdminAdsDashboard';
+import AdminCouponsDashboard from '../components/AdminCouponsDashboard';
+import AdminPaymentsDashboard from '../components/AdminPaymentsDashboard';
 
-const TABS = ['Analytics','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Customers','Abandoned','Consultations','Blog','Featured','Invoice'];
+const TABS = ['Analytics','Ads','Payments','Coupons','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Customers','Abandoned','Consultations','Blog','Featured','Invoice'];
 const PRODUCT_LIKE_TABS = new Set(['Products', 'Digital Products', 'Featured']);
 const BLOG_LIKE_TABS = new Set(['Blog']);
 const WIDE_GRID_TABS = new Set(['Certificates', 'Orders', 'Bookings', 'Customers']);
@@ -1468,6 +1471,7 @@ const CERTIFICATE_FONTS = [
 ];
 const TAB_FORM_LABELS = {
   Analytics: 'Analytics',
+  Ads: 'Ads',
   Products: 'Product',
   'Digital Products': 'Digital Product',
   Certificates: 'Certificate',
@@ -2847,6 +2851,7 @@ export default function Admin() {
 
   const [data,    setData]    = useState([]);
   const [salesAnalytics, setSalesAnalytics] = useState(null);
+  const [marketingSetup, setMarketingSetup] = useState(null);
   const [loading, setLoading] = useState(false);
   const [page,    setPage]    = useState(1);
   const PAGE_SIZE = 20;
@@ -2960,8 +2965,10 @@ export default function Admin() {
 
   const ENDPOINTS = {
     Analytics: '/api/orders/analytics',
+    Ads: '/api/orders/analytics',
     Products: '/api/products', 'Digital Products': '/api/products', Certificates: '/api/certificates', Training: '/api/training',
     Delivery: '/api/delivery', Orders: '/api/orders',
+    Payments: '/api/orders/payments/admin', Coupons: '/api/coupons',
     Customers: '/api/customers',
     Abandoned: '/api/orders/abandoned', Consultations: '/api/consultation',
     Blog: '/api/blog', Featured: '/api/products', Bookings: '/api/training/bookings',
@@ -2974,16 +2981,21 @@ export default function Admin() {
     setLoading(true);
     setData([]);
     let ep = ENDPOINTS[t];
-    if (t !== 'Analytics') setSalesAnalytics(null);
+    if (!['Analytics', 'Ads'].includes(t)) setSalesAnalytics(null);
+    if (t !== 'Ads') setMarketingSetup(null);
     if (t === 'Featured') ep = '/api/products?isPartner=true';
     if (t === 'Products') ep = '/api/products?isDigital=false';
     if (t === 'Digital Products') ep = '/api/products?isDigital=true';
     const q = s ? `${ep.includes('?') ? '&' : '?'}search=${encodeURIComponent(s)}` : '';
     try {
-      if (t === 'Analytics') {
-        const { data: analytics } = await api.get(ep, auth);
+      if (t === 'Analytics' || t === 'Ads') {
+        const [analyticsResponse, setupResponse] = await Promise.all([
+          api.get(ep, auth),
+          t === 'Ads' ? api.get('/api/marketing/admin/status', auth) : Promise.resolve({ data: null }),
+        ]);
         if (latestAdminLoadRef.current !== requestId) return;
-        setSalesAnalytics(analytics);
+        setSalesAnalytics(analyticsResponse.data);
+        if (t === 'Ads') setMarketingSetup(setupResponse.data);
         setLoading(false);
         return;
       }
@@ -3015,7 +3027,8 @@ export default function Admin() {
       }
       if (latestAdminLoadRef.current !== requestId) return;
       setData([]);
-      if (t === 'Analytics') setSalesAnalytics(null);
+      if (t === 'Analytics' || t === 'Ads') setSalesAnalytics(null);
+      if (t === 'Ads') setMarketingSetup(null);
       if (t === 'Certificates') setCertificateTemplates([]);
     }
     if (latestAdminLoadRef.current !== requestId) return;
@@ -4515,11 +4528,11 @@ const buildTrainingBody = (f) => ({
       : data;
   const pagedData  = collectionData.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
   const totalPages = Math.ceil(collectionData.length / PAGE_SIZE);
-  const tabsWithoutSearch = ['Analytics', 'Abandoned', 'Delivery', 'Invoice'];
-  const canToggleView = !['Analytics', 'Invoice'].includes(tab);
+  const tabsWithoutSearch = ['Analytics', 'Ads', 'Payments', 'Coupons', 'Abandoned', 'Delivery', 'Invoice'];
+  const canToggleView = !['Analytics', 'Ads', 'Payments', 'Coupons', 'Invoice'].includes(tab);
   const collectionLayoutClass = getCollectionLayoutClass(tab, viewMode);
   const useGridCards = viewMode === 'grid';
-  const mobileActionTabs = !['Analytics', 'Orders','Abandoned','Bookings','Customers','Invoice'].includes(tab);
+  const mobileActionTabs = !['Analytics', 'Ads', 'Payments', 'Coupons', 'Orders','Abandoned','Bookings','Customers','Invoice'].includes(tab);
   const analyticsSummary = salesAnalytics?.summary || {};
   const analyticsBreakdown = salesAnalytics?.breakdown || [];
   const analyticsPageBreakdown = salesAnalytics?.pageBreakdown || [];
@@ -4528,6 +4541,11 @@ const buildTrainingBody = (f) => ({
   const analyticsBestSellerMonths = salesAnalytics?.bestSellers?.monthly || [];
   const analyticsPreviousWeekBestSellers = salesAnalytics?.bestSellers?.previousWeek || null;
   const analyticsRecentSales = salesAnalytics?.recentSales || [];
+  const marketingFunnel = salesAnalytics?.marketingFunnel || {};
+  const marketingFunnelSummary = marketingFunnel.summary || {};
+  const marketingCampaigns = marketingFunnel.campaigns || [];
+  const marketingProductInterest = marketingFunnel.productInterest || [];
+  const marketingRecentActivity = marketingFunnel.recentActivity || [];
   const certificateChoicePending = tab === 'Certificates' && form.type === 'digital_request' && !form.generationChoiceMade;
   const activeCertificateTemplateId = form.templateCandidateId || form.templateId || '';
   const activeCertificateTemplate = findCertificateTemplate(visibleCertificateTemplates, activeCertificateTemplateId);
@@ -4679,14 +4697,14 @@ const buildTrainingBody = (f) => ({
             {!tabsWithoutSearch.includes(tab) && (
               <button onClick={() => load(tab, search)} className="flex-1 sm:flex-none px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">Search</button>
             )}
-            {tab === 'Analytics' && (
+            {['Analytics', 'Ads'].includes(tab) && (
               <button onClick={() => load(tab, '')} className="flex-1 sm:flex-none px-4 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-900 shrink-0">Refresh</button>
             )}
           </div>
         </div>
 
         {/* ── FORM PANEL ─────────────────────────────────────────────────────── */}
-        {showForm && !['Analytics','Orders','Abandoned','Customers'].includes(tab) && (
+        {showForm && !['Analytics','Ads','Payments','Coupons','Orders','Abandoned','Customers'].includes(tab) && (
           <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <div className="min-w-0">
@@ -7158,6 +7176,139 @@ const buildTrainingBody = (f) => ({
               ))}
             </div>
 
+            <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Ad And Store Funnel</p>
+                  <h3 className="mt-1 text-lg font-extrabold">What visitors did after they arrived</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Last {marketingFunnel.periodDays || 30} days. Visitor activity includes consented analytics sessions; conversions come from verified completed orders.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-black px-4 py-2 text-white">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">Visit To Conversion</p>
+                  <p className="text-lg font-extrabold">{marketingFunnelSummary.visitToPurchaseRate || 0}%</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                {[
+                  { label: 'Tracked Visits', value: marketingFunnelSummary.visits || 0, hint: 'Unique consented sessions' },
+                  { label: 'Product Viewers', value: marketingFunnelSummary.productViews || 0, hint: 'Sessions that opened a product' },
+                  { label: 'Cart Sessions', value: marketingFunnelSummary.addToCarts || 0, hint: 'Sessions that added an item' },
+                  { label: 'Checkout Sessions', value: marketingFunnelSummary.checkouts || 0, hint: 'Sessions that began checkout' },
+                  { label: 'Contact Sessions', value: marketingFunnelSummary.contacts || 0, hint: 'WhatsApp, phone, or email clicks' },
+                  { label: 'Completed Orders', value: marketingFunnelSummary.purchases || 0, hint: formatMoney(marketingFunnelSummary.revenue) },
+                ].map((metric) => (
+                  <div key={metric.label} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">{metric.label}</p>
+                    <p className="mt-1 text-2xl font-extrabold text-black">{metric.value}</p>
+                    <p className="mt-1 text-xs text-gray-500">{metric.hint}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Campaign Funnel</p>
+                <h3 className="mt-1 text-lg font-extrabold">Clicks, intent, and sales by campaign</h3>
+              </div>
+
+              {marketingCampaigns.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] p-5 text-center text-sm text-gray-500">
+                  No consented campaign activity has been recorded yet. New visits will appear here as customers browse.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-[10px] uppercase tracking-[0.12em] text-gray-400">
+                        <th className="pb-3 pr-4">Campaign</th>
+                        <th className="pb-3 px-2 text-right">Visits</th>
+                        <th className="pb-3 px-2 text-right">Viewed</th>
+                        <th className="pb-3 px-2 text-right">Cart</th>
+                        <th className="pb-3 px-2 text-right">Checkout</th>
+                        <th className="pb-3 px-2 text-right">Contact</th>
+                        <th className="pb-3 px-2 text-right">Orders</th>
+                        <th className="pb-3 px-2 text-right">Conversion</th>
+                        <th className="pb-3 pl-2 text-right">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {marketingCampaigns.map((campaign) => (
+                        <tr key={campaign.key} className="border-b border-gray-100 last:border-0">
+                          <td className="py-3 pr-4">
+                            <div className="flex items-center gap-2">
+                              <p className="font-extrabold text-sm text-black">{campaign.label}</p>
+                              {campaign.paid && <span className="rounded-full bg-[#FDC700] px-2 py-0.5 text-[9px] font-black uppercase text-black">Paid</span>}
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-gray-500">{campaign.description}</p>
+                          </td>
+                          <td className="py-3 px-2 text-right font-bold">{campaign.visits || 0}</td>
+                          <td className="py-3 px-2 text-right font-bold">{campaign.productViews || 0}</td>
+                          <td className="py-3 px-2 text-right font-bold">{campaign.addToCarts || 0}</td>
+                          <td className="py-3 px-2 text-right font-bold">{campaign.checkouts || 0}</td>
+                          <td className="py-3 px-2 text-right font-bold">{campaign.contacts || 0}</td>
+                          <td className="py-3 px-2 text-right font-extrabold">{campaign.purchases || 0}</td>
+                          <td className="py-3 px-2 text-right font-extrabold">{campaign.conversionRate || 0}%</td>
+                          <td className="py-3 pl-2 text-right font-extrabold">{formatMoney(campaign.revenue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Product Interest</p>
+                  <h3 className="mt-1 text-lg font-extrabold">What people viewed and added</h3>
+                </div>
+                <div className="space-y-2">
+                  {marketingProductInterest.length === 0 && <p className="text-sm text-gray-500">No product activity recorded yet.</p>}
+                  {marketingProductInterest.map((product) => (
+                    <div key={product.key} className="flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-black">{product.name}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{product.isDigital ? 'Digital product' : product.category || 'Shop product'}</p>
+                      </div>
+                      <div className="shrink-0 text-right text-xs">
+                        <p className="font-bold text-gray-700">{product.views || 0} views</p>
+                        <p className="font-extrabold text-black">{product.addToCarts || 0} carts</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Recent Activity</p>
+                  <h3 className="mt-1 text-lg font-extrabold">Latest anonymous visitor actions</h3>
+                </div>
+                <div className="space-y-2">
+                  {marketingRecentActivity.length === 0 && <p className="text-sm text-gray-500">No visitor activity recorded yet.</p>}
+                  {marketingRecentActivity.map((activity) => (
+                    <div key={activity.id} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-extrabold text-black">{activity.label}</p>
+                          <p className="mt-0.5 truncate text-xs text-gray-600">{activity.detail}</p>
+                          <p className="mt-1 text-[11px] text-gray-400">{activity.campaign}{activity.pagePath ? ` / ${activity.pagePath}` : ''}</p>
+                        </div>
+                        <p className="shrink-0 text-[10px] text-gray-400">
+                          {new Date(activity.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3 mb-4">
@@ -7407,10 +7558,21 @@ const buildTrainingBody = (f) => ({
           </div>
         )}
 
+        {tab === 'Ads' && !loading && salesAnalytics && (
+          <AdminAdsDashboard
+            analytics={salesAnalytics}
+            setup={marketingSetup || {}}
+            onRefresh={() => load('Ads', '')}
+          />
+        )}
+
+        {tab === 'Payments' && !loading && <AdminPaymentsDashboard orders={data} auth={auth} onRefresh={() => load('Payments', '')} />}
+        {tab === 'Coupons' && !loading && <AdminCouponsDashboard coupons={data} auth={auth} onRefresh={() => load('Coupons', '')} />}
+
         {loading && <div className="text-center py-10 text-gray-400 text-sm">Loading...</div>}
 
         {/* ── DATA GRID ───────────────────────────────────────────────────────── */}
-        {!loading && tab !== 'Analytics' && (
+        {!loading && !['Analytics', 'Ads', 'Payments', 'Coupons'].includes(tab) && (
           <>
           <div className={collectionLayoutClass}>
 
@@ -7753,6 +7915,19 @@ const buildTrainingBody = (f) => ({
                   <button onClick={() => toggle(item._id, '/api/orders/abandoned')}
                     className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg transition-all ${item.followedUp?'bg-green-100 text-green-700':'bg-gray-100 text-gray-500 hover:bg-green-50'}`}>
                     {item.followedUp ? <CheckCircle size={13}/> : <Circle size={13}/>} {item.followedUp?'Done':'Pending'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.post(`/api/orders/abandoned/${item._id}/send-recovery`, {}, auth);
+                        await load('Abandoned', '');
+                      } catch (error) {
+                        alert(error.response?.data?.message || 'Could not send recovery message');
+                      }
+                    }}
+                    className="text-xs bg-black text-white font-bold px-2 py-1 rounded-lg text-center"
+                  >
+                    Send
                   </button>
                   {abandonedWhatsappLink ? (
                     <a href={abandonedWhatsappLink}

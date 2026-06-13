@@ -2,6 +2,7 @@ import Training from '../Models/Training.mjs';
 import Booking from '../Models/Booking.mjs';
 import axios from 'axios';
 import { sendMetaBookingEvent } from '../Services/metaConversionsService.mjs';
+import { sendServerBookingEvent } from '../Services/serverTagService.mjs';
 
 const WHATSAPP = process.env.WHATSAPP_NUMBER;
 
@@ -121,9 +122,14 @@ export const verifyAndCreateBooking = async (req, res) => {
 
     const booking = await Booking.create({ ...bookingData, paymentRef, paymentStatus: 'paid' });
 
-    sendMetaBookingEvent(booking, getMarketingRequestContext(req, bookingData?.browserData)).catch((metaErr) => {
-      console.error('Meta booking tracking error:', metaErr.message);
-    });
+    if (bookingData?.marketingConsent !== false) {
+      sendMetaBookingEvent(booking, getMarketingRequestContext(req, bookingData?.browserData)).catch((metaErr) => {
+        console.error('Meta booking tracking error:', metaErr.message);
+      });
+      sendServerBookingEvent(booking).catch((tagErr) => {
+        console.error('Server tag booking tracking error:', tagErr.message);
+      });
+    }
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });

@@ -13,11 +13,20 @@ export function CustomerProvider({ children }) {
     else localStorage.removeItem('bk_customer');
   }, [customer]);
 
-  // Save address to customer profile
-  const saveAddress = useCallback((address) => {
+  const saveAddress = useCallback(async (address) => {
     if (!customer) return;
     const updated = { ...customer, savedAddress: address };
     setCustomer(updated);
+    if (!customer.accessToken) return updated;
+    const { data } = await api.patch('/api/customers/preferences', { savedAddress: address }, {
+      headers: {
+        'x-customer-token': customer.accessToken,
+        Authorization: `Bearer ${customer.accessToken}`,
+      },
+    });
+    const merged = { ...updated, ...(data?.customer || {}), accessToken: customer.accessToken };
+    setCustomer(merged);
+    return merged;
   }, [customer]);
 
   const savePreferences = useCallback(async (preferences = {}) => {
@@ -27,6 +36,9 @@ export function CustomerProvider({ children }) {
       ...customer,
       ...(preferences.preferredCurrency ? { preferredCurrency: preferences.preferredCurrency } : {}),
       ...(preferences.preferredLanguage ? { preferredLanguage: preferences.preferredLanguage } : {}),
+      ...(preferences.savedAddress !== undefined ? { savedAddress: preferences.savedAddress } : {}),
+      ...(preferences.billingAddress !== undefined ? { billingAddress: preferences.billingAddress } : {}),
+      ...(preferences.notificationPreferences ? { notificationPreferences: { ...(customer.notificationPreferences || {}), ...preferences.notificationPreferences } } : {}),
     };
     setCustomer(nextCustomer);
 

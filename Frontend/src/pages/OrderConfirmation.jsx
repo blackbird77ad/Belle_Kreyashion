@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Download, Loader2, MessageCircle, Phone, ShieldCheck } from 'lucide-react';
 import { generateInvoice } from '../utils/generateInvoice';
+import { generateReceipt } from '../utils/generateReceipt';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
@@ -24,10 +25,10 @@ export default function OrderConfirmation() {
     const existing = sessionStorage.getItem('bk_last_order');
 
     if (pending) {
-      const { paymentRef, orderData } = JSON.parse(pending);
+      const { paymentRef } = JSON.parse(pending);
       sessionStorage.removeItem('bk_pending_order');
 
-      api.post('/api/orders/verify', { paymentRef, orderData })
+      api.post('/api/orders/verify', { paymentRef })
         .then((response) => {
           const payload = {
             order: response.data.order,
@@ -46,11 +47,20 @@ export default function OrderConfirmation() {
             setTimeout(() => window.open(response.data.whatsappUrl, '_blank'), 1000);
           }
         })
-        .catch(() => {
-          const ref = JSON.parse(pending || '{}').paymentRef;
-          clearCart();
-          setErrMsg(`Payment received. Ref: ${ref}. Contact us to confirm your order.`);
-          setState('error');
+        .catch(async () => {
+          try {
+            const response = await api.get(`/api/orders/payments/${encodeURIComponent(paymentRef)}`);
+            const payload = response.data;
+            sessionStorage.setItem('bk_last_order', JSON.stringify(payload));
+            setOrder(payload.order);
+            setWaUrl(payload.whatsappUrl || '');
+            setCallUrl(payload.callUrl || '');
+            if (payload.order?.paymentStatus === 'paid') clearCart();
+            setState('success');
+          } catch {
+            setErrMsg(`Your payment confirmation is still processing. Reference: ${paymentRef}. The Paystack webhook will continue safely in the background.`);
+            setState('error');
+          }
         });
     } else if (existing) {
       const payload = JSON.parse(existing);
@@ -104,6 +114,7 @@ export default function OrderConfirmation() {
   }
 
   const hasDigitalItems = !!order?.items?.some((item) => item.isDigital);
+  const paymentPending = order?.paymentStatus !== 'paid';
   const digitalOnly = order?.fulfillment === 'digital';
   const hasTrialItems = !!order?.items?.some((item) => item.isDigital && item.digitalAccessKind === 'trial');
   const hasFreeDigitalItems = !!order?.items?.some((item) => item.isDigital && item.digitalAccessKind === 'free');
@@ -139,9 +150,9 @@ export default function OrderConfirmation() {
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
             <CheckCircle size={40} className="text-green-500" />
           </div>
-          <h1 className="text-2xl font-extrabold mb-1">Order Confirmed!</h1>
+          <h1 className="text-2xl font-extrabold mb-1">{paymentPending ? 'Order Received' : 'Order Confirmed!'}</h1>
           <p className="text-gray-400 text-sm">
-            Thank you{customer?.name ? `, ${customer.name}` : ''}. {order?.paymentPurpose === 'free_claim' ? 'Your digital access is ready.' : order?.paymentPurpose === 'trial_setup' ? 'Your trial setup was completed.' : 'Your payment was received.'}
+            Thank you{order?.customer?.name ? `, ${order.customer.name}` : customer?.name ? `, ${customer.name}` : ''}. {paymentPending ? 'We are waiting for payment verification before fulfillment begins.' : order?.paymentPurpose === 'free_claim' ? 'Your digital access is ready.' : order?.paymentPurpose === 'trial_setup' ? 'Your trial setup was completed.' : 'Your payment was received.'}
           </p>
         </div>
 
@@ -152,7 +163,7 @@ export default function OrderConfirmation() {
               <p className="font-extrabold text-[#FDC700] text-lg">{order?.orderId}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-gray-400">{order?.paymentPurpose === 'trial_setup' ? 'Card Setup Taken Now' : 'Total Paid'}</p>
+              <p className="text-xs text-gray-400">{paymentPending ? 'Amount Due' : order?.paymentPurpose === 'trial_setup' ? 'Card Setup Taken Now' : 'Total Paid'}</p>
               <p className="font-extrabold text-lg">{formatMoney(amountPaidNow)}</p>
               {isConvertedDisplay && (
                 <p className="mt-1 text-[11px] font-bold text-gray-400">
@@ -197,7 +208,20 @@ export default function OrderConfirmation() {
           )}
         </div>
 
-        {hasDigitalItems && (
+        {order?.paymentMethod === 'bank_transfer' && paymentPending && (
+          <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5 mb-5">
+            <p className="font-extrabold text-blue-900">Bank transfer instructions</p>
+            <div className="mt-3 space-y-1 text-sm text-blue-800">
+              <p><span className="font-bold">Bank:</span> {order.bankTransfer?.bankName}</p>
+              <p><span className="font-bold">Account:</span> {order.bankTransfer?.accountNumber}</p>
+              <p><span className="font-bold">Account name:</span> {order.bankTransfer?.accountName}</p>
+              <p><span className="font-bold">Reference:</span> {order.orderId}</p>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-blue-700">{order.bankTransfer?.instructions}</p>
+          </div>
+        )}
+
+        {hasDigitalItems && !paymentPending && (
           <div className="bg-[#fcfbf7] border border-[#FDC700]/30 rounded-2xl p-5 mb-5">
             <div className="flex items-start gap-3">
               <div className="w-11 h-11 rounded-full bg-[#FDC700] text-black flex items-center justify-center shrink-0">
@@ -293,6 +317,14 @@ export default function OrderConfirmation() {
           >
             <Download size={16} /> Download Invoice
           </button>
+          {!paymentPending && (
+            <button
+              onClick={() => order && generateReceipt(order)}
+              className="flex items-center justify-center gap-2 w-full py-3.5 border-2 border-gray-200 text-black font-extrabold rounded-2xl hover:border-black transition-all text-sm"
+            >
+              <Download size={16} /> Download Payment Receipt
+            </button>
+          )}
           <Link
             to="/track"
             className="flex items-center justify-center w-full py-3.5 border-2 border-gray-200 text-black font-extrabold rounded-2xl hover:border-black transition-all text-sm"

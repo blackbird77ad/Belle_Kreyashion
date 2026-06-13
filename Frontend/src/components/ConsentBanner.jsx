@@ -5,10 +5,12 @@ export default function ConsentBanner() {
   const [consent, setConsent] = useState(() => getMarketingConsent());
   const config = getMarketingConfig();
   const hasMarketingTools = Boolean(
-    config.gtmId
+    config.firstPartyAnalytics
+    || config.gtmId
     || config.ga4Id
     || config.googleAdsId
     || config.metaPixelId
+    || config.tiktokPixelId
     || config.clarityProjectId
   );
 

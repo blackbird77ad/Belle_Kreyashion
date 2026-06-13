@@ -640,3 +640,51 @@ export const sendCustomerBookingEmail = async ({ booking }) => {
     text,
   });
 };
+
+export const sendCustomerAccountSetupEmail = async ({ customer, setupUrl }) => {
+  const email = String(customer?.email || '').trim().toLowerCase();
+  if (!email || !setupUrl) return null;
+  const actions = [{ label: 'Create My Password', href: setupUrl, tone: 'primary' }];
+  const html = buildEmailLayout({
+    previewText: 'Finish setting up your digital library account.',
+    eyebrow: 'Digital Library Access',
+    title: 'Your customer account is ready',
+    greetingHtml: `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">Hello ${escapeHtml(customer.name || 'there')},</p>`,
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">
+        We created a secure Belle Kreyashon customer account for your digital purchase. Create a password to open your protected products, progress, downloads, and certificates from any supported device.
+      </p>
+    `,
+    actions,
+    noteHtml: buildEmailNote('This setup link expires after 24 hours. You can request a new password-reset link from the sign-in screen at any time.'),
+  });
+  const text = buildEmailText({
+    greeting: `Hello ${customer.name || 'there'},`,
+    lines: ['Your Belle Kreyashon digital library account is ready. Create a password to access it securely.'],
+    actions,
+  });
+  return sendCustomerEmail({ to: email, subject: 'Set up your Belle Kreyashon digital library account', html, text });
+};
+
+export const sendAbandonedCartRecoveryEmail = async ({ cart, recoveryUrl }) => {
+  const email = String(cart?.email || '').trim().toLowerCase();
+  if (!email || !recoveryUrl) return null;
+  const itemLines = (cart.items || []).slice(0, 8).map((item) => `${item.name || 'Item'} x${Number(item.qty) || 1}`);
+  const actions = [{ label: 'Restore My Cart', href: recoveryUrl, tone: 'primary' }];
+  const html = buildEmailLayout({
+    previewText: 'Your Belle Kreyashon cart is still waiting.',
+    eyebrow: 'Saved Cart',
+    title: 'Would you like to finish your order?',
+    greetingHtml: `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">Hello ${escapeHtml(cart.name || 'there')},</p>`,
+    bodyHtml: `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.75;">We saved the items you were viewing so you can continue without starting over.</p>`,
+    metaHtml: buildEmailMetaTable(itemLines.map((value, index) => ({ label: `Item ${index + 1}`, value }))),
+    actions,
+    noteHtml: buildEmailNote('Prices and stock are confirmed again at checkout, so the restored cart always uses the latest available information.'),
+  });
+  const text = buildEmailText({
+    greeting: `Hello ${cart.name || 'there'},`,
+    lines: ['Your Belle Kreyashon cart is still waiting.', ...itemLines],
+    actions,
+  });
+  return sendCustomerEmail({ to: email, subject: 'Your Belle Kreyashon cart is waiting', html, text });
+};

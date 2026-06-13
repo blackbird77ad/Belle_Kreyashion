@@ -2,10 +2,12 @@ import axios from 'axios';
 import AbandonedCart from '../Models/AbandonedCart.mjs';
 import Booking from '../Models/Booking.mjs';
 import Customer from '../Models/Customer.mjs';
+import MarketingActivity from '../Models/MarketingActivity.mjs';
 import Order from '../Models/Order.mjs';
 import { grantDigitalAccessForOrder, processDueTrialCharges } from '../Services/digitalAccessService.mjs';
 import { sendAdminOrderNotificationEmail, sendCustomerOrderEmail } from '../Services/customerMailService.mjs';
 import { sendMetaOrderEvent } from '../Services/metaConversionsService.mjs';
+import { sendServerOrderEvent } from '../Services/serverTagService.mjs';
 import { reduceStock } from './productController.mjs';
 
 const WHATSAPP = process.env.WHATSAPP_NUMBER;
@@ -368,17 +370,52 @@ const classifySourcePath = (sourcePath = '') => {
 };
 
 const buildCampaignInfo = (attribution = {}) => {
+  const clickSources = [
+    ['gclid', 'google-ads', 'Google Ads'],
+    ['fbclid', 'meta-ads', 'Meta Ads'],
+    ['ttclid', 'tiktok-ads', 'TikTok Ads'],
+    ['msclkid', 'microsoft-ads', 'Microsoft Ads'],
+  ];
+  const matchedClickSource = clickSources.find(([field]) => attribution?.[field]);
+  if (!attribution?.utmCampaign && !attribution?.utmSource && !attribution?.utmMedium && matchedClickSource) {
+    return {
+      key: matchedClickSource[1],
+      label: matchedClickSource[2],
+      description: 'Paid click ID captured without UTM campaign tags',
+      paid: true,
+    };
+  }
+
+  const referrer = String(attribution?.referrer || '').trim();
+  if (!attribution?.utmCampaign && !attribution?.utmSource && !attribution?.utmMedium && referrer) {
+    try {
+      const hostname = new URL(referrer).hostname.replace(/^www\./, '');
+      if (hostname && !/bellekreyashon\.com$/i.test(hostname)) {
+        return {
+          key: `referral-${hostname.toLowerCase()}`,
+          label: hostname,
+          description: 'Referral traffic without campaign tags',
+          paid: false,
+        };
+      }
+    } catch {
+      // Invalid referrers fall through to direct traffic classification.
+    }
+  }
+
   if (!attribution?.utmCampaign && !attribution?.utmSource && !attribution?.utmMedium) {
     return {
       key: 'direct-none',
       label: 'Direct / none',
       description: 'No UTM campaign tags were saved for this sale',
+      paid: false,
     };
   }
 
   return {
     key: `${attribution.utmCampaign || ''}|${attribution.utmSource || ''}|${attribution.utmMedium || ''}`.toLowerCase(),
     label: attribution.utmCampaign || attribution.utmSource || 'Tracked campaign',
+    paid: /cpc|ppc|paid|display|retarget|social-ad/i.test(attribution.utmMedium || ''),
     description: [attribution.utmSource, attribution.utmMedium].filter(Boolean).join(' • ') || 'UTM-tracked sale',
   };
 };
@@ -395,6 +432,190 @@ const pushBreakdownAmount = (map, meta, amount) => {
   existing.amount += Number(amount) || 0;
   existing.count += 1;
   map.set(meta.key, existing);
+};
+
+const buildMarketingFunnel = (activities = [], orders = [], days = 30) => {
+  const eventSessions = {
+    page_view: new Set(),
+    view_item: new Set(),
+    add_to_cart: new Set(),
+    begin_checkout: new Set(),
+    contact_click: new Set(),
+    form_submission: new Set(),
+  };
+  const campaignMap = new Map();
+  const productInterestMap = new Map();
+  const landingPageMap = new Map();
+
+  const getCampaignRow = (attribution = {}) => {
+    const campaign = buildCampaignInfo(attribution);
+    if (!campaignMap.has(campaign.key)) {
+      campaignMap.set(campaign.key, {
+        ...campaign,
+        visits: new Set(),
+        productViews: new Set(),
+        addToCarts: new Set(),
+        checkouts: new Set(),
+        contacts: new Set(),
+        forms: new Set(),
+        convertedSessions: new Set(),
+        purchases: 0,
+        revenue: 0,
+      });
+    }
+    return campaignMap.get(campaign.key);
+  };
+
+  activities.forEach((activity) => {
+    const sessionId = String(activity.sessionId || '');
+    if (!sessionId || !eventSessions[activity.eventType]) return;
+    eventSessions[activity.eventType].add(sessionId);
+    const campaign = getCampaignRow(activity.sourceAttribution || {});
+
+    if (activity.eventType === 'page_view') campaign.visits.add(sessionId);
+    if (activity.eventType === 'view_item') campaign.productViews.add(sessionId);
+    if (activity.eventType === 'add_to_cart') campaign.addToCarts.add(sessionId);
+    if (activity.eventType === 'begin_checkout') campaign.checkouts.add(sessionId);
+    if (activity.eventType === 'contact_click') campaign.contacts.add(sessionId);
+    if (activity.eventType === 'form_submission') campaign.forms.add(sessionId);
+
+    if (activity.eventType === 'page_view') {
+      const landingPage = activity.sourceAttribution?.landingPage || activity.pagePath || '/';
+      const existingLandingPage = landingPageMap.get(landingPage) || {
+        path: landingPage,
+        sessions: new Set(),
+        campaigns: new Set(),
+      };
+      existingLandingPage.sessions.add(sessionId);
+      existingLandingPage.campaigns.add(campaign.label);
+      landingPageMap.set(landingPage, existingLandingPage);
+    }
+
+    const activityProducts = activity.product?.name
+      ? [activity.product]
+      : (activity.items || []).filter((item) => item?.name);
+    if (['view_item', 'add_to_cart', 'begin_checkout'].includes(activity.eventType)) activityProducts.forEach((product) => {
+      const key = product.id || product.name.toLowerCase();
+      const existing = productInterestMap.get(key) || {
+        key,
+        name: product.name,
+        category: product.category || (product.isDigital ? 'Digital Products' : 'Products'),
+        isDigital: Boolean(product.isDigital),
+        views: 0,
+        addToCarts: 0,
+        checkouts: 0,
+      };
+      if (activity.eventType === 'view_item') existing.views += 1;
+      if (activity.eventType === 'add_to_cart') existing.addToCarts += 1;
+      if (activity.eventType === 'begin_checkout') existing.checkouts += 1;
+      productInterestMap.set(key, existing);
+    });
+  });
+
+  orders.forEach((order) => {
+    const campaign = getCampaignRow(order.sourceAttribution || {});
+    const sessionId = String(order.sourceAttribution?.sessionId || '');
+    if (sessionId && campaign.visits.has(sessionId)) campaign.convertedSessions.add(sessionId);
+    campaign.purchases += 1;
+    campaign.revenue += Number(order.total) || 0;
+  });
+
+  const visits = eventSessions.page_view.size;
+  const purchases = orders.length;
+  const convertedSessions = new Set(
+    orders
+      .map((order) => String(order.sourceAttribution?.sessionId || ''))
+      .filter((sessionId) => sessionId && eventSessions.page_view.has(sessionId))
+  );
+  const convertedCartSessions = new Set(
+    [...convertedSessions].filter((sessionId) => eventSessions.add_to_cart.has(sessionId))
+  );
+  const campaignFunnel = [...campaignMap.values()]
+    .map((campaign) => ({
+      key: campaign.key,
+      label: campaign.label,
+      description: campaign.description,
+      paid: campaign.paid,
+      visits: campaign.visits.size,
+      productViews: campaign.productViews.size,
+      addToCarts: campaign.addToCarts.size,
+      checkouts: campaign.checkouts.size,
+      contacts: campaign.contacts.size,
+      forms: campaign.forms.size,
+      purchases: campaign.purchases,
+      trackedPurchases: campaign.convertedSessions.size,
+      revenue: campaign.revenue,
+      conversionRate: campaign.visits
+        ? Number(((campaign.convertedSessions.size / campaign.visits.size) * 100).toFixed(1))
+        : 0,
+    }))
+    .sort((a, b) => (b.revenue - a.revenue) || (b.visits - a.visits));
+
+  const activityLabels = {
+    page_view: 'Visited page',
+    view_item: 'Viewed product',
+    add_to_cart: 'Added to cart',
+    begin_checkout: 'Started checkout',
+    contact_click: 'Clicked contact',
+    form_submission: 'Submitted form',
+  };
+  const recentActivity = activities.slice(0, 12).map((activity) => {
+    const campaign = buildCampaignInfo(activity.sourceAttribution || {});
+    return {
+      id: activity._id,
+      eventType: activity.eventType,
+      label: activityLabels[activity.eventType] || activity.eventType,
+      detail: activity.product?.name || activity.pageTitle || activity.pagePath || activity.channel || 'Store activity',
+      pagePath: activity.pagePath || '',
+      campaign: campaign.label,
+      paid: campaign.paid,
+      createdAt: activity.createdAt,
+    };
+  });
+
+  return {
+    periodDays: days,
+    summary: {
+      visits,
+      productViews: eventSessions.view_item.size,
+      addToCarts: eventSessions.add_to_cart.size,
+      checkouts: eventSessions.begin_checkout.size,
+      contacts: eventSessions.contact_click.size,
+      formSubmissions: eventSessions.form_submission.size,
+      purchases,
+      trackedPurchases: convertedSessions.size,
+      revenue: sumAmount(orders.map((order) => order.total)),
+      visitToPurchaseRate: visits ? Number(((convertedSessions.size / visits) * 100).toFixed(1)) : 0,
+      cartToPurchaseRate: eventSessions.add_to_cart.size
+        ? Number(((convertedCartSessions.size / eventSessions.add_to_cart.size) * 100).toFixed(1))
+        : 0,
+    },
+    campaigns: campaignFunnel,
+    productInterest: [...productInterestMap.values()]
+      .sort((a, b) => (b.checkouts - a.checkouts) || (b.addToCarts - a.addToCarts) || (b.views - a.views))
+      .slice(0, 10),
+    landingPages: [...landingPageMap.values()]
+      .map((item) => ({
+        path: item.path,
+        visits: item.sessions.size,
+        campaigns: [...item.campaigns].slice(0, 3),
+      }))
+      .sort((a, b) => b.visits - a.visits)
+      .slice(0, 10),
+    recentConversions: orders.slice(0, 12).map((order) => {
+      const campaign = buildCampaignInfo(order.sourceAttribution || {});
+      return {
+        id: order._id,
+        orderId: order.orderId,
+        products: (order.items || []).map((item) => item.name).filter(Boolean),
+        source: campaign.label,
+        campaign: order.sourceAttribution?.utmCampaign || campaign.label,
+        value: Number(order.total) || 0,
+        createdAt: order.createdAt,
+      };
+    }),
+    recentActivity,
+  };
 };
 
 const buildWhatsAppMessage = (order, paymentRef) => {
@@ -543,9 +764,14 @@ export const verifyAndCreateOrder = async (req, res) => {
       console.error('Digital access grant error:', digitalErr.message);
     }
 
-    sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
-      console.error('Meta purchase tracking error:', metaErr.message);
-    });
+    if (orderData?.marketingConsent !== false) {
+      sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
+        console.error('Meta purchase tracking error:', metaErr.message);
+      });
+      sendServerOrderEvent(order).catch((tagErr) => {
+        console.error('Server tag purchase tracking error:', tagErr.message);
+      });
+    }
     dispatchOrderEmails(order);
 
     await AbandonedCart.findOneAndDelete({ phone: order.customer?.phone || normalizedOrderData.customer?.phone });
@@ -587,9 +813,14 @@ export const createFreeDigitalOrder = async (req, res) => {
       paystackAmount: 0,
     });
 
-    sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
-      console.error('Meta free digital tracking error:', metaErr.message);
-    });
+    if (orderData?.marketingConsent !== false) {
+      sendMetaOrderEvent(order, getMarketingRequestContext(req, orderData?.browserData)).catch((metaErr) => {
+        console.error('Meta free digital tracking error:', metaErr.message);
+      });
+      sendServerOrderEvent(order).catch((tagErr) => {
+        console.error('Server tag free digital tracking error:', tagErr.message);
+      });
+    }
     dispatchOrderEmails(order);
 
     await AbandonedCart.findOneAndDelete({ phone: order.customer?.phone || normalizedOrderData.customer?.phone });
@@ -622,13 +853,20 @@ export const getAllOrders = async (req, res) => {
 
 export const getSalesAnalytics = async (req, res) => {
   try {
-    const [orders, bookings] = await Promise.all([
+    const marketingPeriodDays = 30;
+    const marketingPeriodStart = new Date(Date.now() - marketingPeriodDays * 24 * 60 * 60 * 1000);
+    const [orders, bookings, marketingActivities] = await Promise.all([
       Order.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }),
       Booking.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }),
+      MarketingActivity.find({ createdAt: { $gte: marketingPeriodStart } })
+        .sort({ createdAt: -1 })
+        .lean(),
     ]);
 
     const activeOrders = orders.filter((order) => order.status !== 'cancelled');
     const cancelledOrderCount = orders.length - activeOrders.length;
+    const recentActiveOrders = activeOrders.filter((order) => new Date(order.createdAt) >= marketingPeriodStart);
+    const marketingFunnel = buildMarketingFunnel(marketingActivities, recentActiveOrders, marketingPeriodDays);
 
     let physicalProductRevenue = 0;
     let digitalProductRevenue = 0;
@@ -858,6 +1096,7 @@ export const getSalesAnalytics = async (req, res) => {
       },
       monthlyRevenue,
       recentSales,
+      marketingFunnel,
     });
   } catch (err) {
     res.status(500).json({ message: err.message || 'Server error' });

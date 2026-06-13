@@ -13,6 +13,7 @@ import {
   resetCustomerPassword,
   signupCustomer,
   updateCustomerPreferences,
+  updateCustomerProfile,
   verifyCustomerEmail,
 } from '../Controllers/customerController.mjs';
 import { protect, protectCustomer } from '../Middlewares/auth.mjs';
@@ -24,6 +25,7 @@ router.post('/login', loginCustomer);
 router.post('/logout', protectCustomer, logoutCustomer);
 router.get('/me', protectCustomer, getCurrentCustomer);
 router.patch('/preferences', protectCustomer, updateCustomerPreferences);
+router.patch('/profile', protectCustomer, updateCustomerProfile);
 router.get('/dashboard', protectCustomer, getCustomerDashboard);
 router.get('/history', protectCustomer, getCustomerHistory);
 router.post('/password-reset/request', requestCustomerPasswordReset);

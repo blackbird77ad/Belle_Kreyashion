@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
 import { api } from '../hooks/useApi';
 import { useCustomer } from './CustomerContext';
 import { getAttributionSnapshot } from '../utils/attribution';
@@ -36,7 +36,7 @@ export function CartProvider({ children }) {
   // Persist cart to localStorage
   useEffect(() => {
     try { localStorage.setItem('bk_cart', JSON.stringify(cart)); }
-    catch {}
+    catch { /* Storage can be unavailable in private browsing. */ }
   }, [cart]);
 
   // Keep cart state in sync across open tabs/windows.
@@ -116,6 +116,7 @@ export function CartProvider({ children }) {
         name: product.name,
         category: product.category,
         brand: 'Belle Kreyashon',
+        isDigital: !!product.isDigital,
       },
       quantity: addQty,
       price: priceNow,
@@ -140,13 +141,26 @@ export function CartProvider({ children }) {
 
     setCart((prev) => prev.filter((item) => !item.isDigital || !ownedIds.has(String(item.productId))));
   };
-  const clearCart = () => { setCart([]); try { localStorage.removeItem('bk_cart'); } catch {} };
+  const clearCart = () => { setCart([]); try { localStorage.removeItem('bk_cart'); } catch { /* Storage can be unavailable in private browsing. */ } };
+  const restoreCart = useCallback((items = []) => {
+    const restored = (Array.isArray(items) ? items : []).filter((item) => item?.productId).map((item) => ({
+      ...item,
+      key: item.key || (item.isDigital ? `digital-${item.productId}` : `${item.productId}-${!!item.isWholesale}-${item.variant || ''}`),
+      qty: Math.max(1, Number(item.qty) || 1),
+      price: Number(item.price) || 0,
+      image: item.image || '',
+      variant: item.variant || null,
+      digitalAccessKind: item.digitalAccessKind || null,
+    }));
+    setCart(restored);
+    try { localStorage.setItem('bk_cart', JSON.stringify(restored)); } catch { /* Storage can be unavailable in private browsing. */ }
+  }, []);
 
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
   const subtotal  = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, updateQty, removeFromCart, removeOwnedDigitalItems, clearCart, cartCount, subtotal }}>
+    <CartContext.Provider value={{ cart, addToCart, updateQty, removeFromCart, removeOwnedDigitalItems, clearCart, restoreCart, cartCount, subtotal }}>
       {children}
     </CartContext.Provider>
   );

@@ -9,7 +9,13 @@ const sourceAttributionSchema = new mongoose.Schema({
   utmCampaign: { type: String, default: '' },
   utmTerm: { type: String, default: '' },
   utmContent: { type: String, default: '' },
+  gclid: { type: String, default: '' },
+  fbclid: { type: String, default: '' },
+  ttclid: { type: String, default: '' },
+  msclkid: { type: String, default: '' },
   landingPage: { type: String, default: '' },
+  referrer: { type: String, default: '' },
+  sessionId: { type: String, default: '' },
   firstSeenAt: { type: String, default: '' },
   lastSeenAt: { type: String, default: '' },
 }, { _id: false });

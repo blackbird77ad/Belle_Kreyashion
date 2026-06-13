@@ -3,6 +3,13 @@ import { MessageCircle, Phone, Facebook, MapPin, ChevronRight, Clock, Mail, Send
 import SEO from '../components/SEO';
 import { useCustomer } from '../context/CustomerContext';
 import { api } from '../hooks/useApi';
+import { getAttributionSnapshot } from '../utils/attribution';
+import {
+  createMarketingEventId,
+  getMarketingBrowserData,
+  hasMarketingConsent,
+  trackFormSubmission,
+} from '../utils/marketing';
 import { PHONE, PHONE_LOCAL, SECONDARY_PHONE, SECONDARY_PHONE_LOCAL, WHATSAPP, FACEBOOK } from '../data/contact';
 
 const CONTACTS = [
@@ -111,6 +118,7 @@ export default function Contact() {
 
     setSending(true);
     try {
+      const marketingEventId = createMarketingEventId('contact-form');
       const { data } = await api.post('/api/contact/inquiry', {
         name: form.name.trim(),
         email: form.email.trim(),
@@ -119,6 +127,23 @@ export default function Contact() {
         preferredReply: form.preferredReply,
         subject: form.subject.trim(),
         message: form.message.trim(),
+        marketing: {
+          eventId: marketingEventId,
+          consent: hasMarketingConsent(),
+          browserData: getMarketingBrowserData(),
+          sourceAttribution: getAttributionSnapshot(),
+        },
+      });
+
+      trackFormSubmission({
+        formName: 'contact_inquiry',
+        formType: form.inquiryType,
+        customer: {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+        },
+        eventId: marketingEventId,
       });
 
       setSuccess(data?.message || 'Your message has been sent successfully.');

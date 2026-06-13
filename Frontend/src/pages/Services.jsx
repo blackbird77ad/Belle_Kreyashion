@@ -7,7 +7,7 @@ import CustomerModal from '../components/CustomerModal';
 import { useCustomer } from '../context/CustomerContext';
 import SEO from '../components/SEO';
 import { getAttributionSnapshot } from '../utils/attribution';
-import { getMarketingBrowserData, trackBeginCheckout, trackContactClick, trackServicePurchase } from '../utils/marketing';
+import { getMarketingBrowserData, hasMarketingConsent, trackBeginCheckout, trackContactClick, trackServicePurchase } from '../utils/marketing';
 import { buildBreadcrumbSchema, buildCollectionPageSchema } from '../utils/seoPaths';
 
 const WHATSAPP_NUM = WHATSAPP;
@@ -220,6 +220,7 @@ function TrainingModal({ event, onClose }) {
             amount: event.price,
             sourceAttribution,
             browserData: getMarketingBrowserData(),
+            marketingConsent: hasMarketingConsent(),
           },
         }).then(res => {
           setLoading(false);
@@ -317,6 +318,7 @@ function ConsultationModal({ consultation, onClose }) {
             notes,
             sourceAttribution,
             browserData: getMarketingBrowserData(),
+            marketingConsent: hasMarketingConsent(),
           },
         }).then(res => {
           setLoading(false);

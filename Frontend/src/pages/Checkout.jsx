@@ -1,652 +1,369 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Loader2, MapPin, MessageCircle, Package } from 'lucide-react';
+import { CreditCard, Globe, Landmark, Loader2, MapPin, MessageCircle, Package, Smartphone, Ticket, User } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useCustomer } from '../context/CustomerContext';
 import { useIntlPreferences } from '../context/IntlContext';
 import { api, useFetch } from '../hooks/useApi';
 import { getAttributionSnapshot } from '../utils/attribution';
-import { getMarketingBrowserData, trackBeginCheckout } from '../utils/marketing';
-import { WHATSAPP } from '../data/contact';
+import { getMarketingBrowserData, hasMarketingConsent, trackBeginCheckout } from '../utils/marketing';
 import CustomerModal from '../components/CustomerModal';
 
 const PAYSTACK_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+const CONTACT_STORAGE_KEY = 'bk_checkout_contact';
 
-function validatePhone(raw) {
+const readStoredContact = () => {
+  try { return JSON.parse(localStorage.getItem(CONTACT_STORAGE_KEY)) || {}; }
+  catch { return {}; }
+};
+
+function validatePhone(raw = '') {
   const cleaned = raw.replace(/[\s\-().]/g, '');
-  if (!cleaned) return 'Phone number is missing';
+  if (!cleaned) return 'Phone number is required';
   if (!/^\+?\d+$/.test(cleaned)) return 'Phone number contains invalid characters';
-
-  if (cleaned.startsWith('0')) {
-    if (cleaned.length !== 10) return 'Ghana number must be 10 digits (e.g. 0241234567)';
-    const prefix = cleaned.slice(0, 3);
-    const validPrefixes = ['020', '023', '024', '025', '026', '027', '028', '029', '050', '053', '054', '055', '056', '057', '059'];
-    if (!validPrefixes.includes(prefix)) return `"${prefix}" is not a recognised Ghana network. Please check the number.`;
-    return null;
-  }
-
-  if (cleaned.startsWith('+233') || cleaned.startsWith('233')) {
-    const digits = cleaned.replace(/^\+/, '');
-    if (digits.length !== 12) return 'Ghana number with country code must be 12 digits';
-    return null;
-  }
-
-  if (cleaned.startsWith('+')) {
-    const digits = cleaned.slice(1);
-    if (digits.length < 7 || digits.length > 15) return 'International number looks incorrect. Please check it.';
-    return null;
-  }
-
-  if (cleaned.length >= 7 && cleaned.length <= 15) return 'For international numbers please include the + country code';
-  return 'Please enter a valid phone number';
+  if (cleaned.startsWith('0') && cleaned.length !== 10) return 'Ghana numbers should contain 10 digits';
+  if (cleaned.startsWith('+') && (cleaned.length < 8 || cleaned.length > 16)) return 'International phone number looks incorrect';
+  return null;
 }
 
-const buildCheckoutWhatsAppLink = (customer = {}, fulfillment = '', note = '') => {
-  const message = encodeURIComponent(
-`Hi Belle Kreyashon,
-I want to arrange ${fulfillment || 'delivery'} for my order.
-
-Name: ${customer?.name || ''}
-Phone: ${customer?.phone || ''}
-Email: ${customer?.email || 'N/A'}
-Address / delivery note: ${note || 'I will send my delivery details here.'}`
-  );
-  return `https://wa.me/${WHATSAPP}?text=${message}`;
-};
+const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
 
 export default function Checkout() {
   const { cart, subtotal, clearCart } = useCart();
-  const { customer, saveAddress } = useCustomer();
+  const { customer, saveAddress, savePreferences } = useCustomer();
   const { formatMoney, formatBaseMoney, ghanaCheckoutNote, isConvertedDisplay } = useIntlPreferences();
   const navigate = useNavigate();
   const { data: zones } = useFetch('/api/delivery/public');
+  const storedContact = useMemo(readStoredContact, []);
 
+  const [contact, setContact] = useState({
+    name: customer?.name || storedContact.name || '',
+    phone: customer?.phone || storedContact.phone || '',
+    email: customer?.email || storedContact.email || '',
+  });
   const [fulfillment, setFulfillment] = useState('delivery');
   const [zone, setZone] = useState('');
-  const [address, setAddress] = useState(customer?.savedAddress || '');
+  const [address, setAddress] = useState(customer?.savedAddress || storedContact.address || '');
+  const [billingAddress, setBillingAddress] = useState(customer?.billingAddress || storedContact.billingAddress || '');
   const [saveAddr, setSaveAddr] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState('paystack');
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [serverQuote, setServerQuote] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [couponLoading, setCouponLoading] = useState(false);
   const [error, setError] = useState('');
+  const [couponMessage, setCouponMessage] = useState('');
   const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [customerModalMode, setCustomerModalMode] = useState('signup');
+  const [customerModalMode, setCustomerModalMode] = useState('login');
 
+  const signedIn = Boolean(customer?.accessToken);
   const hasDigitalItems = cart.some((item) => item.isDigital);
   const hasPhysicalItems = cart.some((item) => !item.isDigital);
   const hasTrialItems = cart.some((item) => item.isDigital && item.digitalAccessKind === 'trial');
-  const freeOnlyDigital = hasDigitalItems && !hasPhysicalItems && cart.every((item) => item.digitalAccessKind === 'free');
   const digitalOnly = hasDigitalItems && !hasPhysicalItems;
+  const freeOnlyDigital = digitalOnly && cart.every((item) => item.digitalAccessKind === 'free');
   const hasDeliveryZones = Array.isArray(zones) && zones.length > 0;
-  const selectedZone = digitalOnly ? null : zones?.find((item) => item._id === zone);
-  const deliveryFee = digitalOnly ? 0 : fulfillment === 'delivery' ? (selectedZone?.fee || 0) : 0;
-  const total = subtotal + deliveryFee;
-  const trialSetupCharge = hasTrialItems && total === 0 ? 0.1 : 0;
-  const payableNow = total + trialSetupCharge;
-  const digitalDeliveryLabel = freeOnlyDigital ? 'Instant after free claim' : hasTrialItems ? 'Instant after trial start' : 'Instant after payment';
-  const arrangedDeliveryWhatsappUrl = buildCheckoutWhatsAppLink(customer, fulfillment === 'international' ? 'international shipping' : 'custom delivery', address.trim());
-  const signedIn = Boolean(customer?.accessToken);
-  const activeCustomer = signedIn ? customer : null;
-
-  const openCustomerAuth = (mode = 'signup') => {
-    setCustomerModalMode(mode === 'login' ? 'login' : 'signup');
-    setShowCustomerModal(true);
-  };
+  const selectedZone = zones?.find((item) => item._id === zone);
+  const localDeliveryFee = digitalOnly || fulfillment !== 'delivery' ? 0 : Number(selectedZone?.fee || 0);
+  const displaySubtotal = Number(serverQuote?.subtotal ?? subtotal);
+  const displayDelivery = Number(serverQuote?.deliveryFee ?? localDeliveryFee);
+  const displayDiscount = Number(serverQuote?.discountTotal || 0);
+  const displayTotal = Number(serverQuote?.expectedPaymentAmount ?? (displaySubtotal + displayDelivery - displayDiscount));
 
   useEffect(() => {
-    const isPaying = !!sessionStorage.getItem('bk_pending_order');
-    if (!isPaying && cart.length === 0) navigate('/shop');
+    if (signedIn) {
+      setContact({ name: customer.name || '', phone: customer.phone || '', email: customer.email || '' });
+      setAddress(customer.savedAddress || '');
+      setBillingAddress(customer.billingAddress || '');
+    }
+  }, [signedIn, customer?.name, customer?.phone, customer?.email, customer?.savedAddress, customer?.billingAddress]);
+
+  useEffect(() => {
+    if (!signedIn) {
+      try { localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify({ ...contact, address, billingAddress })); }
+      catch { /* Storage can be unavailable in private browsing. */ }
+    }
+  }, [signedIn, contact, address, billingAddress]);
+
+  useEffect(() => {
+    if (!sessionStorage.getItem('bk_pending_order') && cart.length === 0) navigate('/shop');
   }, [cart.length, navigate]);
 
   useEffect(() => {
-    if (!signedIn) return;
-    setAddress(customer?.savedAddress || '');
-  }, [signedIn, customer?.savedAddress]);
-
-  useEffect(() => {
     if (digitalOnly) return;
-    if (fulfillment === 'delivery' && !hasDeliveryZones) {
-      setFulfillment('pickup');
-      setZone('');
-    }
+    if (fulfillment === 'delivery' && !hasDeliveryZones) setFulfillment('pickup');
   }, [digitalOnly, fulfillment, hasDeliveryZones]);
 
-  const isPaying = !!sessionStorage.getItem('bk_pending_order');
-  if (!isPaying && cart.length === 0) return null;
+  useEffect(() => {
+    if (hasTrialItems) setPaymentMethod('card');
+  }, [hasTrialItems]);
+
+  useEffect(() => {
+    setServerQuote(null);
+    setAppliedCoupon(null);
+    setCouponMessage('');
+  }, [cart, fulfillment, zone, address]);
+
+  useEffect(() => {
+    if (!cart.length || (!contact.phone && !contact.email)) return undefined;
+    const timer = setTimeout(() => {
+      api.post('/api/orders/abandoned', {
+        ...contact,
+        items: cart.map((item) => ({
+          productId: item.productId,
+          slug: item.slug || '',
+          name: item.name,
+          qty: item.qty,
+          price: item.price,
+          image: item.image || '',
+          variant: item.variant || '',
+          isWholesale: !!item.isWholesale,
+          isDigital: !!item.isDigital,
+          digitalAccessKind: item.digitalAccessKind || '',
+        })),
+        sourceAttribution: getAttributionSnapshot(),
+      }).catch(() => {});
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [cart, contact]);
+
+  const openCustomerAuth = (mode) => {
+    setCustomerModalMode(mode);
+    setShowCustomerModal(true);
+  };
 
   const validate = () => {
-    const phoneErr = validatePhone(activeCustomer?.phone || '');
-    if (phoneErr) return `Your saved phone number looks incorrect (${phoneErr}). Please update it.`;
-    if (digitalOnly) return null;
-    if (fulfillment === 'delivery' && !zone) return 'Please select a delivery zone';
-    if ((fulfillment === 'delivery' || fulfillment === 'international') && !address.trim()) return 'Please enter your address';
+    if (!contact.name.trim()) return 'Please enter your name';
+    const phoneError = validatePhone(contact.phone);
+    if (phoneError) return phoneError;
+    if (!isValidEmail(contact.email)) return 'Please enter a valid email address';
+    if (!digitalOnly && fulfillment === 'delivery' && !zone) return 'Please select a delivery zone';
+    if (!digitalOnly && ['delivery', 'international'].includes(fulfillment) && !address.trim()) return 'Please enter the delivery address';
     return null;
   };
 
-  const handlePayment = async () => {
-    if (!signedIn || !activeCustomer) {
-      openCustomerAuth('login');
-      return;
-    }
-
-    const err = validate();
-    if (err) return setError(err);
-
-    setError('');
-    setLoading(true);
-
+  const buildOrderData = () => {
     const checkoutAttribution = getAttributionSnapshot();
     const itemAttributions = cart.map((item) => item.sourceAttribution || checkoutAttribution);
-    const sourcePages = [...new Set(
-      itemAttributions
-        .map((item) => item?.sourcePath || item?.sourcePage || '')
-        .filter(Boolean)
-    )];
+    const sourcePages = [...new Set(itemAttributions.map((item) => item?.sourcePath || item?.sourcePage || '').filter(Boolean))];
     const primaryAttribution = itemAttributions.find((item) => item?.utmCampaign || item?.utmSource) || itemAttributions[0] || checkoutAttribution;
-
-    const orderData = {
-      customer: {
-        ...activeCustomer,
-        address: digitalOnly
-          ? 'DIGITAL ACCESS'
-          : fulfillment === 'pickup'
-            ? 'PICKUP'
-            : fulfillment === 'arranged-delivery'
-              ? (address.trim() || 'ARRANGED DELIVERY - CONFIRM ON WHATSAPP')
-              : address.trim(),
-      },
+    return {
+      customer: { ...contact, billingAddress: billingAddress.trim() },
+      address: digitalOnly ? 'DIGITAL ACCESS' : address.trim(),
       items: cart.map((item) => ({
         productId: item.productId,
-        slug: item.slug || '',
-        name: item.name,
-        brand: item.brand || 'Belle Kreyashon',
-        category: item.category || '',
         qty: item.qty,
-        price: item.price,
-        isWholesale: item.isWholesale,
-        isDigital: !!item.isDigital,
-        digitalAccessKind: item.digitalAccessKind || null,
-        trialDays: item.digitalAccessKind === 'trial' ? Number(item.freeTrialDays || 7) : null,
-        trialChargeAmount: item.digitalAccessKind === 'trial' ? Number(item.trialChargeAmount || 0) : null,
-        variant: item.variant,
+        isWholesale: !!item.isWholesale,
+        variant: item.variant || null,
+        accessType: item.accessType || null,
+        accessMonths: item.accessMonths || null,
         sourceAttribution: item.sourceAttribution || checkoutAttribution,
       })),
-      subtotal,
       fulfillment: digitalOnly ? 'digital' : fulfillment,
-      deliveryZone: digitalOnly
-        ? 'Digital Delivery'
-        : fulfillment === 'pickup'
-          ? 'Pickup'
-          : fulfillment === 'arranged-delivery'
-            ? 'Customer-arranged delivery'
-          : fulfillment === 'international'
-            ? 'International'
-            : (selectedZone?.name || ''),
-      deliveryFee: digitalOnly ? 0 : deliveryFee,
-      total,
-      orderType: digitalOnly ? 'digital' : fulfillment === 'international' ? 'international' : 'standard',
-      paymentPurpose: hasTrialItems && total === 0 ? 'trial_setup' : 'purchase',
+      deliveryZoneId: fulfillment === 'delivery' ? zone : '',
+      couponCode: appliedCoupon?.code || couponCode.trim(),
       sourceAttribution: primaryAttribution,
       sourcePages,
       browserData: getMarketingBrowserData(),
+      marketingConsent: hasMarketingConsent(),
     };
+  };
 
-    const paystackItemSummary = orderData.items
-      .map((item) => `${item.name || 'Item'} x${Number(item.qty) || 0}`)
-      .slice(0, 6)
-      .join(', ');
+  const authConfig = signedIn ? {
+    headers: {
+      'x-customer-token': customer.accessToken,
+      Authorization: `Bearer ${customer.accessToken}`,
+    },
+  } : undefined;
 
-    if (freeOnlyDigital) {
-      trackBeginCheckout({
-        items: orderData.items,
-        value: 0,
-        customer: activeCustomer,
-        source: 'free_digital_claim',
-      });
-
-      try {
-        const { data } = await api.post('/api/orders/free-digital', { orderData });
-        sessionStorage.setItem('bk_last_order', JSON.stringify({
-          order: data.order,
-          whatsappUrl: data.whatsappUrl,
-          callUrl: data.callUrl,
-        }));
-        clearCart();
-        navigate('/order-confirmed');
-      } catch (freeErr) {
-        setError(freeErr.response?.data?.message || 'Could not unlock the free digital product right now.');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    if (!window.PaystackPop) {
-      setError('Payment system not ready. Please refresh the page.');
-      setLoading(false);
-      return;
-    }
-
-    trackBeginCheckout({
-      items: orderData.items,
-      value: payableNow,
-      customer: activeCustomer,
-      source: 'paystack_checkout',
-    });
-
-    const ref = `BK-${Date.now()}`;
-
-    function onPaymentSuccess(response) {
-      if (!digitalOnly && saveAddr && address.trim()) saveAddress(address.trim());
-      sessionStorage.setItem('bk_pending_order', JSON.stringify({
-        paymentRef: response.reference,
-        orderData,
-      }));
-      clearCart();
-      navigate('/order-confirmed');
-    }
-
-    function onPaymentClose() {
-      setLoading(false);
-    }
-
+  const applyCoupon = async () => {
+    const validationError = validate();
+    if (validationError && !/delivery address/i.test(validationError)) return setCouponMessage(validationError);
+    if (!couponCode.trim()) return setCouponMessage('Enter a coupon code first');
+    setCouponLoading(true);
+    setCouponMessage('');
     try {
-      const phoneDigits = activeCustomer.phone.replace(/[^0-9]/g, '');
-      const paystackEmail = activeCustomer.email?.trim() || `${phoneDigits}@bellekreyashon.com`;
+      const { data } = await api.post('/api/orders/quote', { orderData: buildOrderData() }, authConfig);
+      setServerQuote(data.quote);
+      setAppliedCoupon(data.quote.coupon);
+      setCouponCode(data.quote.coupon?.code || couponCode.trim().toUpperCase());
+      setCouponMessage(data.quote.coupon ? `${data.quote.coupon.code} applied successfully` : 'Coupon checked');
+    } catch (couponError) {
+      setAppliedCoupon(null);
+      setServerQuote(null);
+      setCouponMessage(couponError.response?.data?.message || 'Coupon could not be applied');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const finishWithoutPaystack = (data) => {
+    sessionStorage.setItem('bk_last_order', JSON.stringify({
+      order: data.order,
+      payment: data.payment,
+      whatsappUrl: data.whatsappUrl,
+      callUrl: data.callUrl,
+    }));
+    clearCart();
+    navigate('/order-confirmed');
+  };
+
+  const handlePayment = async () => {
+    const validationError = validate();
+    if (validationError) return setError(validationError);
+    setError('');
+    setLoading(true);
+    try {
+      const orderData = buildOrderData();
+      const { data } = await api.post('/api/orders/checkout', { orderData, paymentMethod }, authConfig);
+      setServerQuote(data.order);
+      trackBeginCheckout({ items: data.order?.items || [], value: data.payment?.expectedAmount || 0, customer: contact, source: paymentMethod });
+
+      if (!digitalOnly && signedIn && saveAddr && address.trim()) await saveAddress(address.trim()).catch(() => {});
+      if (signedIn && billingAddress.trim()) await savePreferences({ billingAddress: billingAddress.trim() }).catch(() => {});
+      if (data.payment?.method === 'free' || data.payment?.method === 'bank_transfer') {
+        finishWithoutPaystack(data);
+        return;
+      }
+      if (!window.PaystackPop || !PAYSTACK_KEY) throw new Error('Payment system is not ready. Please refresh and try again.');
+
+      const paystackChannels = data.payment.method === 'card'
+        ? ['card']
+        : data.payment.method === 'mobile_money'
+          ? ['mobile_money']
+          : undefined;
       const handler = window.PaystackPop.setup({
         key: PAYSTACK_KEY,
-        email: paystackEmail,
-        amount: Math.round(payableNow * 100),
+        email: contact.email.trim(),
+        amount: Math.round(Number(data.payment.expectedAmount || 0) * 100),
         currency: 'GHS',
-        ref,
+        ref: data.payment.reference,
+        channels: paystackChannels,
         metadata: {
           checkout_context: 'shop_order',
-          payment_purpose: orderData.paymentPurpose || 'purchase',
-          customer_name: activeCustomer.name || '',
-          customer_phone: activeCustomer.phone || '',
-          customer_id: activeCustomer.customerId || '',
-          fulfillment: orderData.fulfillment || '',
-          delivery_zone: orderData.deliveryZone || '',
-          item_count: orderData.items.length,
-          item_summary: paystackItemSummary,
-          order_total_ghs: Number(total || 0),
-          payable_now_ghs: Number(payableNow || 0),
-          source_page: primaryAttribution?.sourcePath || primaryAttribution?.sourcePage || '',
-          custom_fields: [
-            {
-              display_name: 'Customer',
-              variable_name: 'customer_name',
-              value: activeCustomer.name || 'Unknown customer',
-            },
-            {
-              display_name: 'Phone',
-              variable_name: 'customer_phone',
-              value: activeCustomer.phone || 'No phone',
-            },
-            {
-              display_name: 'Items',
-              variable_name: 'order_items',
-              value: paystackItemSummary || 'No items recorded',
-            },
-            {
-              display_name: 'Payment For',
-              variable_name: 'payment_for',
-              value: orderData.fulfillment === 'digital'
-                ? 'Digital product order'
-                : orderData.fulfillment === 'pickup'
-                  ? 'Pickup order'
-                  : orderData.fulfillment === 'international'
-                    ? 'International order'
-                    : 'Shop order',
-            },
-          ],
+          order_id: data.order?._id || '',
+          order_number: data.order?.orderId || '',
+          customer_name: contact.name,
+          customer_phone: contact.phone,
         },
-        channels: hasTrialItems ? ['card'] : undefined,
-        callback: onPaymentSuccess,
-        onClose: onPaymentClose,
+        callback: (response) => {
+          sessionStorage.setItem('bk_pending_order', JSON.stringify({ paymentRef: response.reference }));
+          navigate('/order-confirmed');
+        },
+        onClose: () => setLoading(false),
       });
-
       setLoading(false);
       handler.openIframe();
-    } catch (setupError) {
-      console.error('Paystack setup error:', setupError.message);
-      setError('Payment could not start. Please refresh and try again.');
+    } catch (paymentError) {
+      setError(paymentError.response?.data?.message || paymentError.message || 'Checkout could not start');
       setLoading(false);
     }
   };
 
-  const FULFILLMENT_OPTIONS = [
-    { value: 'pickup', label: 'Pickup', desc: 'Collect from Osu, Accra', icon: <Package size={18} />, fee: 'Free' },
-    ...(hasDeliveryZones ? [{ value: 'delivery', label: 'Delivery', desc: 'Delivered to you', icon: <MapPin size={18} />, fee: 'By zone' }] : []),
-    { value: 'arranged-delivery', label: 'Arrange Delivery', desc: 'Confirm a rider or courier on WhatsApp', icon: <MessageCircle size={18} />, fee: 'Quoted after' },
-    { value: 'international', label: 'International', desc: 'Ship anywhere', icon: <Globe size={18} />, fee: 'Quoted after' },
+  if (!sessionStorage.getItem('bk_pending_order') && cart.length === 0) return null;
+
+  const fulfillmentOptions = [
+    { value: 'pickup', label: 'Pickup', description: 'Collect from Osu, Accra', icon: Package },
+    ...(hasDeliveryZones ? [{ value: 'delivery', label: 'Delivery', description: 'Priced by zone', icon: MapPin }] : []),
+    { value: 'arranged-delivery', label: 'Arrange Delivery', description: 'Confirm a rider on WhatsApp', icon: MessageCircle },
+    { value: 'international', label: 'International', description: 'Courier arranged after order', icon: Globe },
+  ];
+  const paymentOptions = hasTrialItems ? [
+    { value: 'card', label: 'Card', description: 'Required for reusable trial billing', icon: CreditCard },
+  ] : [
+    { value: 'paystack', label: 'Paystack', description: 'Choose card or Mobile Money securely', icon: CreditCard },
+    { value: 'mobile_money', label: 'Mobile Money', description: 'Pay directly with an enabled MoMo network', icon: Smartphone },
+    { value: 'card', label: 'Card', description: 'Visa or Mastercard through Paystack', icon: CreditCard },
+    { value: 'bank_transfer', label: 'Bank Transfer', description: 'Order activates after admin verification', icon: Landmark },
   ];
 
   return (
-    <div className="pt-16 min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-10">
-        <h1 className="text-2xl font-extrabold mb-8">Checkout</h1>
+    <div className="min-h-screen bg-gray-50 pt-16">
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7a00]">Secure checkout</p>
+            <h1 className="mt-2 text-3xl font-extrabold text-black">Complete your order</h1>
+            <p className="mt-2 text-sm text-gray-500">Guest checkout is available. Digital purchases automatically receive a secure customer account.</p>
+          </div>
+          {!signedIn && (
+            <button type="button" onClick={() => openCustomerAuth('login')} className="rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold hover:border-black">
+              Sign in for faster checkout
+            </button>
+          )}
+        </div>
 
-        <div className="grid md:grid-cols-5 gap-8">
-          <div className="md:col-span-3 flex flex-col gap-5">
-            {signedIn ? (
-              <>
-                <div className="bg-white rounded-2xl p-5 border border-gray-100">
-                  <h2 className="font-extrabold mb-3">Your Details</h2>
-                  <div className="flex gap-3 flex-wrap">
-                    <div className="px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold">{activeCustomer.name}</div>
-                    <div className="px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold">{activeCustomer.phone}</div>
-                    {activeCustomer.email && <div className="px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold">{activeCustomer.email}</div>}
-                  </div>
-                  {validatePhone(activeCustomer.phone || '') && (
-                    <p className="text-xs text-red-500 font-bold mt-2">
-                      Your saved phone number may be incorrect. Orders and delivery updates are sent to this number.
-                    </p>
-                  )}
-                </div>
-
-                <div className="bg-white rounded-2xl p-5 border border-gray-100">
-                  {digitalOnly ? (
-                    <>
-                      <h2 className="font-extrabold mb-4">Digital Delivery</h2>
-                      <div className="bg-[#fcfbf7] rounded-2xl p-4 border border-[#FDC700]/30">
-                        <p className="font-bold text-sm text-black mb-1">No shipping details needed</p>
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                          This checkout contains only digital products. Your files will unlock in your secure digital library immediately after checkout confirmation.
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="font-extrabold mb-4">How do you want to receive your order?</h2>
-                      {!hasDeliveryZones && (
-                        <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-                          <p className="text-sm font-bold text-amber-800">Delivery pricing is not set for this area yet</p>
-                          <p className="mt-1 text-xs leading-relaxed text-amber-700">
-                            You can still pay for your items now, then pick up, arrange your own rider, or confirm delivery directly with us on WhatsApp.
-                          </p>
-                        </div>
-                      )}
-                      <div className={`grid gap-3 mb-5 ${
-                        FULFILLMENT_OPTIONS.length >= 4
-                          ? 'grid-cols-2 xl:grid-cols-4'
-                          : FULFILLMENT_OPTIONS.length === 3
-                            ? 'grid-cols-3'
-                            : 'grid-cols-2'
-                      }`}>
-                        {FULFILLMENT_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            onClick={() => {
-                              setFulfillment(option.value);
-                              setZone('');
-                              setAddress('');
-                            }}
-                            className={`p-3 rounded-2xl border-2 text-left transition-all ${fulfillment === option.value ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'}`}
-                          >
-                            <div className={`mb-1.5 ${fulfillment === option.value ? 'text-[#FDC700]' : 'text-gray-400'}`}>{option.icon}</div>
-                            <div className="font-extrabold text-xs mb-0.5">{option.label}</div>
-                            <div className={`text-xs ${fulfillment === option.value ? 'text-gray-300' : 'text-gray-400'}`}>{option.desc}</div>
-                            <div className={`text-xs font-bold mt-1 ${fulfillment === option.value ? 'text-[#FDC700]' : 'text-gray-500'}`}>{option.fee}</div>
-                          </button>
-                        ))}
-                      </div>
-
-                      {fulfillment === 'pickup' && (
-                        <div className="bg-green-50 rounded-xl p-4 border border-green-100">
-                          <p className="font-bold text-green-800 text-sm mb-1">Pickup Location</p>
-                          <p className="text-green-700 text-xs leading-relaxed">
-                            Osu, Accra, Ghana. After payment, contact us on WhatsApp to confirm your pickup time and exact address.
-                          </p>
-                        </div>
-                      )}
-
-                      {fulfillment === 'delivery' && (
-                        <div className="space-y-3">
-                          <select
-                            value={zone}
-                            onChange={(event) => setZone(event.target.value)}
-                            className="w-full px-3 py-3 rounded-xl border border-gray-200 text-sm outline-none focus:border-black"
-                          >
-                            <option value="">Select delivery zone *</option>
-                            {zones?.map((item) => (
-                              <option key={item._id} value={item._id}>{item.name} - {formatMoney(item.fee)}</option>
-                            ))}
-                          </select>
-                          {activeCustomer?.savedAddress && (
-                            <div className="flex gap-2 items-center p-3 bg-gray-50 rounded-xl border border-gray-200">
-                              <div className="flex-1">
-                                <p className="text-xs text-gray-400 mb-0.5">Saved address</p>
-                                <p className="text-sm font-bold">{activeCustomer.savedAddress}</p>
-                              </div>
-                              <button onClick={() => setAddress(activeCustomer.savedAddress)} className="text-xs font-bold text-[#FDC700] bg-black px-3 py-1.5 rounded-xl">Use</button>
-                            </div>
-                          )}
-                          <div className="relative">
-                            <MapPin size={15} className="absolute left-3 top-3.5 text-gray-400" />
-                            <textarea
-                              value={address}
-                              onChange={(event) => setAddress(event.target.value)}
-                              rows={2}
-                              placeholder="House number, street, area, city *"
-                              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black resize-none"
-                            />
-                          </div>
-                          <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
-                            <input type="checkbox" checked={saveAddr} onChange={(event) => setSaveAddr(event.target.checked)} className="w-4 h-4 accent-black" />
-                            Save this address for next time
-                          </label>
-                        </div>
-                      )}
-
-                      {fulfillment === 'arranged-delivery' && (
-                        <div className="space-y-3">
-                          <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                            <p className="font-bold text-amber-800 text-sm mb-1">Arrange delivery after payment</p>
-                            <p className="text-amber-700 text-xs leading-relaxed">
-                              This works well if your location is outside our current priced zones or if you want to use your own rider, bus service, courier, or pickup partner. We will prepare a WhatsApp follow-up link for you after payment too.
-                            </p>
-                          </div>
-                          <div className="relative">
-                            <MapPin size={15} className="absolute left-3 top-3.5 text-gray-400" />
-                            <textarea
-                              value={address}
-                              onChange={(event) => setAddress(event.target.value)}
-                              rows={2}
-                              placeholder="Optional city, landmark, country, rider name, or courier note"
-                              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black resize-none"
-                            />
-                          </div>
-                          <a
-                            href={arrangedDeliveryWhatsappUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-3 text-sm font-extrabold text-white hover:bg-green-600"
-                          >
-                            <MessageCircle size={16} />
-                            Message Delivery Details On WhatsApp
-                          </a>
-                        </div>
-                      )}
-
-                      {fulfillment === 'international' && (
-                        <div className="space-y-3">
-                          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                            <p className="font-bold text-blue-800 text-sm mb-1">International Shipping</p>
-                            <p className="text-blue-700 text-xs leading-relaxed">
-                              Pay for your items now. We will contact you after payment to confirm your preferred courier - DHL, FedEx or other. Shipping cost is paid directly to the courier.
-                            </p>
-                          </div>
-                          <div className="relative">
-                            <Globe size={15} className="absolute left-3 top-3.5 text-gray-400" />
-                            <textarea
-                              value={address}
-                              onChange={(event) => setAddress(event.target.value)}
-                              rows={2}
-                              placeholder="Full international address including country *"
-                              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black resize-none"
-                            />
-                          </div>
-                          <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
-                            <input type="checkbox" checked={saveAddr} onChange={(event) => setSaveAddr(event.target.checked)} className="w-4 h-4 accent-black" />
-                            Save this address for next time
-                          </label>
-                          <a
-                            href={arrangedDeliveryWhatsappUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-500 px-4 py-3 text-sm font-extrabold text-white hover:bg-green-600"
-                          >
-                            <MessageCircle size={16} />
-                            Share International Delivery Plan On WhatsApp
-                          </a>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {!digitalOnly && hasDigitalItems && (
-                    <div className="mt-4 rounded-xl border border-[#FDC700]/30 bg-[#fcfbf7] px-4 py-3">
-                      <p className="text-xs font-bold text-black">Digital products in this cart</p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Your digital items will still unlock in your secure library after payment, alongside delivery for your physical order.
-                      </p>
-                    </div>
-                  )}
-
-                  {hasTrialItems && (
-                    <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-                      <p className="text-xs font-bold text-blue-800">Free trial card setup</p>
-                      <p className="text-xs text-blue-700 mt-1 leading-relaxed">
-                        Trial digital products need a reusable card authorization now so we can bill the saved amount after the trial ends. {trialSetupCharge > 0 ? `A temporary ${formatBaseMoney(trialSetupCharge, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} card setup charge is used to securely save the card for this trial-only checkout.` : 'Because you already have a payable amount in this checkout, the same card payment can be used for the trial authorization too.'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="bg-white rounded-2xl p-5 border border-gray-100">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Customer Account Required</p>
-                <h2 className="mt-1 font-extrabold text-lg text-black">Sign in to continue checkout</h2>
-                <p className="mt-2 text-sm leading-relaxed text-gray-600">
-                  {digitalOnly
-                    ? 'Digital products unlock inside your secure library, so you need an active customer account before payment.'
-                    : 'Please sign in or create your customer account before payment so we can attach this checkout to the right order history and delivery updates.'}
-                </p>
-                {!!customer?.name && (
-                  <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                    We found saved details on this device, but your customer session is not active. Please sign in again to continue securely.
-                  </p>
-                )}
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => openCustomerAuth('login')}
-                    className="inline-flex items-center justify-center rounded-2xl bg-black px-4 py-3 text-sm font-extrabold text-white hover:bg-gray-900"
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openCustomerAuth('signup')}
-                    className="inline-flex items-center justify-center rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
-                  >
-                    Create Account
-                  </button>
-                </div>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-5">
+            <section className="rounded-[28px] border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+              <div className="mb-4 flex items-center gap-2"><User size={18} /><h2 className="font-extrabold">Contact details</h2></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input value={contact.name} onChange={(event) => setContact((current) => ({ ...current, name: event.target.value }))} disabled={signedIn} placeholder="Full name" className="rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-black disabled:bg-gray-50" />
+                <input value={contact.phone} onChange={(event) => setContact((current) => ({ ...current, phone: event.target.value }))} disabled={signedIn} placeholder="Phone / WhatsApp" className="rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-black disabled:bg-gray-50" />
+                <input value={contact.email} onChange={(event) => setContact((current) => ({ ...current, email: event.target.value }))} disabled={signedIn} placeholder="Email address" type="email" className="rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-black disabled:bg-gray-50 sm:col-span-2" />
+                <input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} placeholder="Billing address (optional, saved when signed in)" className="rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-black sm:col-span-2" />
               </div>
+              {hasDigitalItems && !signedIn && <p className="mt-3 rounded-2xl bg-[#fcf7df] px-4 py-3 text-xs leading-relaxed text-[#735d00]">After payment, we will email you a secure link to create your password and open your digital library.</p>}
+            </section>
+
+            {!digitalOnly && (
+              <section className="rounded-[28px] border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="mb-4 font-extrabold">Fulfillment</h2>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {fulfillmentOptions.map((option) => {
+                    const Icon = option.icon;
+                    return <button key={option.value} type="button" onClick={() => { setFulfillment(option.value); setZone(''); }} className={`rounded-2xl border-2 p-4 text-left ${fulfillment === option.value ? 'border-black bg-black text-white' : 'border-gray-100 hover:border-gray-300'}`}><Icon size={18} className={fulfillment === option.value ? 'text-[#FDC700]' : 'text-gray-400'} /><p className="mt-2 text-sm font-extrabold">{option.label}</p><p className={`mt-1 text-xs ${fulfillment === option.value ? 'text-gray-300' : 'text-gray-400'}`}>{option.description}</p></button>;
+                  })}
+                </div>
+                {fulfillment === 'delivery' && <select value={zone} onChange={(event) => setZone(event.target.value)} className="mt-4 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-black"><option value="">Select delivery zone</option>{zones?.map((item) => <option key={item._id} value={item._id}>{item.name} - {formatMoney(item.fee)}</option>)}</select>}
+                {fulfillment !== 'pickup' && <textarea value={address} onChange={(event) => setAddress(event.target.value)} placeholder={fulfillment === 'arranged-delivery' ? 'Optional delivery note or preferred rider' : 'Full delivery address'} rows={3} className="mt-3 w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-black" />}
+                {signedIn && address && <label className="mt-3 flex items-center gap-2 text-xs font-bold text-gray-600"><input type="checkbox" checked={saveAddr} onChange={(event) => setSaveAddr(event.target.checked)} /> Save this address to my profile</label>}
+              </section>
             )}
 
-            {error && <div className="bg-red-50 text-red-600 text-sm font-bold p-4 rounded-xl border border-red-100">{error}</div>}
+            {!freeOnlyDigital && (
+              <section className="rounded-[28px] border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="mb-4 font-extrabold">Payment method</h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {paymentOptions.map((option) => {
+                    const Icon = option.icon;
+                    return <button key={option.value} type="button" onClick={() => setPaymentMethod(option.value)} className={`rounded-2xl border-2 p-4 text-left ${paymentMethod === option.value ? 'border-[#FDC700] bg-[#fffbea]' : 'border-gray-100 hover:border-gray-300'}`}><Icon size={19} className={paymentMethod === option.value ? 'text-[#9a7a00]' : 'text-gray-400'} /><p className="mt-2 text-sm font-extrabold">{option.label}</p><p className="mt-1 text-xs text-gray-500">{option.description}</p></button>;
+                  })}
+                </div>
+                {paymentMethod === 'bank_transfer' && <p className="mt-3 rounded-2xl bg-blue-50 px-4 py-3 text-xs leading-relaxed text-blue-700">Your order will be reserved as awaiting verification. Bank details and your payment reference will appear on the next screen.</p>}
+              </section>
+            )}
           </div>
 
-          <div className="md:col-span-2">
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 sticky top-20">
-              <h2 className="font-extrabold mb-4">Order Summary</h2>
-              <div className="flex flex-col gap-2 mb-4 max-h-44 overflow-y-auto">
-                {cart.map((item) => (
-                  <div key={item.key} className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden shrink-0">
-                      {item.image && <img src={item.image} alt="" className="w-full h-full object-cover" onError={(event) => { event.target.style.display = 'none'; }} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold truncate">{item.name}</p>
-                      <p className="text-xs text-gray-400">
-                        x{item.qty}{item.isDigital ? ` - ${item.digitalAccessKind === 'free' ? 'Free digital access' : item.digitalAccessKind === 'trial' ? `${item.freeTrialDays || 7}-day trial` : 'Digital access'}` : ''}
-                      </p>
-                    </div>
-                      <p className="text-xs font-extrabold shrink-0">
-                        {item.isDigital && item.digitalAccessKind === 'free'
-                          ? 'Free'
-                          : item.isDigital && item.digitalAccessKind === 'trial'
-                            ? 'Free now'
-                            : formatMoney((item.price * item.qty))}
-                      </p>
-                    </div>
-                  ))}
+          <aside>
+            <div className="sticky top-20 rounded-[28px] border border-gray-100 bg-white p-5 shadow-sm">
+              <h2 className="font-extrabold">Order summary</h2>
+              <div className="mt-4 max-h-52 space-y-3 overflow-y-auto">
+                {cart.map((item) => <div key={item.key} className="flex items-center gap-3"><div className="h-11 w-11 overflow-hidden rounded-xl bg-gray-100">{item.image && <img src={item.image} alt="" className="h-full w-full object-cover" />}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-extrabold">{item.name}</p><p className="text-xs text-gray-400">x{item.qty}{item.variant ? ` - ${item.variant}` : ''}</p></div><p className="text-xs font-extrabold">{item.isDigital && item.digitalAccessKind !== 'paid' ? (item.digitalAccessKind === 'free' ? 'Free' : 'Trial') : formatMoney(item.price * item.qty)}</p></div>)}
               </div>
 
-              <div className="border-t border-gray-100 pt-3 space-y-1.5 mb-4 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span className="font-bold">{formatMoney(subtotal)}</span>
-                </div>
-                {trialSetupCharge > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Card setup for free trial</span>
-                    <span className="font-bold">{formatMoney(trialSetupCharge, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-500">{digitalOnly ? 'Access Delivery' : 'Delivery'}</span>
-                  <span className="font-bold">
-                    {digitalOnly
-                      ? digitalDeliveryLabel
-                      : fulfillment === 'pickup'
-                        ? 'Free'
-                        : fulfillment === 'arranged-delivery'
-                          ? 'Arrange on WhatsApp'
-                          : fulfillment === 'international'
-                            ? 'Quoted after payment'
-                            : formatMoney(deliveryFee)}
-                  </span>
-                </div>
-                <div className="flex justify-between font-extrabold text-base border-t border-gray-100 pt-2 mt-1">
-                  <span>Total</span>
-                  <span>{formatMoney(payableNow)}</span>
-                </div>
-                {isConvertedDisplay && (
-                  <div className="flex justify-between pt-1 text-xs text-gray-500">
-                    <span>Paystack charge</span>
-                    <span className="font-bold">{formatBaseMoney(payableNow, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
+              <div className="mt-5 rounded-2xl bg-[#fcfbf7] p-3">
+                <div className="flex gap-2"><div className="relative flex-1"><Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input value={couponCode} onChange={(event) => { setCouponCode(event.target.value.toUpperCase()); setAppliedCoupon(null); }} placeholder="Coupon code" className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-xs font-bold uppercase outline-none focus:border-black" /></div><button type="button" onClick={applyCoupon} disabled={couponLoading} className="rounded-xl bg-black px-4 text-xs font-extrabold text-white disabled:opacity-50">{couponLoading ? '...' : 'Apply'}</button></div>
+                {couponMessage && <p className={`mt-2 text-xs font-bold ${appliedCoupon ? 'text-green-600' : 'text-red-500'}`}>{couponMessage}</p>}
               </div>
 
-              <button
-                onClick={signedIn ? handlePayment : () => openCustomerAuth('login')}
-                disabled={loading}
-                className="w-full py-3.5 rounded-2xl bg-[#FDC700] text-black font-extrabold text-sm hover:bg-yellow-300 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? <><Loader2 size={18} className="animate-spin" /> Processing...</> : !signedIn ? 'Sign In To Continue' : freeOnlyDigital ? 'Get Free Access' : hasTrialItems && total === 0 ? `Start Trial With ${formatMoney(trialSetupCharge, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Card Setup` : `Pay ${formatMoney(payableNow)}`}
-              </button>
-
-              <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-400">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                Secured by Paystack - {hasTrialItems ? 'Card required for trial authorization' : 'Card and Mobile Money'}
+              <div className="mt-5 space-y-2 border-t border-gray-100 pt-4 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-bold">{formatMoney(displaySubtotal)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Delivery</span><span className="font-bold">{digitalOnly ? 'Digital' : formatMoney(displayDelivery)}</span></div>
+                {displayDiscount > 0 && <div className="flex justify-between text-green-600"><span>Discount {appliedCoupon?.code ? `(${appliedCoupon.code})` : ''}</span><span className="font-bold">-{formatMoney(displayDiscount)}</span></div>}
+                <div className="flex justify-between border-t border-gray-100 pt-3 text-lg font-extrabold"><span>{paymentMethod === 'bank_transfer' ? 'Amount due' : 'Pay now'}</span><span>{formatMoney(displayTotal)}</span></div>
+                {isConvertedDisplay && <div className="flex justify-between text-xs text-gray-400"><span>Base charge</span><span>{formatBaseMoney(displayTotal, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}
               </div>
-              <p className="mt-2 text-center text-xs leading-relaxed text-gray-400">{ghanaCheckoutNote}</p>
+
+              {error && <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-600">{error}</div>}
+              <button type="button" onClick={handlePayment} disabled={loading} className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#FDC700] py-3.5 text-sm font-extrabold text-black hover:bg-yellow-300 disabled:opacity-50">{loading && <Loader2 size={17} className="animate-spin" />}{loading ? 'Preparing checkout...' : freeOnlyDigital ? 'Get Free Access' : paymentMethod === 'bank_transfer' ? 'Create Bank Transfer Order' : `Pay ${formatMoney(displayTotal)}`}</button>
+              <p className="mt-3 text-center text-xs leading-relaxed text-gray-400">{ghanaCheckoutNote}</p>
             </div>
-          </div>
+          </aside>
         </div>
       </div>
-      {showCustomerModal && (
-        <CustomerModal
-          initialMode={customerModalMode}
-          onClose={() => setShowCustomerModal(false)}
-        />
-      )}
+      {showCustomerModal && <CustomerModal initialMode={customerModalMode} onClose={() => setShowCustomerModal(false)} />}
     </div>
   );
 }

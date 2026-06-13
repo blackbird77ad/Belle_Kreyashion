@@ -129,6 +129,7 @@ export default function Product() {
         name: product.name,
         category: product.category,
         brand: 'Belle Kreyashon',
+        isDigital,
       },
       price: isDigital && digitalAccessKind !== 'paid' ? 0 : Number(finalPrice || 0),
     });

@@ -1,3 +1,5 @@
+import { getAttributionSnapshot } from './attribution';
+
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8002').trim();
 const SITE_URL = 'https://bellekreyashon.com';
 const CONSENT_STORAGE_KEY = 'bk_marketing_consent_v1';
@@ -7,6 +9,7 @@ const TRACKED_BOOKING_PREFIX = 'bk_marketing_booking_';
 const DEFAULT_CURRENCY = 'GHS';
 
 const config = {
+  firstPartyAnalytics: true,
   gtmId: String(import.meta.env.VITE_GTM_ID || '').trim(),
   ga4Id: String(import.meta.env.VITE_GA4_ID || '').trim(),
   googleAdsId: String(import.meta.env.VITE_GOOGLE_ADS_ID || '').trim(),
@@ -14,7 +17,9 @@ const config = {
   googleAdsBeginCheckoutLabel: String(import.meta.env.VITE_GOOGLE_ADS_BEGIN_CHECKOUT_LABEL || '').trim(),
   googleAdsWhatsAppLabel: String(import.meta.env.VITE_GOOGLE_ADS_WHATSAPP_LABEL || '').trim(),
   googleAdsPhoneLabel: String(import.meta.env.VITE_GOOGLE_ADS_PHONE_LABEL || '').trim(),
+  googleAdsFormLabel: String(import.meta.env.VITE_GOOGLE_ADS_FORM_LABEL || '').trim(),
   metaPixelId: String(import.meta.env.VITE_META_PIXEL_ID || '').trim(),
+  tiktokPixelId: String(import.meta.env.VITE_TIKTOK_PIXEL_ID || '').trim(),
   clarityProjectId: String(import.meta.env.VITE_CLARITY_PROJECT_ID || '').trim(),
 };
 
@@ -26,6 +31,8 @@ const state = {
   googleTagConfigured: false,
   metaLoaded: false,
   metaConfigured: false,
+  tiktokLoaded: false,
+  tiktokConfigured: false,
   clarityLoaded: false,
 };
 
@@ -228,6 +235,56 @@ const loadMetaPixel = () => {
   state.metaLoaded = true;
 };
 
+const ensureTikTokQueue = () => {
+  if (!canUseDOM()) return null;
+  if (window.ttq) return window.ttq;
+
+  window.TiktokAnalyticsObject = 'ttq';
+  const ttq = [];
+  ttq.methods = ['page', 'track', 'identify', 'instances', 'debug', 'on', 'off', 'once', 'ready', 'alias', 'group', 'enableCookie', 'disableCookie', 'holdConsent', 'revokeConsent', 'grantConsent'];
+  ttq.setAndDefer = (target, method) => {
+    target[method] = (...args) => target.push([method, ...args]);
+  };
+  ttq.methods.forEach((method) => ttq.setAndDefer(ttq, method));
+  ttq.instance = (pixelId) => {
+    const instance = ttq._i?.[pixelId] || [];
+    ttq.methods.forEach((method) => ttq.setAndDefer(instance, method));
+    return instance;
+  };
+  ttq.load = (pixelId, options = {}) => {
+    const source = 'https://analytics.tiktok.com/i18n/pixel/events.js';
+    ttq._i = ttq._i || {};
+    ttq._i[pixelId] = ttq._i[pixelId] || [];
+    ttq._i[pixelId]._u = source;
+    ttq._t = ttq._t || {};
+    ttq._t[pixelId] = Date.now();
+    ttq._o = ttq._o || {};
+    ttq._o[pixelId] = options;
+
+    if (document.getElementById('bk-tiktok-pixel')) return;
+    const script = document.createElement('script');
+    script.id = 'bk-tiktok-pixel';
+    script.async = true;
+    script.src = `${source}?sdkid=${encodeURIComponent(pixelId)}&lib=ttq`;
+    document.head.appendChild(script);
+  };
+  window.ttq = ttq;
+  return ttq;
+};
+
+const loadTikTokPixel = () => {
+  if (!config.tiktokPixelId || state.tiktokLoaded || !hasMarketingConsent()) return;
+  const ttq = ensureTikTokQueue();
+  if (!ttq) return;
+
+  if (!state.tiktokConfigured) {
+    ttq.load(config.tiktokPixelId);
+    state.tiktokConfigured = true;
+  }
+
+  state.tiktokLoaded = true;
+};
+
 const loadClarity = () => {
   if (!config.clarityProjectId || state.clarityLoaded || !hasMarketingConsent()) return;
 
@@ -242,6 +299,7 @@ const loadClarity = () => {
 const syncOptionalScriptsWithConsent = () => {
   if (!hasMarketingConsent()) return;
   loadMetaPixel();
+  loadTikTokPixel();
   loadClarity();
 };
 
@@ -311,6 +369,32 @@ const cleanObject = (value = {}) => Object.fromEntries(
 
 const generateEventId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+const postFirstPartyActivity = ({ eventType, eventId = '', sourceAttribution = null, ...details }) => {
+  if (!hasMarketingConsent() || !canUseDOM() || !eventType) return;
+
+  const attribution = sourceAttribution || getAttributionSnapshot();
+  const resolvedEventId = eventId || generateEventId(eventType);
+
+  try {
+    fetch(`${API_BASE}/api/marketing/activity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
+      body: JSON.stringify(cleanObject({
+        eventId: resolvedEventId,
+        eventType,
+        sessionId: attribution.sessionId,
+        pagePath: getPagePath(),
+        pageTitle: document.title || 'Belle Kreyashon',
+        sourceAttribution: attribution,
+        ...details,
+      })),
+    }).catch(() => {});
+  } catch {
+    return;
+  }
+};
+
 const rememberFacebookClickId = (locationLike = {}) => {
   if (!canUseDOM()) return;
   const search = locationLike.search || window.location.search || '';
@@ -363,6 +447,12 @@ const sendMetaPixelEvent = ({ eventName, customData = {}, eventId = '' }) => {
   window.fbq('track', eventName, cleanObject(customData), eventId ? { eventID: eventId } : undefined);
 };
 
+const sendTikTokEvent = ({ eventName, payload = {} }) => {
+  if (!canUseDOM() || !hasMarketingConsent() || !config.tiktokPixelId) return;
+  loadTikTokPixel();
+  if (window.ttq?.track) window.ttq.track(eventName, cleanObject(payload));
+};
+
 const postMetaEvent = async ({ eventName, eventId = '', customer = {}, customData = {}, eventSourceUrl = '', actionSource = 'website' }) => {
   if (!hasMarketingConsent()) return;
 
@@ -410,6 +500,14 @@ const buildMetaContents = (items = []) => items.map((item) => cleanObject({
   item_price: Number(item.price ?? 0) || 0,
 })).filter((item) => item.id);
 
+const buildTikTokContents = (items = []) => items.map((item) => cleanObject({
+  content_id: buildItemId(item),
+  content_name: item.name || 'Product',
+  content_category: item.category || '',
+  price: Number(item.price ?? item.retailPrice ?? 0) || 0,
+  quantity: Math.max(Number(item.qty ?? item.quantity ?? 1) || 1, 1),
+})).filter((item) => item.content_id);
+
 const markOrderTracked = (orderId) => {
   if (!orderId) return;
   safeWriteStorage(`${TRACKED_ORDER_PREFIX}${orderId}`, '1');
@@ -434,6 +532,8 @@ export const onMarketingConsentChange = (listener) => {
 };
 
 export const getMarketingConfig = () => ({ ...config });
+
+export const createMarketingEventId = (prefix = 'event') => generateEventId(prefix);
 
 export const bootstrapMarketing = () => {
   if (!canUseDOM() || state.bootstrapped) return;
@@ -463,6 +563,7 @@ export const setMarketingConsent = (value) => {
   if (normalized === 'granted' && canUseDOM() && window.fbq) {
     window.fbq('track', 'PageView');
   }
+  if (normalized === 'granted' && canUseDOM() && window.ttq?.page) window.ttq.page();
 };
 
 export const trackPageView = (locationLike = {}) => {
@@ -480,10 +581,18 @@ export const trackPageView = (locationLike = {}) => {
 
   pushDataLayerEvent('page_view', payload);
   sendGa4Event('page_view', payload);
+  postFirstPartyActivity({
+    eventType: 'page_view',
+    pagePath,
+    pageTitle,
+    sourceAttribution: getAttributionSnapshot(locationLike),
+  });
 
   if (hasMarketingConsent()) {
     loadMetaPixel();
     if (canUseDOM() && window.fbq) window.fbq('track', 'PageView');
+    loadTikTokPixel();
+    if (canUseDOM() && window.ttq?.page) window.ttq.page();
   }
 };
 
@@ -500,6 +609,20 @@ export const trackProductView = ({ product = {}, price = 0 } = {}) => {
 
   pushDataLayerEvent('view_item', payload);
   sendGa4Event('view_item', payload);
+  postFirstPartyActivity({
+    eventType: 'view_item',
+    product: {
+      id: item.item_id,
+      name: item.item_name,
+      category: item.item_category,
+      isDigital: Boolean(product.isDigital),
+      price: payload.value,
+      quantity: 1,
+    },
+    quantity: 1,
+    value: payload.value,
+    currency: DEFAULT_CURRENCY,
+  });
 
   if (hasMarketingConsent()) {
     sendMetaPixelEvent({
@@ -512,6 +635,16 @@ export const trackProductView = ({ product = {}, price = 0 } = {}) => {
         currency: DEFAULT_CURRENCY,
       },
       eventId: generateEventId('view-item'),
+    });
+    sendTikTokEvent({
+      eventName: 'ViewContent',
+      payload: {
+        content_type: 'product',
+        content_ids: [item.item_id],
+        contents: buildTikTokContents([{ ...product, price: payload.value, qty: 1 }]),
+        currency: DEFAULT_CURRENCY,
+        value: payload.value,
+      },
     });
   }
 };
@@ -530,6 +663,20 @@ export const trackAddToCart = ({ product = {}, quantity = 1, price = 0, variant 
 
   pushDataLayerEvent('add_to_cart', payload);
   sendGa4Event('add_to_cart', payload);
+  postFirstPartyActivity({
+    eventType: 'add_to_cart',
+    product: {
+      id: item.item_id,
+      name: item.item_name,
+      category: item.item_category,
+      isDigital: Boolean(product.isDigital),
+      price: Number(price || item.price || 0) || 0,
+      quantity: Number(quantity) || 1,
+    },
+    quantity: Number(quantity) || 1,
+    value,
+    currency: DEFAULT_CURRENCY,
+  });
 
   if (hasMarketingConsent()) {
     sendMetaPixelEvent({
@@ -542,6 +689,16 @@ export const trackAddToCart = ({ product = {}, quantity = 1, price = 0, variant 
         currency: DEFAULT_CURRENCY,
       },
       eventId: generateEventId('add-to-cart'),
+    });
+    sendTikTokEvent({
+      eventName: 'AddToCart',
+      payload: {
+        content_type: 'product',
+        content_ids: [item.item_id],
+        contents: buildTikTokContents([{ ...product, price: Number(price || item.price || 0), qty: quantity }]),
+        currency: DEFAULT_CURRENCY,
+        value,
+      },
     });
   }
 
@@ -562,6 +719,15 @@ export const trackBeginCheckout = ({ items = [], value = 0, customer = {}, sourc
 
   pushDataLayerEvent('begin_checkout', payload);
   sendGa4Event('begin_checkout', payload);
+  postFirstPartyActivity({
+    eventType: 'begin_checkout',
+    eventId,
+    itemCount: analyticsItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+    value: Number(value) || 0,
+    currency: DEFAULT_CURRENCY,
+    channel: source,
+    items: analyticsItems,
+  });
   sendGoogleAdsConversion({
     label: config.googleAdsBeginCheckoutLabel,
     value: Number(value) || 0,
@@ -590,6 +756,16 @@ export const trackBeginCheckout = ({ items = [], value = 0, customer = {}, sourc
       customer,
       customData,
     });
+    sendTikTokEvent({
+      eventName: 'InitiateCheckout',
+      payload: {
+        content_type: contentType,
+        content_ids: analyticsItems.map((item) => item.item_id).filter(Boolean),
+        contents: buildTikTokContents(items),
+        currency: DEFAULT_CURRENCY,
+        value: Number(value) || 0,
+      },
+    });
   }
 
   return eventId;
@@ -607,6 +783,11 @@ export const trackContactClick = ({ channel = '', label = '', url = '', customer
   };
 
   pushDataLayerEvent('contact_click', payload);
+  postFirstPartyActivity({
+    eventType: 'contact_click',
+    eventId,
+    channel,
+  });
   sendGa4Event('generate_lead', {
     method: channel,
     contact_label: label || channel,
@@ -614,7 +795,11 @@ export const trackContactClick = ({ channel = '', label = '', url = '', customer
   });
 
   sendGoogleAdsConversion({
-    label: channel === 'whatsapp' ? config.googleAdsWhatsAppLabel : config.googleAdsPhoneLabel,
+    label: channel === 'whatsapp'
+      ? config.googleAdsWhatsAppLabel
+      : channel === 'phone'
+        ? config.googleAdsPhoneLabel
+        : '',
     customer,
   });
 
@@ -636,7 +821,50 @@ export const trackContactClick = ({ channel = '', label = '', url = '', customer
       customData,
       eventSourceUrl: url || getPageUrl(),
     });
+    sendTikTokEvent({
+      eventName: 'Contact',
+      payload: { content_name: label || channel, content_type: 'contact' },
+    });
   }
+};
+
+export const trackFormSubmission = ({
+  formName = 'form',
+  formType = 'lead',
+  customer = {},
+  eventId = '',
+} = {}) => {
+  bootstrapMarketing();
+  const resolvedEventId = eventId || generateEventId('form-submit');
+  const payload = {
+    form_name: formName,
+    form_type: formType,
+  };
+
+  pushDataLayerEvent('form_submit', payload);
+  sendGa4Event('generate_lead', payload);
+  sendGoogleAdsConversion({
+    label: config.googleAdsFormLabel,
+    customer,
+  });
+  postFirstPartyActivity({
+    eventType: 'form_submission',
+    eventId: resolvedEventId,
+    channel: formName,
+  });
+
+  if (hasMarketingConsent()) {
+    const customData = {
+      content_name: formName,
+      content_category: formType,
+      content_type: 'lead',
+    };
+    sendMetaPixelEvent({ eventName: 'Lead', customData, eventId: resolvedEventId });
+    sendTikTokEvent({ eventName: 'SubmitForm', payload: customData });
+    syncGoogleUserData(customer);
+  }
+
+  return resolvedEventId;
 };
 
 export const trackOrderCompletion = ({ order = {} } = {}) => {
@@ -687,6 +915,16 @@ export const trackOrderCompletion = ({ order = {} } = {}) => {
         customData: metaCustomData,
         eventId: metaEventId,
       });
+      sendTikTokEvent({
+        eventName: 'Purchase',
+        payload: {
+          content_type: 'product',
+          content_ids: analyticsItems.map((item) => item.item_id).filter(Boolean),
+          contents: buildTikTokContents(items),
+          currency: DEFAULT_CURRENCY,
+          value: orderValue,
+        },
+      });
     }
   } else if (purpose === 'trial_setup') {
     const payload = {
@@ -703,6 +941,14 @@ export const trackOrderCompletion = ({ order = {} } = {}) => {
         eventName: 'StartTrial',
         customData: metaCustomData,
         eventId: metaEventId,
+      });
+      sendTikTokEvent({
+        eventName: 'StartTrial',
+        payload: {
+          content_ids: analyticsItems.map((item) => item.item_id).filter(Boolean),
+          currency: DEFAULT_CURRENCY,
+          value: orderValue,
+        },
       });
     }
   } else {
@@ -721,6 +967,7 @@ export const trackOrderCompletion = ({ order = {} } = {}) => {
         customData: metaCustomData,
         eventId: metaEventId,
       });
+      sendTikTokEvent({ eventName: 'SubmitForm', payload: metaCustomData });
     }
   }
 
@@ -775,6 +1022,16 @@ export const trackServicePurchase = ({ booking = {} } = {}) => {
         booking_id: transactionId,
       },
       eventId: `booking-${transactionId}`,
+    });
+    sendTikTokEvent({
+      eventName: 'Purchase',
+      payload: {
+        content_type: 'service',
+        content_ids: entityId ? [String(entityId)] : [],
+        contents: buildTikTokContents([{ productId: entityId, name: title, category: item.item_category, price: amount, qty: 1 }]),
+        currency: DEFAULT_CURRENCY,
+        value: amount,
+      },
     });
   }
 
