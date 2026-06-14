@@ -1764,14 +1764,41 @@ const formatBytes = (bytes = 0) => {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 };
 
+const configuredDigitalUploadMaxMb = Number.parseInt(import.meta.env.VITE_DIGITAL_UPLOAD_MAX_MB, 10);
+const DIGITAL_UPLOAD_MAX_MB = Number.isFinite(configuredDigitalUploadMaxMb) && configuredDigitalUploadMaxMb > 0
+  ? configuredDigitalUploadMaxMb
+  : 1024;
+const DIGITAL_UPLOAD_MAX_BYTES = DIGITAL_UPLOAD_MAX_MB * 1024 * 1024;
+
+const getOversizedDigitalFileError = (files = []) => {
+  const oversized = Array.from(files).find((file) => file.size > DIGITAL_UPLOAD_MAX_BYTES);
+  if (!oversized) return '';
+  return `${oversized.name} is ${formatBytes(oversized.size)}. The maximum is ${DIGITAL_UPLOAD_MAX_MB} MB per file.`;
+};
+
+const trackUploadProgress = (setProgress) => (event) => {
+  const ratio = Number.isFinite(event.progress)
+    ? event.progress
+    : event.total > 0
+      ? event.loaded / event.total
+      : 0;
+  setProgress(Math.min(100, Math.max(0, Math.round(ratio * 100))));
+};
+
+const uploadProgressLabel = (progress, label) => progress >= 100
+  ? `Finishing ${label} in Cloudinary...`
+  : `Uploading ${label}${progress > 0 ? ` ${progress}%` : '...'}`;
+
 const isPreviewableDigitalFile = (fileKind = 'other') => ['document', 'video', 'audio', 'image'].includes(fileKind);
 
 function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxFiles = 8 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
   const fileRef = useRef();
 
   const handleFiles = async (selectedFiles) => {
+    if (uploading) return;
     setError('');
     const remaining = maxFiles - files.length;
     if (remaining <= 0) {
@@ -1781,19 +1808,29 @@ function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxF
 
     const nextFiles = Array.from(selectedFiles || []).slice(0, remaining);
     if (!nextFiles.length) return;
+    const sizeError = getOversizedDigitalFileError(nextFiles);
+    if (sizeError) {
+      setError(sizeError);
+      return;
+    }
 
     setUploading(true);
+    setUploadProgress(0);
     try {
       const formData = new FormData();
       nextFiles.forEach(file => formData.append('files', file));
       const { data } = await api.post(uploadEndpoint, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: trackUploadProgress(setUploadProgress),
       });
       onChange([...(files || []), ...(data.files || [])]);
+      if (fileRef.current) fileRef.current.value = '';
     } catch (e) {
       setError(e.response?.data?.message || 'Upload failed. Try again.');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
     }
-    setUploading(false);
   };
 
   const remove = (idx) => onChange(files.filter((_, index) => index !== idx));
@@ -1870,18 +1907,18 @@ function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxF
         <div
           onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
           onDragOver={e => e.preventDefault()}
-          onClick={() => fileRef.current?.click()}
-          className="border-2 border-dashed border-gray-200 rounded-xl p-4 cursor-pointer hover:border-black transition-all"
+          onClick={() => !uploading && fileRef.current?.click()}
+          className={`border-2 border-dashed border-gray-200 rounded-xl p-4 transition-all ${uploading ? 'cursor-wait' : 'cursor-pointer hover:border-black'}`}
         >
           {uploading ? (
             <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-              <Loader2 size={16} className="animate-spin" /> Uploading secure files...
+              <Loader2 size={16} className="animate-spin" /> {uploadProgressLabel(uploadProgress, 'secure files')}
             </div>
           ) : (
             <div className="flex items-center justify-between gap-4">
               <div className="text-gray-400">
                 <p className="text-xs font-bold">Upload digital files securely</p>
-                <p className="text-xs text-gray-300 mt-0.5">PDF, DOC, ZIP, MP4, MP3 and more. Upload one file per module, lesson, day or bundle part.</p>
+                <p className="text-xs text-gray-300 mt-0.5">PDF, DOC, ZIP, MP4, MP3 and more. Up to {DIGITAL_UPLOAD_MAX_MB} MB per file, with large videos uploaded in chunks.</p>
               </div>
               <Upload size={18} className="text-gray-400 shrink-0" />
             </div>
@@ -1900,6 +1937,7 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
   const [recordMode, setRecordMode] = useState('audio');
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -2021,8 +2059,13 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
       setError(`Max ${maxFiles} files allowed`);
       return;
     }
+    if (recordedBlob.size > DIGITAL_UPLOAD_MAX_BYTES) {
+      setError(`This recording is ${formatBytes(recordedBlob.size)}. The maximum is ${DIGITAL_UPLOAD_MAX_MB} MB per file.`);
+      return;
+    }
 
     setUploading(true);
+    setUploadProgress(0);
     setError('');
     try {
       const extension = getRecordingExtension(recordedBlob.type, recordMode);
@@ -2036,6 +2079,7 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
       formData.append('files', file);
       const { data } = await api.post(uploadEndpoint, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: trackUploadProgress(setUploadProgress),
       });
       onChange([...(files || []), ...(data.files || [])]);
       clearPreview();
@@ -2043,6 +2087,7 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
       setError(uploadError.response?.data?.message || 'Could not upload the recorded media right now.');
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -2122,7 +2167,7 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#FDC700] px-4 py-2.5 text-xs font-bold text-black hover:bg-yellow-300 disabled:opacity-50"
             >
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              Upload Recording
+              {uploading ? uploadProgressLabel(uploadProgress, 'recording') : 'Upload Recording'}
             </button>
             <button
               type="button"
@@ -2145,17 +2190,26 @@ function DigitalMediaRecorder({ files = [], onChange, uploadEndpoint, token, max
 function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUploaded, variant = 'card', buttonLabel = 'Add upload attachment' }) {
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState('');
 
   const handleFiles = async (fileList) => {
-    if (!fileList?.length || disabled) return;
+    if (!fileList?.length || disabled || uploading) return;
+    const nextFiles = Array.from(fileList);
+    const sizeError = getOversizedDigitalFileError(nextFiles);
+    if (sizeError) {
+      setError(sizeError);
+      return;
+    }
     setUploading(true);
+    setUploadProgress(0);
     setError('');
     try {
       const formData = new FormData();
-      Array.from(fileList).forEach((file) => formData.append('files', file));
+      nextFiles.forEach((file) => formData.append('files', file));
       const { data } = await api.post(uploadEndpoint, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: trackUploadProgress(setUploadProgress),
       });
       onUploaded?.(data.files || []);
       if (fileRef.current) fileRef.current.value = '';
@@ -2163,6 +2217,7 @@ function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUpload
       setError(uploadError.response?.data?.message || 'Could not upload module files right now.');
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -2176,7 +2231,7 @@ function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUpload
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black disabled:opacity-50"
         >
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          {uploading ? 'Uploading...' : buttonLabel}
+          {uploading ? uploadProgressLabel(uploadProgress, 'files') : buttonLabel}
         </button>
       ) : (
         <div
@@ -2193,7 +2248,7 @@ function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUpload
           {uploading ? (
             <div className="flex items-center justify-center gap-2 text-xs font-bold text-gray-500">
               <Loader2 size={14} className="animate-spin" />
-              Uploading lesson files...
+              {uploadProgressLabel(uploadProgress, 'lesson files')}
             </div>
           ) : (
             <div className="flex items-center justify-between gap-4">
@@ -2205,7 +2260,7 @@ function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUpload
                     className="sm:hidden"
                   />
                 </div>
-                <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Secure lesson files.</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Secure lesson files up to {DIGITAL_UPLOAD_MAX_MB} MB each.</p>
               </div>
               <div className="flex items-center gap-2">
                 <AdminHoverHint

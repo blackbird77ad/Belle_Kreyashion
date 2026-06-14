@@ -71,4 +71,5 @@ app.use('/api/coupons',      couponRoutes);
 const PORT = process.env.PORT || 8002;
 startDigitalTrialBillingWorker();
 startAbandonedCartRecoveryWorker();
-app.listen(PORT, () => console.log(`Belle Kreyashon API running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Belle Kreyashon API running on port ${PORT}`));
+server.requestTimeout = Number(process.env.SERVER_REQUEST_TIMEOUT_MS) || 30 * 60 * 1000;

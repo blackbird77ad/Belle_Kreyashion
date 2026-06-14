@@ -22,6 +22,7 @@ import {
 } from '../Controllers/digitalAccessController.mjs';
 import { protect, protectCustomer } from '../Middlewares/auth.mjs';
 import {
+  DIGITAL_UPLOAD_MAX_MB,
   uploadDigitalFiles,
   uploadDigitalFilesToCloudinary,
   uploadImages,
@@ -40,14 +41,26 @@ router.post('/upload', protect, (req, res) => {
 
 router.post('/upload-digital', protect, (req, res) => {
   uploadDigitalFiles(req, res, async (err) => {
-    if (err) return res.status(400).json({ message: err.message });
+    if (err) {
+      const fileTooLarge = err.code === 'LIMIT_FILE_SIZE';
+      return res.status(fileTooLarge ? 413 : 400).json({
+        message: fileTooLarge
+          ? `File too large. Lesson and digital media can be up to ${DIGITAL_UPLOAD_MAX_MB} MB per file.`
+          : err.message,
+      });
+    }
     if (!req.files?.length) return res.status(400).json({ message: 'No digital files uploaded' });
 
     try {
       const files = await uploadDigitalFilesToCloudinary(req.files);
       res.json({ files });
     } catch (uploadErr) {
-      res.status(500).json({ message: uploadErr.message });
+      const cloudinaryLimitReached = Number(uploadErr.http_code) === 413;
+      res.status(cloudinaryLimitReached ? 413 : 502).json({
+        message: cloudinaryLimitReached
+          ? 'Cloudinary rejected this file because it exceeds the upload limit on the current Cloudinary account. Check Settings > Product environment > Upload in Cloudinary.'
+          : uploadErr.message || 'Could not store the lesson media in Cloudinary.',
+      });
     }
   });
 });
