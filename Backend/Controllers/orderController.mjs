@@ -52,6 +52,27 @@ const isFreeOnlyDigitalOrder = (orderData) => {
 };
 
 const sumAmount = (items = []) => items.reduce((total, item) => total + (Number(item) || 0), 0);
+const getOrderRevenueDate = (order = {}) => order.paidAt || order.createdAt;
+const getOrderRecognizedRevenue = (order = {}) => {
+  if (order.paymentPurpose === 'free_claim') return 0;
+  if (order.paymentPurpose === 'trial_setup') return Number(order.paystackChargedAmount) || 0;
+  return Number(order.total) || Number(order.paystackChargedAmount) || 0;
+};
+const getOrderNetRevenueParts = (order = {}) => {
+  const recognizedRevenue = getOrderRecognizedRevenue(order);
+  if (recognizedRevenue <= 0) return { recognizedRevenue: 0, deliveryRevenue: 0, merchandiseFactor: 0 };
+  const grossMerchandise = sumAmount((order.items || []).map((item) => (Number(item.price) || 0) * (Number(item.qty) || 0)));
+  const grossDelivery = Math.max(0, Number(order.deliveryFee) || 0);
+  const discountTotal = Math.max(0, Number(order.discountTotal) || 0);
+  const deliveryDiscount = order.coupon?.type === 'free_shipping' ? Math.min(grossDelivery, discountTotal) : 0;
+  const deliveryRevenue = Math.min(recognizedRevenue, Math.max(0, grossDelivery - deliveryDiscount));
+  const merchandiseRevenue = Math.max(0, recognizedRevenue - deliveryRevenue);
+  return {
+    recognizedRevenue,
+    deliveryRevenue,
+    merchandiseFactor: grossMerchandise > 0 ? merchandiseRevenue / grossMerchandise : 0,
+  };
+};
 
 const buildMonthBuckets = (months = 6) => {
   const formatter = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' });
@@ -244,9 +265,10 @@ const buildBestSellerWindow = (orders, bookings, windowMeta) => {
   const groupsMap = createBestSellerGroups();
 
   orders
-    .filter((order) => isWithinDateRange(order.createdAt, windowMeta.startDate, windowMeta.endDate))
+    .filter((order) => isWithinDateRange(getOrderRevenueDate(order), windowMeta.startDate, windowMeta.endDate))
     .forEach((order) => {
-      if (Number(order.deliveryFee) > 0) {
+      const revenueParts = getOrderNetRevenueParts(order);
+      if (revenueParts.deliveryRevenue > 0) {
         const deliveryLabel = order.deliveryZone || (order.fulfillment === 'international' ? 'International Delivery' : 'Delivery Fee');
         pushBestSellerEntry(
           groupsMap,
@@ -255,14 +277,14 @@ const buildBestSellerWindow = (orders, bookings, windowMeta) => {
             key: `delivery:${String(deliveryLabel).toLowerCase()}`,
             label: deliveryLabel,
           },
-          order.deliveryFee,
+          revenueParts.deliveryRevenue,
           1
         );
       }
 
       (order.items || []).forEach((item) => {
         const qty = Math.max(Number(item.qty) || 0, 1);
-        const lineAmount = (Number(item.price) || 0) * qty;
+        const lineAmount = (Number(item.price) || 0) * qty * revenueParts.merchandiseFactor;
         const groupKey = item.isDigital ? 'digital-products' : 'products';
         const productLabel = [item.name, item.variant].filter(Boolean).join(' - ') || (item.isDigital ? 'Digital product' : 'Product');
         const productKey = item.productId
@@ -584,7 +606,7 @@ const buildMarketingFunnel = (activities = [], orders = [], days = 30) => {
       formSubmissions: eventSessions.form_submission.size,
       purchases,
       trackedPurchases: convertedSessions.size,
-      revenue: sumAmount(orders.map((order) => order.total)),
+      revenue: sumAmount(orders.map(getOrderRecognizedRevenue)),
       visitToPurchaseRate: visits ? Number(((convertedSessions.size / visits) * 100).toFixed(1)) : 0,
       cartToPurchaseRate: eventSessions.add_to_cart.size
         ? Number(((convertedCartSessions.size / eventSessions.add_to_cart.size) * 100).toFixed(1))
@@ -610,7 +632,7 @@ const buildMarketingFunnel = (activities = [], orders = [], days = 30) => {
         products: (order.items || []).map((item) => item.name).filter(Boolean),
         source: campaign.label,
         campaign: order.sourceAttribution?.utmCampaign || campaign.label,
-        value: Number(order.total) || 0,
+        value: getOrderRecognizedRevenue(order),
         createdAt: order.createdAt,
       };
     }),
@@ -855,13 +877,23 @@ export const getSalesAnalytics = async (req, res) => {
   try {
     const marketingPeriodDays = 30;
     const marketingPeriodStart = new Date(Date.now() - marketingPeriodDays * 24 * 60 * 60 * 1000);
-    const [orders, bookings, marketingActivities] = await Promise.all([
-      Order.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }),
-      Booking.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }),
+    const [allOrders, allBookings, marketingActivities, abandonedCartCount] = await Promise.all([
+      Order.find().sort({ createdAt: -1 }),
+      Booking.find().sort({ createdAt: -1 }),
       MarketingActivity.find({ createdAt: { $gte: marketingPeriodStart } })
         .sort({ createdAt: -1 })
         .lean(),
+      AbandonedCart.countDocuments({
+        $or: [
+          { status: { $in: ['active', 'recovered'] } },
+          { status: { $exists: false } },
+          { status: '' },
+        ],
+      }),
     ]);
+
+    const orders = allOrders.filter((order) => order.paymentStatus === 'paid');
+    const bookings = allBookings.filter((booking) => booking.paymentStatus === 'paid');
 
     const activeOrders = orders.filter((order) => order.status !== 'cancelled');
     const cancelledOrderCount = orders.length - activeOrders.length;
@@ -879,7 +911,8 @@ export const getSalesAnalytics = async (req, res) => {
     const campaignBreakdownMap = new Map();
 
     activeOrders.forEach((order) => {
-      deliveryRevenue += Number(order.deliveryFee) || 0;
+      const revenueParts = getOrderNetRevenueParts(order);
+      deliveryRevenue += revenueParts.deliveryRevenue;
       if ((order.items || []).some((item) => item.isDigital && item.digitalAccessKind === 'trial')) {
         trialOrderCount += 1;
       }
@@ -887,17 +920,17 @@ export const getSalesAnalytics = async (req, res) => {
        pushBreakdownAmount(
         pageBreakdownMap,
         classifySourcePath(getOrderPrimarySourcePath(order)),
-        order.total
+        revenueParts.recognizedRevenue
       );
       pushBreakdownAmount(
         campaignBreakdownMap,
         buildCampaignInfo(getEntryAttribution(order)),
-        order.total
+        revenueParts.recognizedRevenue
       );
 
       (order.items || []).forEach((item) => {
         const qty = Number(item.qty) || 0;
-        const lineAmount = (Number(item.price) || 0) * qty;
+        const lineAmount = (Number(item.price) || 0) * qty * revenueParts.merchandiseFactor;
         if (item.isDigital) {
           digitalProductRevenue += lineAmount;
           digitalUnits += qty;
@@ -913,7 +946,7 @@ export const getSalesAnalytics = async (req, res) => {
     const consultationBookings = bookings.filter((booking) => booking.type === 'consultation');
     const trainingRevenue = sumAmount(trainingBookings.map((booking) => booking.amount));
     const consultationRevenue = sumAmount(consultationBookings.map((booking) => booking.amount));
-    const orderRevenue = sumAmount(activeOrders.map((order) => order.total));
+    const orderRevenue = sumAmount(activeOrders.map(getOrderRecognizedRevenue));
     const bookingRevenue = trainingRevenue + consultationRevenue;
     const totalRevenue = orderRevenue + bookingRevenue;
 
@@ -942,7 +975,7 @@ export const getSalesAnalytics = async (req, res) => {
       bucket[key] += 1;
     };
 
-    activeOrders.forEach((order) => addToMonthlyBucket(order.createdAt, order.total, 'orders'));
+    activeOrders.forEach((order) => addToMonthlyBucket(getOrderRevenueDate(order), getOrderRecognizedRevenue(order), 'orders'));
     bookings.forEach((booking) => addToMonthlyBucket(booking.createdAt, booking.amount, 'bookings'));
 
     const now = Date.now();
@@ -950,8 +983,8 @@ export const getSalesAnalytics = async (req, res) => {
       ? 0
       : sumAmount([
           ...activeOrders
-            .filter((order) => now - new Date(order.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000)
-            .map((order) => order.total),
+            .filter((order) => now - new Date(getOrderRevenueDate(order)).getTime() <= 7 * 24 * 60 * 60 * 1000)
+            .map(getOrderRecognizedRevenue),
           ...bookings
             .filter((booking) => now - new Date(booking.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000)
             .map((booking) => booking.amount),
@@ -960,8 +993,8 @@ export const getSalesAnalytics = async (req, res) => {
       ? 0
       : sumAmount([
           ...activeOrders
-            .filter((order) => now - new Date(order.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000)
-            .map((order) => order.total),
+            .filter((order) => now - new Date(getOrderRevenueDate(order)).getTime() <= 30 * 24 * 60 * 60 * 1000)
+            .map(getOrderRecognizedRevenue),
           ...bookings
             .filter((booking) => now - new Date(booking.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000)
             .map((booking) => booking.amount),
@@ -1047,8 +1080,8 @@ export const getSalesAnalytics = async (req, res) => {
           ? order.items[0]?.name || order.orderId
           : `${order.items?.length || 0} item order`,
         customerName: order.customer?.name || 'Customer',
-        amount: Number(order.total) || 0,
-        createdAt: order.createdAt,
+        amount: getOrderRecognizedRevenue(order),
+        createdAt: getOrderRevenueDate(order),
         sourcePage: classifySourcePath(getOrderPrimarySourcePath(order)).label,
         utmCampaign: order.sourceAttribution?.utmCampaign || '',
       })),
@@ -1086,6 +1119,18 @@ export const getSalesAnalytics = async (req, res) => {
         averageBookingValue: bookings.length ? Math.round(bookingRevenue / bookings.length) : 0,
         last7DaysRevenue,
         last30DaysRevenue,
+      },
+      dataHealth: {
+        hasPaidActivity: activeOrders.length > 0 || bookings.length > 0,
+        totalOrderRecords: allOrders.length,
+        paidOrderRecords: orders.length,
+        pendingOrderRecords: allOrders.filter((order) => ['pending', 'awaiting-verification'].includes(order.paymentStatus)).length,
+        failedOrderRecords: allOrders.filter((order) => ['failed', 'refunded'].includes(order.paymentStatus)).length,
+        totalBookingRecords: allBookings.length,
+        paidBookingRecords: bookings.length,
+        abandonedCartCount,
+        trackedActivityCount: marketingActivities.length,
+        recognizedRevenueRule: 'Verified paid orders and bookings only',
       },
       breakdown,
       pageBreakdown,

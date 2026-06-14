@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../hooks/useApi';
-import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List, Mic, Video, Square, Link2, GripVertical, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, EyeOff, LogOut, Search, AlertCircle, X, CheckCircle, Circle, FileText, Play, Upload, ImagePlus, Loader2, Award, Mail, Download, MessageCircle, Menu, LayoutGrid, List, Mic, Video, Square, Link2, GripVertical, ChevronDown, ChevronUp, Info, Copy, ExternalLink, Share2 } from 'lucide-react';
 import { CATEGORY_VALUES } from '../data/categories';
 import {
   DIGITAL_TYPE_OPTIONS,
@@ -20,15 +20,100 @@ import { FRONTEND_CERTIFICATE_TEMPLATE_PRESETS } from '../data/certificateTempla
 import { CertificateTemplatePreview } from '../components/CertificateTemplatePicker';
 import { generateCertificate } from '../utils/generateCertificate';
 import { buildDiscountPresentation } from '../utils/discounts';
+import { getPublicItemUrl } from '../utils/seoPaths';
 import AdminAdsDashboard from '../components/AdminAdsDashboard';
 import AdminCouponsDashboard from '../components/AdminCouponsDashboard';
 import AdminPaymentsDashboard from '../components/AdminPaymentsDashboard';
+import AdminConfirmDialog from '../components/AdminConfirmDialog';
 
 const TABS = ['Analytics','Ads','Payments','Coupons','Products','Digital Products','Certificates','Training','Delivery','Orders','Bookings','Customers','Abandoned','Consultations','Blog','Featured','Invoice'];
 const PRODUCT_LIKE_TABS = new Set(['Products', 'Digital Products', 'Featured']);
 const BLOG_LIKE_TABS = new Set(['Blog']);
 const WIDE_GRID_TABS = new Set(['Certificates', 'Orders', 'Bookings', 'Customers']);
 const ADMIN_ACTIVE_TAB_STORAGE_KEY = 'bk_admin_active_tab';
+const ANALYTICS_REPORT_OPTIONS = [
+  { key: 'campaigns', label: 'Campaigns' },
+  { key: 'intent', label: 'Visitor Intent' },
+  { key: 'sales', label: 'Sales Reports' },
+];
+const SHARE_KIND_BY_TAB = {
+  Products: 'product',
+  'Digital Products': 'digital-product',
+  Featured: 'product',
+  Training: 'training',
+  Consultations: 'consultation',
+};
+
+const copyToClipboard = async (value) => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand('copy');
+  input.remove();
+};
+
+function AdminPublicLink({ kind, item, prominent = false, onUseInAds }) {
+  const [copied, setCopied] = useState(false);
+  const url = getPublicItemUrl(kind, item);
+  const title = item?.name || item?.title || 'Belle Kreyashon listing';
+  const isLive = kind === 'product' || kind === 'digital-product'
+    ? item?.available !== false
+    : item?.active !== false;
+
+  const copyLink = async () => {
+    try {
+      await copyToClipboard(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      alert('Could not copy automatically. Select the URL and copy it manually.');
+    }
+  };
+
+  const shareLink = async () => {
+    if (!navigator.share) return copyLink();
+    try {
+      await navigator.share({ title, text: `View ${title} on Belle Kreyashon`, url });
+    } catch (error) {
+      if (error?.name !== 'AbortError') await copyLink();
+    }
+  };
+
+  return (
+    <div className={`mt-3 rounded-xl border ${prominent ? 'border-[#FDC700]/50 bg-[#fffbed] p-3' : 'border-gray-100 bg-gray-50 p-2.5'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">Public link</p>
+        <span className={`text-[10px] font-bold ${isLive ? 'text-green-600' : 'text-amber-600'}`}>
+          {isLive ? 'Ready to share' : 'Publish before advertising'}
+        </span>
+      </div>
+      <p className="mt-1 break-all text-[11px] leading-relaxed text-gray-600">{url}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button type="button" onClick={copyLink} className="inline-flex items-center gap-1.5 rounded-lg bg-black px-3 py-1.5 text-[11px] font-bold text-white hover:bg-gray-800">
+          <Copy size={12} /> {copied ? 'Copied' : 'Copy link'}
+        </button>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-gray-700 hover:border-black">
+          <ExternalLink size={12} /> Open
+        </a>
+        <button type="button" onClick={shareLink} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-gray-700 hover:border-black">
+          <Share2 size={12} /> Share
+        </button>
+        {onUseInAds && (
+          <button type="button" onClick={() => onUseInAds(kind, item)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#FDC700] bg-[#fffbed] px-3 py-1.5 text-[11px] font-bold text-black hover:bg-[#FDC700]">
+            <Link2 size={12} /> Build ad link
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const getCollectionLayoutClass = (tab, viewMode) => {
   if (viewMode === 'list') return 'flex flex-col gap-3';
@@ -2851,7 +2936,9 @@ export default function Admin() {
 
   const [data,    setData]    = useState([]);
   const [salesAnalytics, setSalesAnalytics] = useState(null);
+  const [analyticsReport, setAnalyticsReport] = useState('');
   const [marketingSetup, setMarketingSetup] = useState(null);
+  const [paymentProviderStatus, setPaymentProviderStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [page,    setPage]    = useState(1);
   const PAGE_SIZE = 20;
@@ -2863,6 +2950,10 @@ export default function Admin() {
   const [showForm, setShowForm] = useState(false);
   const [editId,   setEditId]   = useState(null);
   const [form,     setForm]     = useState({});
+  const [shareNotice, setShareNotice] = useState(null);
+  const [adDestination, setAdDestination] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [showTabMenu, setShowTabMenu] = useState(false);
   const [viewMode, setViewMode] = useState('list');
   const [digitalAutoSave, setDigitalAutoSave] = useState({ status: 'idle', message: '' });
@@ -2983,6 +3074,7 @@ export default function Admin() {
     let ep = ENDPOINTS[t];
     if (!['Analytics', 'Ads'].includes(t)) setSalesAnalytics(null);
     if (t !== 'Ads') setMarketingSetup(null);
+    if (t !== 'Payments') setPaymentProviderStatus(null);
     if (t === 'Featured') ep = '/api/products?isPartner=true';
     if (t === 'Products') ep = '/api/products?isDigital=false';
     if (t === 'Digital Products') ep = '/api/products?isDigital=true';
@@ -2996,6 +3088,17 @@ export default function Admin() {
         if (latestAdminLoadRef.current !== requestId) return;
         setSalesAnalytics(analyticsResponse.data);
         if (t === 'Ads') setMarketingSetup(setupResponse.data);
+        setLoading(false);
+        return;
+      }
+      if (t === 'Payments') {
+        const [paymentsResponse, providerResponse] = await Promise.all([
+          api.get(ep, auth),
+          api.get('/api/orders/payments/provider-status', auth),
+        ]);
+        if (latestAdminLoadRef.current !== requestId) return;
+        setData(Array.isArray(paymentsResponse.data) ? paymentsResponse.data : []);
+        setPaymentProviderStatus(providerResponse.data || null);
         setLoading(false);
         return;
       }
@@ -3029,6 +3132,7 @@ export default function Admin() {
       setData([]);
       if (t === 'Analytics' || t === 'Ads') setSalesAnalytics(null);
       if (t === 'Ads') setMarketingSetup(null);
+      if (t === 'Payments') setPaymentProviderStatus(null);
       if (t === 'Certificates') setCertificateTemplates([]);
     }
     if (latestAdminLoadRef.current !== requestId) return;
@@ -3258,6 +3362,7 @@ export default function Admin() {
   }, [form.digitalModules]);
 
   const openNew = () => {
+    setShareNotice(null);
     const restoredDraft = tab === 'Digital Products' ? readDigitalDraft() : null;
     setForm(tab === 'Digital Products'
       ? {
@@ -3289,6 +3394,8 @@ export default function Admin() {
   const handleTabChange = (nextTab) => {
     setTab(nextTab);
     setShowTabMenu(false);
+    setShareNotice(null);
+    if (nextTab !== 'Analytics') setAnalyticsReport('');
   };
 
   const openEdit = (item) => {
@@ -4176,18 +4283,41 @@ const buildTrainingBody = (f) => ({
           setData((current) => current.map((entry) => (entry._id === savedRecord._id ? savedRecord : entry)));
         }
       }
+      const shareKind = SHARE_KIND_BY_TAB[tab];
+      if (shareKind && savedRecord?._id) {
+        setShareNotice({
+          kind: shareKind,
+          item: savedRecord,
+          created: !editId,
+        });
+      }
       loadSavedCategories();
       load(tab, search);
       closeForm();
     } catch (e) { alert(e.response?.data?.message || 'Error saving. Check all required fields.'); }
   };
 
-  const del = async (id) => {
-    if (!confirm('Delete this item? This cannot be undone.')) return;
+  const del = (id) => {
     const ep = tab === 'Featured' || tab === 'Digital Products' ? '/api/products' : ENDPOINTS[tab];
-    await api.delete(`${ep}/${id}`, auth);
-    setData(d => d.filter(x => x._id !== id));
-    loadSavedCategories();
+    const item = data.find((entry) => entry._id === id) || {};
+    const type = TAB_FORM_LABELS[tab] || tab.replace(/s$/, '') || 'item';
+    const name = item.name || item.title || item.certificateTitle || item.learnerName || item.code || '';
+    setDeleteTarget({ id, endpoint: ep, type, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleteBusy) return;
+    setDeleteBusy(true);
+    try {
+      await api.delete(`${deleteTarget.endpoint}/${deleteTarget.id}`, auth);
+      setData((current) => current.filter((entry) => entry._id !== deleteTarget.id));
+      loadSavedCategories();
+      setDeleteTarget(null);
+    } catch (error) {
+      alert(error.response?.data?.message || `Could not delete this ${String(deleteTarget.type || 'item').toLowerCase()}.`);
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const toggle = async (id, ep) => {
@@ -4546,10 +4676,18 @@ const buildTrainingBody = (f) => ({
   const marketingCampaigns = marketingFunnel.campaigns || [];
   const marketingProductInterest = marketingFunnel.productInterest || [];
   const marketingRecentActivity = marketingFunnel.recentActivity || [];
+  const analyticsDataHealth = salesAnalytics?.dataHealth || {};
+  const hasSalesData = !!analyticsDataHealth.hasPaidActivity;
   const certificateChoicePending = tab === 'Certificates' && form.type === 'digital_request' && !form.generationChoiceMade;
   const activeCertificateTemplateId = form.templateCandidateId || form.templateId || '';
   const activeCertificateTemplate = findCertificateTemplate(visibleCertificateTemplates, activeCertificateTemplateId);
   const hasPresetCertificateTemplates = visibleCertificateTemplates.some((template) => template.isPreset);
+  const openTrackedAdLink = (kind, item) => {
+    setAdDestination(getPublicItemUrl(kind, item));
+    setShareNotice(null);
+    setTab('Ads');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -4704,6 +4842,27 @@ const buildTrainingBody = (f) => ({
         </div>
 
         {/* ── FORM PANEL ─────────────────────────────────────────────────────── */}
+        {shareNotice && (
+          <div className="relative mb-5 rounded-2xl border border-[#FDC700]/40 bg-white p-4 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setShareNotice(null)}
+              className="absolute right-3 top-3 text-gray-400 hover:text-black"
+              aria-label="Dismiss public link"
+            >
+              <X size={16} />
+            </button>
+            <div className="pr-8">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">
+                {shareNotice.created ? 'Created and link ready' : 'Saved and link ready'}
+              </p>
+              <h3 className="mt-1 font-extrabold">Share this page immediately</h3>
+              <p className="mt-1 text-xs text-gray-500">Use this exact URL for customers, WhatsApp, social posts and ad destinations.</p>
+            </div>
+            <AdminPublicLink kind={shareNotice.kind} item={shareNotice.item} prominent onUseInAds={openTrackedAdLink} />
+          </div>
+        )}
+
         {showForm && !['Analytics','Ads','Payments','Coupons','Orders','Abandoned','Customers'].includes(tab) && (
           <div className="bg-white rounded-2xl p-5 border border-gray-100 mb-5 shadow-sm">
             <div className="flex justify-between items-center mb-4">
@@ -7176,6 +7335,24 @@ const buildTrainingBody = (f) => ({
               ))}
             </div>
 
+            {!hasSalesData && (
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Revenue data status</p>
+                    <h3 className="mt-1 text-xl font-extrabold text-amber-950">No verified paid sales are stored yet</h3>
+                    <p className="mt-2 max-w-3xl text-sm leading-relaxed text-amber-800">
+                      Analytics only recognizes completed paid orders and bookings. The connected database currently has {analyticsDataHealth.totalOrderRecords || 0} order records and {analyticsDataHealth.totalBookingRecords || 0} booking records, so monthly revenue and best-seller reports will appear after the first verified payment.
+                    </p>
+                  </div>
+                  <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+                    <button type="button" onClick={() => setTab('Payments')} className="rounded-2xl bg-black px-4 py-3 text-xs font-extrabold text-white">Check Payments</button>
+                    <button type="button" onClick={() => setTab('Abandoned')} className="rounded-2xl border border-amber-300 bg-white px-4 py-3 text-xs font-extrabold text-amber-900">{analyticsDataHealth.abandonedCartCount || 0} Active Carts</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -7209,6 +7386,37 @@ const buildTrainingBody = (f) => ({
               </div>
             </div>
 
+            <div className="rounded-3xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">More Analytics</p>
+                  <h3 className="mt-1 text-lg font-extrabold">Open only the report you need</h3>
+                  <p className="mt-1 text-xs text-gray-500">The funnel above remains visible. Detailed reports stay closed until selected.</p>
+                </div>
+                <select
+                  value={analyticsReport}
+                  onChange={(event) => setAnalyticsReport(event.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:border-black lg:hidden"
+                >
+                  <option value="">Choose a report</option>
+                  {ANALYTICS_REPORT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+                </select>
+                <div className="hidden flex-wrap gap-2 lg:flex">
+                  {ANALYTICS_REPORT_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => setAnalyticsReport((current) => current === option.key ? '' : option.key)}
+                      className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition-all ${analyticsReport === option.key ? 'bg-black text-white' : 'border border-gray-200 bg-[#fcfbf7] text-gray-600 hover:border-black hover:text-black'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {analyticsReport === 'campaigns' && (
             <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Campaign Funnel</p>
@@ -7260,7 +7468,9 @@ const buildTrainingBody = (f) => ({
                 </div>
               )}
             </div>
+            )}
 
+            {analyticsReport === 'intent' && (
             <div className="grid gap-4 xl:grid-cols-2">
               <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="mb-4">
@@ -7308,7 +7518,16 @@ const buildTrainingBody = (f) => ({
                 </div>
               </div>
             </div>
+            )}
 
+            {analyticsReport === 'sales' && !hasSalesData && (
+              <div className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-6 text-center">
+                <p className="font-extrabold text-amber-950">Sales reports are waiting for the first verified payment</p>
+                <p className="mt-1 text-sm text-amber-800">Revenue, recent sales, attribution and best-seller reports will appear here automatically.</p>
+              </div>
+            )}
+
+            {analyticsReport === 'sales' && hasSalesData && (<>
             <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3 mb-4">
@@ -7555,6 +7774,7 @@ const buildTrainingBody = (f) => ({
                 </div>
               </div>
             </div>
+            </>)}
           </div>
         )}
 
@@ -7563,10 +7783,11 @@ const buildTrainingBody = (f) => ({
             analytics={salesAnalytics}
             setup={marketingSetup || {}}
             onRefresh={() => load('Ads', '')}
+            initialDestination={adDestination}
           />
         )}
 
-        {tab === 'Payments' && !loading && <AdminPaymentsDashboard orders={data} auth={auth} onRefresh={() => load('Payments', '')} />}
+        {tab === 'Payments' && !loading && <AdminPaymentsDashboard orders={data} providerStatus={paymentProviderStatus || {}} auth={auth} onRefresh={() => load('Payments', '')} />}
         {tab === 'Coupons' && !loading && <AdminCouponsDashboard coupons={data} auth={auth} onRefresh={() => load('Coupons', '')} />}
 
         {loading && <div className="text-center py-10 text-gray-400 text-sm">Loading...</div>}
@@ -7593,6 +7814,7 @@ const buildTrainingBody = (f) => ({
                     {item.isPreOrder   && <span className="text-xs bg-blue-50 text-blue-500 font-bold px-1.5 py-0.5 rounded-full">Pre-Order</span>}
                     {item.discount?.active && <span className="text-xs bg-green-50 text-green-600 font-bold px-1.5 py-0.5 rounded-full">Discount</span>}
                   </div>
+                  <AdminPublicLink kind="product" item={item} onUseInAds={openTrackedAdLink} />
                 </div>
                 <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col items-center gap-2 shrink-0'}`}>
                   <button title={item.available ? 'Hide product' : 'Show product'} aria-label={item.available ? 'Hide product' : 'Show product'} onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
@@ -7638,6 +7860,7 @@ const buildTrainingBody = (f) => ({
                     {item.discount?.active && <span className="text-xs bg-green-50 text-green-600 font-bold px-1.5 py-0.5 rounded-full">Discount</span>}
                     {item.available ? <span className="text-xs bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full">Live</span> : <span className="text-xs bg-gray-100 text-gray-500 font-bold px-1.5 py-0.5 rounded-full">Hidden</span>}
                   </div>
+                  <AdminPublicLink kind="digital-product" item={item} onUseInAds={openTrackedAdLink} />
                 </div>
                 <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col items-center gap-2 shrink-0'}`}>
                   <button title={item.available ? 'Hide digital product' : 'Show digital product'} aria-label={item.available ? 'Hide digital product' : 'Show digital product'} onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
@@ -7824,6 +8047,7 @@ const buildTrainingBody = (f) => ({
                   {!!item.partners?.length && <p className="text-xs text-gray-500">Partners: {item.partners.join(', ')}</p>}
                   {!!item.sponsors?.length && <p className="text-xs text-gray-500">Sponsors: {item.sponsors.join(', ')}</p>}
                   <p className="font-bold text-sm">GHS {item.price?.toLocaleString()}</p>
+                  <AdminPublicLink kind="training" item={item} onUseInAds={openTrackedAdLink} />
                 </div>
                 <button title={item.active ? 'Hide training' : 'Show training'} aria-label={item.active ? 'Hide training' : 'Show training'} onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
                 <button title="Edit training" aria-label="Edit training" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
@@ -7949,11 +8173,12 @@ const buildTrainingBody = (f) => ({
                   {item.validity && <p className="text-xs text-gray-400">{item.validity}</p>}
                   <p className="font-bold text-sm mt-0.5">{item.isFree ? 'Free' : `GHS ${item.price?.toLocaleString()}`}</p>
                   <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.desc}</p>
+                  <AdminPublicLink kind="consultation" item={item} onUseInAds={openTrackedAdLink} />
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
-                  <button title={item.active ? 'Hide blog post' : 'Show blog post'} aria-label={item.active ? 'Hide blog post' : 'Show blog post'} onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
-                  <button title="Edit blog post" aria-label="Edit blog post" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
-                  <button title="Delete blog post" aria-label="Delete blog post" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
+                  <button title={item.active ? 'Hide consultation' : 'Show consultation'} aria-label={item.active ? 'Hide consultation' : 'Show consultation'} onClick={() => toggle(item._id)} className={item.active?'text-green-500':'text-gray-300'}>{item.active?<Eye size={16}/>:<EyeOff size={16}/>}</button>
+                  <button title="Edit consultation" aria-label="Edit consultation" onClick={() => openEdit(item)} className="text-gray-400 hover:text-black"><Pencil size={16}/></button>
+                  <button title="Delete consultation" aria-label="Delete consultation" onClick={() => del(item._id)} className="text-gray-300 hover:text-red-500"><Trash2 size={16}/></button>
                 </div>
               </div>
             ))}
@@ -7973,8 +8198,8 @@ const buildTrainingBody = (f) => ({
                   <p className="text-xs text-gray-400 mb-2">{new Date(item.createdAt).toLocaleDateString()}</p>
                   <div className="flex gap-2">
                     <button onClick={() => toggle(item._id)} className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-black hover:text-white transition-all">{item.published?'Unpublish':'Publish'}</button>
-                    <button title="Edit consultation" aria-label="Edit consultation" onClick={() => openEdit(item)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-black hover:text-white transition-all"><Pencil size={13}/></button>
-                    <button title="Delete consultation" aria-label="Delete consultation" onClick={() => del(item._id)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={13}/></button>
+                    <button title="Edit blog post" aria-label="Edit blog post" onClick={() => openEdit(item)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-black hover:text-white transition-all"><Pencil size={13}/></button>
+                    <button title="Delete blog post" aria-label="Delete blog post" onClick={() => del(item._id)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={13}/></button>
                   </div>
                 </div>
               </div>
@@ -7999,6 +8224,7 @@ const buildTrainingBody = (f) => ({
                       {item.partnerSubEnd    && <span className="text-xs text-gray-400">Ends: {new Date(item.partnerSubEnd).toLocaleDateString()}</span>}
                       {expired              && <span className="text-xs bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">Expired</span>}
                     </div>
+                    <AdminPublicLink kind="product" item={item} onUseInAds={openTrackedAdLink} />
                   </div>
                   <div className={`${useGridCards ? 'mt-3 pt-3 border-t border-gray-100 flex items-center justify-between' : 'flex flex-col gap-2 shrink-0'}`}>
                     <button title={item.available ? 'Hide featured product' : 'Show featured product'} aria-label={item.available ? 'Hide featured product' : 'Show featured product'} onClick={() => toggle(item._id)} className={item.available?'text-green-500':'text-gray-300'}>{item.available?<Eye size={16}/>:<EyeOff size={16}/>}</button>
@@ -8181,6 +8407,18 @@ const buildTrainingBody = (f) => ({
           )}
           </>
         )}
+
+        <AdminConfirmDialog
+          open={Boolean(deleteTarget)}
+          busy={deleteBusy}
+          title={`Delete ${deleteTarget?.type || 'item'}?`}
+          message={deleteTarget?.name
+            ? `You are about to permanently delete "${deleteTarget.name}". It will be removed from the admin dashboard and any public page that uses it. This cannot be undone.`
+            : `You are about to permanently delete this ${String(deleteTarget?.type || 'item').toLowerCase()}. This cannot be undone.`}
+          confirmText={`Delete ${deleteTarget?.type || 'item'}`}
+          onCancel={() => !deleteBusy && setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+        />
       </div>
     </div>
   );

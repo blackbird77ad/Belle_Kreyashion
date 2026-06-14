@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShoppingBag, Minus, Plus, ChevronLeft, ChevronDown, ChevronUp, ShieldCheck, Mail, Phone } from 'lucide-react';
 import { api } from '../hooks/useApi';
 import { useCart } from '../context/CartContext';
@@ -36,6 +36,7 @@ const buildSupportWhatsAppLink = (phone = '', productName = '') => {
 export default function Product() {
   const { slugOrId } = useParams();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const { cart, addToCart, removeOwnedDigitalItems } = useCart();
   const { customer } = useCustomer();
@@ -62,12 +63,15 @@ export default function Product() {
         setLoading(false);
 
         const canonicalPath = getProductPath(r.data);
-        if (r.data?.slug && canonicalPath !== `/shop/${slugOrId}`) {
+        if (r.data?.slug && canonicalPath !== pathname) {
           navigate(checkoutIntent ? `${canonicalPath}?checkout=1` : canonicalPath, { replace: true });
         }
       })
-      .catch(() => { setLoading(false); navigate('/shop'); });
-  }, [slugOrId, navigate, customer?.accessToken, checkoutIntent]);
+      .catch(() => {
+        setLoading(false);
+        navigate(pathname.startsWith('/digital-products/') ? '/digital-products' : '/shop');
+      });
+  }, [slugOrId, navigate, customer?.accessToken, checkoutIntent, pathname]);
 
   useEffect(() => {
     setAdded(false);

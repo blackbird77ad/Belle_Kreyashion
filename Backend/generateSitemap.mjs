@@ -6,6 +6,8 @@ import mongoose from 'mongoose';
 import connectDB from './config/db.mjs';
 import Product from './Models/Product.mjs';
 import Blog from './Models/Blog.mjs';
+import Training from './Models/Training.mjs';
+import Consultation from './Models/Consultation.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,13 +48,15 @@ const buildUrlNode = ({ path: entryPath, lastmod, changefreq, priority }) => `  
 const createSitemap = async () => {
   await connectDB();
 
-  const [products, posts] = await Promise.all([
-    Product.find({ available: true }).select('slug updatedAt').lean(),
+  const [products, posts, trainings, consultations] = await Promise.all([
+    Product.find({ available: true }).select('slug isDigital updatedAt').lean(),
     Blog.find({ published: true }).select('slug updatedAt').lean(),
+    Training.find({ active: true }).select('slug updatedAt').lean(),
+    Consultation.find({ active: true }).select('slug updatedAt').lean(),
   ]);
 
   const dynamicProductPages = products.map((product) => ({
-    path: `/shop/${product.slug || product._id}`,
+    path: `${product.isDigital ? '/digital-products' : '/shop'}/${product.slug || product._id}`,
     lastmod: product.updatedAt,
     changefreq: 'weekly',
     priority: '0.80',
@@ -65,11 +69,27 @@ const createSitemap = async () => {
     priority: '0.75',
   }));
 
+  const dynamicTrainingPages = trainings.map((training) => ({
+    path: `/services/training/${training.slug || training._id}`,
+    lastmod: training.updatedAt,
+    changefreq: 'weekly',
+    priority: '0.80',
+  }));
+
+  const dynamicConsultationPages = consultations.map((consultation) => ({
+    path: `/services/consultation/${consultation.slug || consultation._id}`,
+    lastmod: consultation.updatedAt,
+    changefreq: 'monthly',
+    priority: '0.80',
+  }));
+
   const xml = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...STATIC_PAGES.map((page) => buildUrlNode({ ...page, lastmod: new Date() })),
     ...dynamicProductPages.map(buildUrlNode),
+    ...dynamicTrainingPages.map(buildUrlNode),
+    ...dynamicConsultationPages.map(buildUrlNode),
     ...dynamicBlogPages.map(buildUrlNode),
     '</urlset>',
     '',
@@ -79,7 +99,7 @@ const createSitemap = async () => {
   await mongoose.disconnect();
 
   console.log(`Sitemap updated at ${FRONTEND_SITEMAP_PATH}`);
-  console.log(`Included ${STATIC_PAGES.length} static pages, ${dynamicProductPages.length} product pages, and ${dynamicBlogPages.length} blog pages.`);
+  console.log(`Included ${STATIC_PAGES.length} static pages, ${dynamicProductPages.length} product pages, ${dynamicTrainingPages.length} training pages, ${dynamicConsultationPages.length} consultation pages, and ${dynamicBlogPages.length} blog pages.`);
 };
 
 createSitemap().catch(async (error) => {

@@ -4,6 +4,13 @@ import { getMarketingConfig } from '../utils/marketing';
 
 const inputClass = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-black transition-all';
 const formatMoney = (value = 0) => `GHS ${Number(value || 0).toLocaleString()}`;
+const ADS_PANEL_OPTIONS = [
+  { key: 'setup', label: 'Tracking Setup' },
+  { key: 'links', label: 'Campaign Link Builder' },
+  { key: 'performance', label: 'Campaign Performance' },
+  { key: 'intent', label: 'Product Intent' },
+  { key: 'conversions', label: 'Conversions & Activity' },
+];
 
 const maskTrackingId = (value = '') => {
   const clean = String(value || '').trim();
@@ -11,7 +18,7 @@ const maskTrackingId = (value = '') => {
   return clean.length > 9 ? `${clean.slice(0, 5)}...${clean.slice(-4)}` : clean;
 };
 
-export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefresh }) {
+export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefresh, initialDestination = '' }) {
   const config = getMarketingConfig();
   const funnel = analytics.marketingFunnel || {};
   const summary = funnel.summary || {};
@@ -21,7 +28,7 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
   const recentConversions = funnel.recentConversions || [];
   const recentActivity = funnel.recentActivity || [];
   const [linkForm, setLinkForm] = useState({
-    destination: 'https://bellekreyashon.com/shop',
+    destination: initialDestination || 'https://bellekreyashon.com/shop',
     source: 'facebook',
     medium: 'paid_social',
     campaign: '',
@@ -29,6 +36,7 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
     term: '',
   });
   const [copyMessage, setCopyMessage] = useState('');
+  const [activePanel, setActivePanel] = useState(initialDestination ? 'links' : '');
 
   const updateLinkField = (key, value) => setLinkForm((current) => ({ ...current, [key]: value }));
   const campaignUrl = (() => {
@@ -115,6 +123,37 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
         ))}
       </div>
 
+      <div className="rounded-3xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Ads Workspace</p>
+            <h3 className="mt-1 text-lg font-extrabold">Open one ads tool at a time</h3>
+            <p className="mt-1 text-xs text-gray-500">Tracking details and reports remain closed until you select them.</p>
+          </div>
+          <select
+            value={activePanel}
+            onChange={(event) => setActivePanel(event.target.value)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:border-black xl:hidden"
+          >
+            <option value="">Choose an ads section</option>
+            {ADS_PANEL_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+          </select>
+          <div className="hidden flex-wrap gap-2 xl:flex">
+            {ADS_PANEL_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setActivePanel((current) => current === option.key ? '' : option.key)}
+                className={`rounded-xl px-3 py-2.5 text-xs font-extrabold transition-all ${activePanel === option.key ? 'bg-black text-white' : 'border border-gray-200 bg-[#fcfbf7] text-gray-600 hover:border-black hover:text-black'}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {activePanel === 'setup' && (
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-4 flex items-start justify-between gap-3">
@@ -145,7 +184,9 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
           </div>
         </div>
       </div>
+      )}
 
+      {activePanel === 'links' && (
       <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="mb-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Campaign Link Builder</p><h3 className="mt-1 text-lg font-extrabold">Create a traceable URL before launching each ad</h3><p className="mt-1 text-xs text-gray-500">Use a unique campaign and content name for every ad set or creative.</p></div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -161,7 +202,9 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
           <button type="button" onClick={copyCampaignUrl} disabled={!campaignUrl} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#FDC700] px-4 py-2 text-xs font-extrabold text-black disabled:opacity-50"><Copy size={13} /> {copyMessage || 'Copy URL'}</button>
         </div>
       </div>
+      )}
 
+      {activePanel === 'performance' && (
       <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="mb-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Campaign Performance</p><h3 className="mt-1 text-lg font-extrabold">Visitor source, intent, orders, and conversion value</h3></div>
         {campaigns.length === 0 ? <p className="rounded-2xl border border-dashed border-gray-200 bg-[#fcfbf7] p-5 text-center text-sm text-gray-500">No campaign activity recorded yet.</p> : (
@@ -171,7 +214,9 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
           </table></div>
         )}
       </div>
+      )}
 
+      {activePanel === 'intent' && (
       <div className="grid gap-4 xl:grid-cols-2">
         <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Product Intent</p><h3 className="mt-1 text-lg font-extrabold">Products viewed, carted, and taken to checkout</h3></div>
@@ -182,7 +227,9 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
           <div className="space-y-2">{landingPages.length === 0 && <p className="text-sm text-gray-500">No landing-page activity yet.</p>}{landingPages.map((page) => <div key={page.path} className="rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3"><div className="flex items-start justify-between gap-3"><p className="min-w-0 break-all text-sm font-extrabold text-black">{page.path}</p><span className="shrink-0 rounded-full bg-black px-2.5 py-1 text-xs font-bold text-white">{page.visits} visits</span></div><p className="mt-1 text-xs text-gray-500">{page.campaigns.join(', ')}</p></div>)}</div>
         </div>
       </div>
+      )}
 
+      {activePanel === 'conversions' && (
       <div className="grid gap-4 xl:grid-cols-2">
         <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#9a7a00]">Verified Conversions</p><h3 className="mt-1 text-lg font-extrabold">Recent order source and value</h3></div>
@@ -193,10 +240,11 @@ export default function AdminAdsDashboard({ analytics = {}, setup = {}, onRefres
           <div className="space-y-2">{recentActivity.length === 0 && <p className="text-sm text-gray-500">No visitor activity yet.</p>}{recentActivity.map((activity) => <div key={activity.id} className="flex items-start justify-between gap-3 rounded-2xl border border-gray-100 bg-[#fcfbf7] p-3"><div className="min-w-0"><p className="text-sm font-extrabold text-black">{activity.label}</p><p className="truncate text-xs text-gray-600">{activity.detail}</p><p className="mt-1 text-[11px] text-gray-400">{activity.campaign}{activity.pagePath ? ` / ${activity.pagePath}` : ''}</p></div><p className="shrink-0 text-[10px] text-gray-400">{new Date(activity.createdAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p></div>)}</div>
         </div>
       </div>
+      )}
 
-      <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 text-xs leading-relaxed text-blue-900">
+      {activePanel && <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 text-xs leading-relaxed text-blue-900">
         <strong>Scope:</strong> this tab manages measurement, campaign URLs, and attribution. Creating or editing paid campaigns still happens in Meta Ads Manager, Google Ads, or TikTok Ads Manager unless their separate campaign-management APIs are connected.
-      </div>
+      </div>}
     </div>
   );
 }

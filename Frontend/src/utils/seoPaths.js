@@ -1,4 +1,4 @@
-const SITE_URL = 'https://bellekreyashon.com';
+export const SITE_URL = String(import.meta.env.VITE_PUBLIC_SITE_URL || 'https://bellekreyashon.com').replace(/\/+$/, '');
 const PUBLIC_CONTACT_EMAIL = String(import.meta.env.VITE_PUBLIC_CONTACT_EMAIL || 'bellekreyashon@gmail.com')
   .split(/[;,]/)
   .map((entry) => entry.trim().toLowerCase())
@@ -16,13 +16,33 @@ export const toAbsoluteUrl = (value = '') => {
 
 export const getProductPath = (product = {}) => {
   const slugOrId = product?.slug || product?._id || '';
-  return slugOrId ? `/shop/${slugOrId}` : '/shop';
+  const collectionPath = product?.isDigital ? '/digital-products' : '/shop';
+  return slugOrId ? `${collectionPath}/${slugOrId}` : collectionPath;
 };
 
 export const getDigitalCheckoutPath = (product = {}) => {
-  const stableId = product?._id || product?.slug || '';
-  return stableId ? `/shop/${stableId}?checkout=1` : '/shop';
+  const path = getProductPath({ ...product, isDigital: true });
+  return product?._id || product?.slug ? `${path}?checkout=1` : '/digital-products';
 };
+
+export const getTrainingPath = (training = {}) => {
+  const slugOrId = training?.slug || training?._id || '';
+  return slugOrId ? `/services/training/${slugOrId}` : '/services';
+};
+
+export const getConsultationPath = (consultation = {}) => {
+  const slugOrId = consultation?.slug || consultation?._id || '';
+  return slugOrId ? `/services/consultation/${slugOrId}` : '/services';
+};
+
+export const getPublicItemPath = (kind, item = {}) => {
+  if (kind === 'digital-product') return getProductPath({ ...item, isDigital: true });
+  if (kind === 'training') return getTrainingPath(item);
+  if (kind === 'consultation') return getConsultationPath(item);
+  return getProductPath({ ...item, isDigital: false });
+};
+
+export const getPublicItemUrl = (kind, item = {}) => toAbsoluteUrl(getPublicItemPath(kind, item));
 
 export const getBlogPath = (post = {}) => {
   const slugOrId = post?.slug || post?._id || '';

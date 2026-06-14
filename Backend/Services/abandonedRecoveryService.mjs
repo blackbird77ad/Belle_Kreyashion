@@ -54,7 +54,7 @@ const sendWhatsAppRecoveryTemplate = async (cart, recoveryUrl) => {
 
 export const sendAbandonedRecovery = async (cartInput) => {
   const cart = cartInput?._id ? cartInput : await AbandonedCart.findById(cartInput);
-  if (!cart || cart.status !== 'active' || !(cart.items || []).length) return null;
+  if (!cart || (cart.status && cart.status !== 'active') || !(cart.items || []).length) return null;
   const recoveryUrl = buildRecoveryUrl(cart);
   const results = await Promise.allSettled([
     sendAbandonedCartRecoveryEmail({ cart, recoveryUrl }),

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Calendar, MessageCircle, Phone, Clock, Users, Send, X, Loader2, CheckCircle } from 'lucide-react';
 import { useFetch, api } from '../hooks/useApi';
 import { WHATSAPP } from '../data/contact';
@@ -8,7 +8,7 @@ import { useCustomer } from '../context/CustomerContext';
 import SEO from '../components/SEO';
 import { getAttributionSnapshot } from '../utils/attribution';
 import { getMarketingBrowserData, hasMarketingConsent, trackBeginCheckout, trackContactClick, trackServicePurchase } from '../utils/marketing';
-import { buildBreadcrumbSchema, buildCollectionPageSchema } from '../utils/seoPaths';
+import { buildBreadcrumbSchema, buildCollectionPageSchema, getConsultationPath, getTrainingPath } from '../utils/seoPaths';
 
 const WHATSAPP_NUM = WHATSAPP;
 
@@ -30,7 +30,7 @@ const waitForPaystack = () => new Promise((resolve, reject) => {
   }, 100);
 });
 
-const payWithPaystack = ({ amount, name, phone, description, onSuccess, onClose, onBeforeOpen }) => {
+const payWithPaystack = ({ amount, phone, onSuccess, onClose, onBeforeOpen }) => {
   waitForPaystack().then(PaystackPop => {
     const handler = PaystackPop.setup({
       key:      import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
@@ -178,7 +178,6 @@ function TrainingModal({ event, onClose }) {
   const [name,    setName]    = useState(customer?.name || '');
   const [phone,   setPhone]   = useState(customer?.phone || '');
   const [loading, setLoading] = useState(false);
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [confirmed, setConfirmed] = useState(null);
 
   const pay = () => {
@@ -369,17 +368,15 @@ function ConsultationModal({ consultation, onClose }) {
 }
 
 export default function Services() {
+  const navigate = useNavigate();
+  const { serviceType = '', slugOrId = '' } = useParams();
   const { data: events }   = useFetch('/api/training/public');
   const { data: consults } = useFetch('/api/consultation/public');
   const [trainPage,   setTrainPage]   = useState(1);
   const [consultPage, setConsultPage] = useState(1);
   const TRAIN_PAGE_SIZE   = 6;
   const CONSULT_PAGE_SIZE = 4;
-  const { customer }       = useCustomer();
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [selectedTraining,   setSelectedTraining]   = useState(null);
   const [trainingToRegister, setTrainingToRegister] = useState(null);
-  const [selectedConsult,    setSelectedConsult]    = useState(null);
   const [featurePlan,        setFeaturePlan]        = useState(null);
   const [featureForm,        setFeatureForm]        = useState({ brand:'', product:'', desc:'', contact:'', plan:'' });
   const [preOrderForm,       setPreOrderForm]       = useState({ item:'', qty:'', date:'', contact:'', notes:'' });
@@ -387,24 +384,62 @@ export default function Services() {
 
   const freeMsg   = encodeURIComponent("Hi Belle Kreyashon! I'd like to book a free consultation. Please advise on availability.");
   const importMsg = encodeURIComponent("Hi Belle Kreyashon! I'd like to inquire about importation assistance.");
+  const routeTraining = serviceType === 'training' && Array.isArray(events)
+    ? events.find((item) => item.slug === slugOrId || item._id === slugOrId)
+    : null;
+  const routeConsultation = serviceType === 'consultation' && Array.isArray(consults)
+    ? consults.find((item) => item.slug === slugOrId || item._id === slugOrId)
+    : null;
+  const routeService = routeTraining || routeConsultation;
+  const servicePath = routeTraining
+    ? getTrainingPath(routeTraining)
+    : routeConsultation
+      ? getConsultationPath(routeConsultation)
+      : '/services';
+  const serviceTitle = routeService?.title || 'Professional Training, Consultations & Importation';
+  const serviceDescription = routeService?.desc || 'Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support.';
   const seoSchema = [
     buildCollectionPageSchema({
-      name: 'Professional Training, Consultations & Importation',
-      description: 'Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support.',
-      path: '/services',
+      name: serviceTitle,
+      description: serviceDescription,
+      path: servicePath,
     }),
     buildBreadcrumbSchema([
       { name: 'Home', path: '/' },
       { name: 'Services', path: '/services' },
+      ...(routeService ? [{ name: routeService.title, path: servicePath }] : []),
     ]),
   ];
 
-  const handleTrainingClick = (evt) => setSelectedTraining(evt);
+  useEffect(() => {
+    if (!slugOrId) return;
+    if (serviceType === 'training' && Array.isArray(events)) {
+      if (!routeTraining) navigate('/services', { replace: true });
+      else if (routeTraining.slug && getTrainingPath(routeTraining) !== `/services/training/${slugOrId}`) {
+        navigate(getTrainingPath(routeTraining), { replace: true });
+      }
+      return;
+    }
+    if (serviceType === 'consultation' && Array.isArray(consults)) {
+      if (!routeConsultation) navigate('/services', { replace: true });
+      else if (routeConsultation.slug && getConsultationPath(routeConsultation) !== `/services/consultation/${slugOrId}`) {
+        navigate(getConsultationPath(routeConsultation), { replace: true });
+      }
+      return;
+    }
+    if (serviceType && !['training', 'consultation'].includes(serviceType)) {
+      navigate('/services', { replace: true });
+    }
+  }, [consults, events, navigate, routeConsultation, routeTraining, serviceType, slugOrId]);
 
-  const handleConsultClick = (c) => {
-    if (!customer) { setShowCustomerModal(true); return; }
-    setSelectedConsult(c);
+  const closeServiceRoute = () => {
+    setTrainingToRegister(null);
+    navigate('/services');
   };
+
+  const handleTrainingClick = (evt) => navigate(getTrainingPath(evt));
+
+  const handleConsultClick = (consultation) => navigate(getConsultationPath(consultation));
 
   const sendFeatureApp = () => {
     const plan = SUBSCRIPTION_PLANS.find(p => p.months === featurePlan);
@@ -446,9 +481,9 @@ Notes: ${preOrderForm.notes || 'None'}`
   return (
     <div className="pt-16 min-h-screen">
       <SEO
-        title="Professional Training, Consultations & Importation"
-        description="Book practical, business-focused training across different niches, plus consultations, pre-orders and importation support."
-        url="/services"
+        title={serviceTitle}
+        description={serviceDescription}
+        url={servicePath}
         keywords="beauty training Ghana, business consultations Accra, importation support Ghana, practical skill training Ghana, Belle Kreyashon services"
         schema={seoSchema}
       />
@@ -483,7 +518,7 @@ Notes: ${preOrderForm.notes || 'None'}`
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {(events || []).slice((trainPage-1)*TRAIN_PAGE_SIZE, trainPage*TRAIN_PAGE_SIZE).map(evt => (
-                <motion.div key={evt._id} initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }}
+                <div key={evt._id}
                   className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg transition-all cursor-pointer"
                   onClick={() => handleTrainingClick(evt)}
                   onKeyDown={(e) => {
@@ -528,7 +563,7 @@ Notes: ${preOrderForm.notes || 'None'}`
                       </button>
                     </div>
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
           )}
@@ -669,19 +704,17 @@ Notes: ${preOrderForm.notes || 'None'}`
       </div>
 
       {/* Modals */}
-      {showCustomerModal && <CustomerModal onClose={() => setShowCustomerModal(false)} />}
-      {selectedTraining && (
+      {routeTraining && !trainingToRegister && (
         <TrainingDetailsModal
-          event={selectedTraining}
-          onClose={() => setSelectedTraining(null)}
+          event={routeTraining}
+          onClose={closeServiceRoute}
           onRegister={(event) => {
-            setSelectedTraining(null);
             setTrainingToRegister(event);
           }}
         />
       )}
-      {trainingToRegister && <TrainingModal event={trainingToRegister} onClose={() => setTrainingToRegister(null)} />}
-      {selectedConsult   && <ConsultationModal consultation={selectedConsult} onClose={() => setSelectedConsult(null)} />}
+      {trainingToRegister && <TrainingModal event={trainingToRegister} onClose={closeServiceRoute} />}
+      {routeConsultation && <ConsultationModal consultation={routeConsultation} onClose={closeServiceRoute} />}
     </div>
   );
 }

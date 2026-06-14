@@ -8,6 +8,7 @@ import { getAbandonedCarts, recoverCart, saveAbandonedCart, sendRecoveryNow, tog
 import {
   confirmManualPayment,
   getAdminPayments,
+  getPaymentProviderStatus,
   getPaymentState,
   initializeCheckout,
   quoteCheckout,
@@ -33,6 +34,7 @@ router.post('/checkout', checkoutLimiter, initializeCheckout);
 router.post('/verify', checkoutLimiter, verifyCheckoutPayment);
 router.post('/paystack/webhook', receivePaystackWebhook);
 router.get('/payments/admin', protect, getAdminPayments);
+router.get('/payments/provider-status', protect, getPaymentProviderStatus);
 router.get('/payments/:reference', getPaymentState);
 router.post('/:id/payment/confirm', protect, confirmManualPayment);
 router.post('/:id/payment/reject', protect, rejectManualPayment);

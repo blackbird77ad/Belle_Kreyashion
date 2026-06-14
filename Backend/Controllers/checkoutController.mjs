@@ -130,6 +130,30 @@ export const getAdminPayments = async (req, res) => {
   }
 };
 
+export const getPaymentProviderStatus = async (_, res) => {
+  const configured = Boolean(String(process.env.PAYSTACK_SECRET_KEY || '').trim());
+  if (!configured) {
+    return res.json({ configured: false, connected: false, message: 'PAYSTACK_SECRET_KEY is not configured', checkedAt: new Date() });
+  }
+  try {
+    const response = await fetch('https://api.paystack.co/transaction?perPage=1&page=1', {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.status === false) {
+      return res.json({
+        configured: true,
+        connected: false,
+        message: payload?.message || `Paystack returned HTTP ${response.status}`,
+        checkedAt: new Date(),
+      });
+    }
+    res.json({ configured: true, connected: true, message: 'Paystack credentials verified', checkedAt: new Date() });
+  } catch (error) {
+    res.json({ configured: true, connected: false, message: error.message || 'Could not reach Paystack', checkedAt: new Date() });
+  }
+};
+
 export const confirmManualPayment = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);

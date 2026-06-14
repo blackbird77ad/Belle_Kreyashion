@@ -592,7 +592,7 @@ const ActivityDetailModal = ({ entry, signedIn, onClose }) => {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {(item.slug || item.productId) && (
                       <Link
-                        to={getProductPath({ slug: item.slug, _id: item.productId })}
+                        to={getProductPath({ slug: item.slug, _id: item.productId, isDigital: item.isDigital })}
                         className="inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
                       >
                         View Product
@@ -784,7 +784,7 @@ const LibraryDetailModal = ({ item, onClose }) => {
               Open Full Library Workspace
             </Link>
             <Link
-              to={getProductPath({ _id: item.productId })}
+              to={getProductPath({ _id: item.productId, isDigital: true })}
               className="inline-flex w-full items-center justify-center rounded-2xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 hover:border-black hover:text-black"
             >
               View Product Page

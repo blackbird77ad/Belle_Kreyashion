@@ -98,7 +98,8 @@ export default function Navbar({ onCartOpen }) {
               const isActive =
                 pathname === l.to ||
                 (l.to === '/shop' && pathname.startsWith('/shop')) ||
-                (l.to === '/digital-products' && (pathname === '/digital-products' || pathname === '/digital-library'));
+                (l.to === '/digital-products' && (pathname.startsWith('/digital-products') || pathname === '/digital-library')) ||
+                (l.to === '/services' && pathname.startsWith('/services/'));
               const isShop   = l.to === '/shop';
               const isDigital = l.to === '/digital-products';
               if (isShop) return (
@@ -271,7 +272,8 @@ export default function Navbar({ onCartOpen }) {
                 const isActive =
                   pathname === l.to ||
                   (l.to === '/shop' && pathname.startsWith('/shop')) ||
-                  (l.to === '/digital-products' && (pathname === '/digital-products' || pathname === '/digital-library'));
+                  (l.to === '/digital-products' && (pathname.startsWith('/digital-products') || pathname === '/digital-library')) ||
+                  (l.to === '/services' && pathname.startsWith('/services/'));
                 const isShop   = l.to === '/shop';
                 const isDigital = l.to === '/digital-products';
                 return (

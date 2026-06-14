@@ -12,7 +12,10 @@ export const saveAbandonedCart = async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const items = Array.isArray(req.body?.items) ? req.body.items.filter((item) => item?.productId) : [];
     if (!items.length || (!phone && !email)) return res.status(400).json({ message: 'Cart items and customer contact are required' });
-    let cart = await AbandonedCart.findOne({ status: 'active', ...(email ? { email } : { phone }) });
+    let cart = await AbandonedCart.findOne({
+      ...(email ? { email } : { phone }),
+      $or: [{ status: 'active' }, { status: { $exists: false } }, { status: '' }],
+    });
     const recoveryToken = cart?.recoveryToken || createRecoveryToken();
     const reminderDelayMinutes = Math.max(15, Number(process.env.ABANDONED_RECOVERY_DELAY_MINUTES) || 60);
     const payload = {
