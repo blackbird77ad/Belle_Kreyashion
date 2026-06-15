@@ -15,6 +15,7 @@ import certificateRoutes  from './Routes/certificates.mjs';
 import marketingRoutes    from './Routes/marketing.mjs';
 import contactRoutes      from './Routes/contact.mjs';
 import couponRoutes       from './Routes/coupons.mjs';
+import youtubeRoutes      from './Routes/youtube.mjs';
 import { startDigitalTrialBillingWorker } from './Services/digitalAccessService.mjs';
 import { startAbandonedCartRecoveryWorker } from './Services/abandonedRecoveryService.mjs';
 
@@ -67,6 +68,7 @@ app.use('/api/certificates', certificateRoutes);
 app.use('/api/marketing',    marketingRoutes);
 app.use('/api/contact',      contactRoutes);
 app.use('/api/coupons',      couponRoutes);
+app.use('/api/youtube',      youtubeRoutes);
 
 const PORT = process.env.PORT || 8002;
 startDigitalTrialBillingWorker();

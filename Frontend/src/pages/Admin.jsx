@@ -1789,6 +1789,384 @@ const uploadProgressLabel = (progress, label) => progress >= 100
   ? `Finishing ${label} in Cloudinary...`
   : `Uploading ${label}${progress > 0 ? ` ${progress}%` : '...'}`;
 
+const YOUTUBE_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+const YOUTUBE_VIDEO_MIME_BY_EXTENSION = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mpeg: 'video/mpeg',
+  mpg: 'video/mpeg',
+  '3gp': 'video/3gpp',
+};
+const getYouTubeVideoMimeType = (file) => {
+  if (String(file?.type || '').startsWith('video/')) return file.type;
+  const extension = String(file?.name || '').split('.').pop()?.toLowerCase();
+  return YOUTUBE_VIDEO_MIME_BY_EXTENSION[extension] || '';
+};
+let youtubeStatusCache = null;
+let youtubeStatusPromise = null;
+
+const loadYouTubeStatus = async (token, force = false) => {
+  if (force) {
+    youtubeStatusCache = null;
+    youtubeStatusPromise = null;
+  }
+  if (youtubeStatusCache) return youtubeStatusCache;
+  if (!youtubeStatusPromise) {
+    youtubeStatusPromise = api.get('/api/youtube/admin/status', {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(({ data }) => {
+      youtubeStatusCache = data;
+      return data;
+    }).finally(() => {
+      youtubeStatusPromise = null;
+    });
+  }
+  return youtubeStatusPromise;
+};
+
+const parseYouTubeUploadRange = (rangeHeader = '') => {
+  const match = String(rangeHeader || '').match(/bytes=0-(\d+)/i);
+  return match ? Number(match[1]) + 1 : null;
+};
+
+const uploadYouTubeChunk = ({ uploadUrl, accessToken, chunk, start, end, total, mimeType, onProgress }) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('PUT', uploadUrl);
+  xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+  xhr.setRequestHeader('Content-Type', mimeType);
+  xhr.setRequestHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+  xhr.upload.onprogress = (event) => {
+    if (event.lengthComputable) onProgress(start + event.loaded);
+  };
+  xhr.onerror = () => reject(new Error('The connection to YouTube was interrupted. Retrying...'));
+  xhr.onload = () => {
+    if (xhr.status === 308) {
+      resolve({ nextByte: parseYouTubeUploadRange(xhr.getResponseHeader('Range')) ?? end + 1, result: null });
+      return;
+    }
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        resolve({ nextByte: total, result: JSON.parse(xhr.responseText || '{}') });
+      } catch {
+        reject(new Error('YouTube completed the upload but returned an unreadable response.'));
+      }
+      return;
+    }
+    let message = `YouTube upload failed (${xhr.status}).`;
+    try { message = JSON.parse(xhr.responseText || '{}')?.error?.message || message; } catch { /* keep fallback */ }
+    reject(new Error(message));
+  };
+  xhr.send(chunk);
+});
+
+const queryYouTubeUploadStatus = ({ uploadUrl, accessToken, total }) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('PUT', uploadUrl);
+  xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+  xhr.setRequestHeader('Content-Range', `bytes */${total}`);
+  xhr.onload = () => {
+    if (xhr.status === 308) {
+      resolve({ nextByte: parseYouTubeUploadRange(xhr.getResponseHeader('Range')) ?? 0, result: null });
+      return;
+    }
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        resolve({ nextByte: total, result: JSON.parse(xhr.responseText || '{}') });
+      } catch {
+        reject(new Error('YouTube returned an unreadable upload status.'));
+      }
+      return;
+    }
+    reject(new Error(`Could not confirm the YouTube upload position (${xhr.status}).`));
+  };
+  xhr.onerror = () => reject(new Error('Could not confirm the interrupted YouTube upload.'));
+  xhr.send();
+});
+
+const uploadFileToYouTube = async ({ uploadUrl, accessToken, file, mimeType, onProgress }) => {
+  let start = 0;
+  let consecutiveFailures = 0;
+
+  while (start < file.size) {
+    const endExclusive = Math.min(file.size, start + YOUTUBE_UPLOAD_CHUNK_BYTES);
+    const end = endExclusive - 1;
+    const chunk = file.slice(start, endExclusive);
+
+    try {
+      const outcome = await uploadYouTubeChunk({
+        uploadUrl,
+        accessToken,
+        chunk,
+        start,
+        end,
+        total: file.size,
+        mimeType,
+        onProgress,
+      });
+      if (outcome.result?.id) return outcome.result;
+      start = outcome.nextByte;
+      consecutiveFailures = 0;
+      onProgress(start);
+    } catch (error) {
+      consecutiveFailures += 1;
+      try {
+        const status = await queryYouTubeUploadStatus({ uploadUrl, accessToken, total: file.size });
+        if (status.result?.id) return status.result;
+        if (status.nextByte > start) {
+          start = status.nextByte;
+          consecutiveFailures = 0;
+          onProgress(start);
+          continue;
+        }
+      } catch { /* Retry the last confirmed chunk. */ }
+
+      if (consecutiveFailures >= 4) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, consecutiveFailures * 1000));
+    }
+  }
+
+  const status = await queryYouTubeUploadStatus({ uploadUrl, accessToken, total: file.size });
+  if (!status.result?.id) throw new Error('YouTube received the file but did not return the uploaded video ID.');
+  return status.result;
+};
+
+function YouTubeLessonUploader({ token, currentTitle = '', onUploaded }) {
+  const [status, setStatus] = useState(null);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState(currentTitle || '');
+  const [description, setDescription] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [studioUrl, setStudioUrl] = useState('');
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    loadYouTubeStatus(token)
+      .then((data) => { if (active) setStatus(data); })
+      .catch((loadError) => { if (active) setError(loadError.response?.data?.message || 'Could not load YouTube connection status.'); })
+      .finally(() => { if (active) setLoadingStatus(false); });
+    return () => { active = false; };
+  }, [token]);
+
+  const connect = async () => {
+    setConnecting(true);
+    setError('');
+    try {
+      const { data } = await api.post('/api/youtube/admin/connect', { returnPath: '/admin' }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      window.location.assign(data.url);
+    } catch (connectError) {
+      setError(connectError.response?.data?.message || 'Could not start the YouTube connection.');
+      setConnecting(false);
+    }
+  };
+
+  const chooseFile = (selectedFile) => {
+    setError('');
+    setSuccess('');
+    setStudioUrl('');
+    if (!selectedFile) return;
+    if (!getYouTubeVideoMimeType(selectedFile)) {
+      setError('Choose a video file for YouTube.');
+      return;
+    }
+    setFile(selectedFile);
+    if (!title.trim()) setTitle(selectedFile.name.replace(/\.[^.]+$/, ''));
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm(`Disconnect ${status?.channelTitle || 'this YouTube channel'} from the admin? Existing lesson links will remain.`)) return;
+    setDisconnecting(true);
+    setError('');
+    try {
+      await api.delete('/api/youtube/admin/connection', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const nextStatus = await loadYouTubeStatus(token, true);
+      setStatus(nextStatus);
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = '';
+    } catch (disconnectError) {
+      setError(disconnectError.response?.data?.message || 'Could not disconnect YouTube.');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const upload = async () => {
+    if (!file) {
+      setError('Choose the lesson video first.');
+      return;
+    }
+    if (!title.trim()) {
+      setError('Enter the YouTube video title.');
+      return;
+    }
+
+    setUploading(true);
+    setProgress(0);
+    setError('');
+    setSuccess('');
+    setStudioUrl('');
+    try {
+      const mimeType = getYouTubeVideoMimeType(file);
+      const { data: session } = await api.post('/api/youtube/admin/uploads', {
+        title: title.trim(),
+        description: description.trim(),
+        mimeType,
+        fileSize: file.size,
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const video = await uploadFileToYouTube({
+        uploadUrl: session.uploadUrl,
+        accessToken: session.accessToken,
+        file,
+        mimeType,
+        onProgress: (uploadedBytes) => setProgress(Math.min(100, Math.round((uploadedBytes / file.size) * 100))),
+      });
+      const privacyStatus = String(video.status?.privacyStatus || '').toLowerCase();
+      const url = `https://www.youtube.com/watch?v=${video.id}`;
+      const editUrl = `https://studio.youtube.com/video/${video.id}/edit`;
+      const uploadedVideo = {
+        videoId: video.id,
+        url,
+        title: title.trim(),
+        description: description.trim(),
+        privacyStatus: privacyStatus || 'unlisted',
+      };
+
+      if (privacyStatus === 'private') {
+        onUploaded?.(uploadedVideo);
+        setStudioUrl(editUrl);
+        setError('YouTube uploaded this as Private because the Google API project is not yet approved for public or Unlisted API uploads. The link is attached, but learners cannot play it until you change the video to Unlisted in YouTube Studio.');
+        return;
+      }
+
+      onUploaded?.(uploadedVideo);
+      setSuccess('Uploaded to YouTube and attached to this lesson. Processing may continue briefly in YouTube.');
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = '';
+    } catch (uploadError) {
+      setError(uploadError.response?.data?.message || uploadError.message || 'Could not upload this video to YouTube.');
+    } finally {
+      setUploading(false);
+      setProgress(0);
+    }
+  };
+
+  if (loadingStatus) {
+    return <div className="rounded-2xl border border-gray-200 bg-white px-3 py-3 text-xs text-gray-500">Checking YouTube connection...</div>;
+  }
+
+  if (!status?.configured) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-relaxed text-amber-900">
+        Add the YouTube OAuth values on the backend before direct channel uploads can be enabled. Pasting YouTube and Google Drive links still works.
+      </div>
+    );
+  }
+
+  if (!status.connected) {
+    return (
+      <div className="rounded-2xl border border-red-100 bg-red-50 p-3 space-y-2">
+        <p className="text-xs font-bold text-red-900">YouTube channel not connected</p>
+        <p className="text-[10px] leading-relaxed text-red-700">Connect the channel once, then upload large lesson videos directly from this editor.</p>
+        <button
+          type="button"
+          onClick={connect}
+          disabled={connecting}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          {connecting ? <Loader2 size={13} className="animate-spin" /> : <Video size={13} />}
+          {connecting ? 'Opening Google...' : 'Connect YouTube'}
+        </button>
+        {error && <p className="text-xs font-bold text-red-700">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-red-100 bg-red-50 p-3 space-y-3">
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-bold text-red-900">Upload directly to {status.channelTitle || 'YouTube'}</p>
+          <button
+            type="button"
+            onClick={disconnect}
+            disabled={uploading || disconnecting}
+            className="text-[10px] font-bold text-red-800 underline disabled:opacity-50"
+          >
+            {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+          </button>
+        </div>
+        <p className="mt-1 text-[10px] leading-relaxed text-red-700">Large videos upload in resumable chunks and are requested as Unlisted. Keep this page open until it reaches 100%.</p>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="video/*"
+        disabled={uploading}
+        onChange={(event) => chooseFile(event.target.files?.[0])}
+        className="block w-full rounded-xl border border-red-100 bg-white px-3 py-2 text-xs text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-black file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white"
+      />
+      {file && <p className="text-[10px] font-bold text-red-800">{file.name} • {formatBytes(file.size)}</p>}
+      <input
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        maxLength={100}
+        placeholder="YouTube video title"
+        disabled={uploading}
+        className={inp}
+      />
+      <textarea
+        value={description}
+        onChange={(event) => setDescription(event.target.value)}
+        rows={2}
+        maxLength={5000}
+        placeholder="Optional YouTube description"
+        disabled={uploading}
+        className={inp + ' resize-none'}
+      />
+      {uploading && (
+        <div className="space-y-1.5">
+          <div className="h-2 overflow-hidden rounded-full bg-white">
+            <div className="h-full bg-red-600 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="text-[10px] font-bold text-red-800">Uploading to YouTube: {progress}%</p>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={upload}
+        disabled={uploading || !file}
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+      >
+        {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+        {uploading ? `Uploading ${progress}%` : 'Upload Unlisted to YouTube'}
+      </button>
+      {success && <p className="text-xs font-bold text-green-700">{success}</p>}
+      {error && <p className="text-xs font-bold text-red-700">{error}</p>}
+      {studioUrl && (
+        <a href={studioUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-xs font-bold text-red-800 underline">
+          Open video in YouTube Studio <ExternalLink size={12} />
+        </a>
+      )}
+    </div>
+  );
+}
+
 const isPreviewableDigitalFile = (fileKind = 'other') => ['document', 'video', 'audio', 'image'].includes(fileKind);
 
 function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxFiles = 8 }) {
@@ -5812,6 +6190,19 @@ const buildTrainingBody = (f) => ({
                                             <div className="rounded-2xl border border-[#ece2c5] bg-[#fffdf4] px-3 py-2 text-[10px] leading-relaxed text-gray-600">
                                               YouTube Unlisted is best for unlimited free lesson hosting. Google Drive videos must be shared as Anyone with the link. Loom and Dropbox links are supported, but their free storage and recording quotas are much smaller.
                                             </div>
+                                            <YouTubeLessonUploader
+                                              token={token}
+                                              currentTitle={block.title || item.title || ''}
+                                              onUploaded={(video) => {
+                                                updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'url', video.url);
+                                                if (!String(block.title || '').trim()) {
+                                                  updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', video.title);
+                                                }
+                                                if (!String(block.description || '').trim() && video.description) {
+                                                  updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'description', video.description);
+                                                }
+                                              }}
+                                            />
                                             <textarea
                                               value={block.description || ''}
                                               onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'description', e.target.value)}
