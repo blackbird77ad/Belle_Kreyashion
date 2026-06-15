@@ -93,7 +93,7 @@ const readPositiveInteger = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-export const DIGITAL_UPLOAD_MAX_MB = readPositiveInteger(process.env.DIGITAL_UPLOAD_MAX_MB, 1024);
+export const DIGITAL_UPLOAD_MAX_MB = readPositiveInteger(process.env.DIGITAL_UPLOAD_MAX_MB, 100);
 const DIGITAL_UPLOAD_MAX_BYTES = DIGITAL_UPLOAD_MAX_MB * MEGABYTE;
 const CLOUDINARY_CHUNK_SIZE_BYTES = Math.max(
   5,

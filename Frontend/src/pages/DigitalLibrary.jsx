@@ -46,6 +46,78 @@ const formatBytes = (bytes = 0) => {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 };
 
+const getExternalVideoPlayer = (rawUrl = '') => {
+  try {
+    const url = new URL(String(rawUrl || '').trim());
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const pathParts = url.pathname.split('/').filter(Boolean);
+
+    if (host === 'youtu.be') {
+      const videoId = pathParts[0];
+      return videoId ? {
+        type: 'iframe',
+        provider: 'YouTube',
+        url: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`,
+      } : null;
+    }
+
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      const videoId = url.searchParams.get('v')
+        || (['embed', 'shorts', 'live'].includes(pathParts[0]) ? pathParts[1] : '');
+      return videoId ? {
+        type: 'iframe',
+        provider: 'YouTube',
+        url: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`,
+      } : null;
+    }
+
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+      const videoId = pathParts.find((part) => /^\d+$/.test(part));
+      return videoId ? {
+        type: 'iframe',
+        provider: 'Vimeo',
+        url: `https://player.vimeo.com/video/${videoId}`,
+      } : null;
+    }
+
+    if (host === 'drive.google.com') {
+      const fileIndex = pathParts.indexOf('d');
+      const fileId = fileIndex > 0 && pathParts[fileIndex - 1] === 'file'
+        ? pathParts[fileIndex + 1]
+        : url.searchParams.get('id');
+      return fileId ? {
+        type: 'iframe',
+        provider: 'Google Drive',
+        url: `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`,
+      } : null;
+    }
+
+    if (host === 'loom.com') {
+      const videoIndex = pathParts.findIndex((part) => ['share', 'embed'].includes(part));
+      const videoId = videoIndex >= 0 ? pathParts[videoIndex + 1] : '';
+      if (!videoId) return null;
+      const embedUrl = new URL(`https://www.loom.com/embed/${encodeURIComponent(videoId)}`);
+      if (url.searchParams.get('sid')) embedUrl.searchParams.set('sid', url.searchParams.get('sid'));
+      return { type: 'iframe', provider: 'Loom', url: embedUrl.toString() };
+    }
+
+    if (host === 'dropbox.com' && (pathParts[0] === 's' || pathParts.slice(0, 2).join('/') === 'scl/fi')) {
+      const directUrl = new URL(url.toString());
+      directUrl.searchParams.delete('dl');
+      directUrl.searchParams.set('raw', '1');
+      return { type: 'video', provider: 'Dropbox', url: directUrl.toString() };
+    }
+
+    if (host === 'dl.dropboxusercontent.com') {
+      return { type: 'video', provider: 'Dropbox', url: url.toString() };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
 const formatShortDate = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -2782,11 +2854,40 @@ export default function DigitalLibrary() {
                           }
 
                           if (block.kind === 'link') {
+                            const videoPlayer = getExternalVideoPlayer(block.url);
                             return (
                               <div key={block.blockId || `link-block-${blockIndex}`} className="rounded-2xl border border-gray-100 bg-white p-4">
-                                <p className="text-sm font-extrabold text-black">{block.title || `Link ${block.order || blockIndex + 1}`}</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-extrabold text-black">{block.title || `${videoPlayer ? 'Video' : 'Link'} ${block.order || blockIndex + 1}`}</p>
+                                  {videoPlayer?.provider && (
+                                    <span className="rounded-full border border-gray-200 bg-[#fcfbf7] px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                                      {videoPlayer.provider}
+                                    </span>
+                                  )}
+                                </div>
                                 {block.description && <p className="mt-2 text-xs leading-relaxed text-gray-500">{block.description}</p>}
-                                {block.url && (
+                                {videoPlayer?.type === 'iframe' ? (
+                                  <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-gray-200 bg-black">
+                                    <iframe
+                                      src={videoPlayer.url}
+                                      title={block.title || 'Lesson video'}
+                                      className="h-full w-full"
+                                      loading="lazy"
+                                      referrerPolicy="strict-origin-when-cross-origin"
+                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                      allowFullScreen
+                                    />
+                                  </div>
+                                ) : videoPlayer?.type === 'video' ? (
+                                  <video
+                                    src={videoPlayer.url}
+                                    className="mt-4 aspect-video w-full rounded-2xl border border-gray-200 bg-black"
+                                    controls
+                                    controlsList="nodownload noremoteplayback"
+                                    preload="metadata"
+                                    playsInline
+                                  />
+                                ) : block.url ? (
                                   <a
                                     href={block.url}
                                     target={block.openInNewTab ? '_blank' : undefined}
@@ -2795,7 +2896,7 @@ export default function DigitalLibrary() {
                                   >
                                     Open Link
                                   </a>
-                                )}
+                                ) : null}
                               </div>
                             );
                           }

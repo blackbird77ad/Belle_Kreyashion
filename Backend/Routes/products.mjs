@@ -55,11 +55,15 @@ router.post('/upload-digital', protect, (req, res) => {
       const files = await uploadDigitalFilesToCloudinary(req.files);
       res.json({ files });
     } catch (uploadErr) {
-      const cloudinaryLimitReached = Number(uploadErr.http_code) === 413;
+      const errorMessage = String(uploadErr.message || '');
+      const sizeMatch = errorMessage.match(/file size (?:is )?too large.*?got\s+(\d+).*?maximum is\s+(\d+)/i);
+      const cloudinaryLimitReached = Number(uploadErr.http_code) === 413 || !!sizeMatch;
+      const actualMb = sizeMatch ? Math.ceil(Number(sizeMatch[1]) / (1024 * 1024)) : null;
+      const maximumMb = sizeMatch ? Math.floor(Number(sizeMatch[2]) / (1024 * 1024)) : DIGITAL_UPLOAD_MAX_MB;
       res.status(cloudinaryLimitReached ? 413 : 502).json({
         message: cloudinaryLimitReached
-          ? 'Cloudinary rejected this file because it exceeds the upload limit on the current Cloudinary account. Check Settings > Product environment > Upload in Cloudinary.'
-          : uploadErr.message || 'Could not store the lesson media in Cloudinary.',
+          ? `Cloudinary's current account limit is ${maximumMb} MB per file${actualMb ? `, but this file is ${actualMb} MB` : ''}. Chunked uploading cannot override that account limit. Increase the Cloudinary upload limit, reduce or split the video, or add an unlisted YouTube/Vimeo link to the lesson.`
+          : errorMessage || 'Could not store the lesson media in Cloudinary.',
       });
     }
   });

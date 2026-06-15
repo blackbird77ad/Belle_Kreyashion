@@ -1767,13 +1767,13 @@ const formatBytes = (bytes = 0) => {
 const configuredDigitalUploadMaxMb = Number.parseInt(import.meta.env.VITE_DIGITAL_UPLOAD_MAX_MB, 10);
 const DIGITAL_UPLOAD_MAX_MB = Number.isFinite(configuredDigitalUploadMaxMb) && configuredDigitalUploadMaxMb > 0
   ? configuredDigitalUploadMaxMb
-  : 1024;
+  : 100;
 const DIGITAL_UPLOAD_MAX_BYTES = DIGITAL_UPLOAD_MAX_MB * 1024 * 1024;
 
 const getOversizedDigitalFileError = (files = []) => {
   const oversized = Array.from(files).find((file) => file.size > DIGITAL_UPLOAD_MAX_BYTES);
   if (!oversized) return '';
-  return `${oversized.name} is ${formatBytes(oversized.size)}. The maximum is ${DIGITAL_UPLOAD_MAX_MB} MB per file.`;
+  return `${oversized.name} is ${formatBytes(oversized.size)}. The current Cloudinary account permits ${DIGITAL_UPLOAD_MAX_MB} MB per file. Chunking cannot override that account limit; reduce or split the video, increase the Cloudinary limit, or use an unlisted YouTube/Vimeo lesson link.`;
 };
 
 const trackUploadProgress = (setProgress) => (event) => {
@@ -1918,7 +1918,7 @@ function DigitalFileUploader({ files = [], onChange, uploadEndpoint, token, maxF
             <div className="flex items-center justify-between gap-4">
               <div className="text-gray-400">
                 <p className="text-xs font-bold">Upload digital files securely</p>
-                <p className="text-xs text-gray-300 mt-0.5">PDF, DOC, ZIP, MP4, MP3 and more. Up to {DIGITAL_UPLOAD_MAX_MB} MB per file, with large videos uploaded in chunks.</p>
+                <p className="text-xs text-gray-300 mt-0.5">PDF, DOC, ZIP, MP4, MP3 and more. Current Cloudinary limit: {DIGITAL_UPLOAD_MAX_MB} MB per file.</p>
               </div>
               <Upload size={18} className="text-gray-400 shrink-0" />
             </div>
@@ -2260,7 +2260,7 @@ function ModuleAssetUploader({ token, uploadEndpoint, disabled = false, onUpload
                     className="sm:hidden"
                   />
                 </div>
-                <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Secure lesson files up to {DIGITAL_UPLOAD_MAX_MB} MB each.</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-gray-400">Secure lesson files up to {DIGITAL_UPLOAD_MAX_MB} MB each. Use a YouTube/Vimeo lesson link for larger videos.</p>
               </div>
               <div className="flex items-center gap-2">
                 <AdminHoverHint
@@ -3669,11 +3669,16 @@ export default function Admin() {
     [modules[index], modules[targetIndex]] = [modules[targetIndex], modules[index]];
     return { ...current, digitalModules: reindexDigitalModules(modules) };
   });
-  const addTextLessonToModule = (moduleIndex) => {
+  const addTextLessonToModule = (moduleIndex, initialBlockKind = 'text') => {
     const module = Array.isArray(form.digitalModules) ? form.digitalModules[moduleIndex] : null;
     const moduleKey = getModuleUiKey(module, moduleIndex);
     const existingItemCount = Array.isArray(module?.items) ? module.items.length : 0;
-    const nextItem = createEmptyDigitalTextItem(existingItemCount + 1);
+    const nextItem = {
+      ...createEmptyDigitalTextItem(existingItemCount + 1),
+      blocks: initialBlockKind === 'link'
+        ? [createEmptyDigitalLinkBlock(1)]
+        : [createEmptyDigitalTextBlock(1)],
+    };
     const nextItemKey = getModuleItemUiKey(nextItem, moduleKey, existingItemCount);
 
     setForm((current) => ({
@@ -5299,14 +5304,24 @@ const buildTrainingBody = (f) => ({
                                   <p className="text-xs text-gray-500">
                                     Create a written lesson step first when you want text, pronunciation help, images, links, audio, or video to live together inside one teaching step.
                                   </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => addTextLessonToModule(moduleIndex)}
-                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
-                                  >
-                                    <FileText size={14} />
-                                    Add Text Lesson
-                                  </button>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => addTextLessonToModule(moduleIndex)}
+                                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-black px-4 py-2.5 text-xs font-bold text-white hover:bg-gray-900"
+                                    >
+                                      <FileText size={14} />
+                                      Add Text Lesson
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => addTextLessonToModule(moduleIndex, 'link')}
+                                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
+                                    >
+                                      <Video size={14} />
+                                      Hosted Video / Drive
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -5514,7 +5529,7 @@ const buildTrainingBody = (f) => ({
                                         className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-gray-700 hover:border-black hover:text-black"
                                       >
                                         <Link2 size={14} />
-                                        Add Link
+                                        Add Video / Link
                                       </button>
                                       <ModuleAssetUploader
                                         token={token}
@@ -5596,7 +5611,7 @@ const buildTrainingBody = (f) => ({
                                                 {block.kind === 'text'
                                                   ? 'Type the written explanation, notes, or instructions for this part.'
                                                   : block.kind === 'link'
-                                                    ? 'Share a helpful reference link, practice page, or outside resource.'
+                                                    ? 'Embed a YouTube/Vimeo lesson video or share another outside resource.'
                                                     : 'Inline secure attachment for this same lesson step.'}
                                               </p>
                                             </div>
@@ -5785,15 +5800,18 @@ const buildTrainingBody = (f) => ({
                                             <input
                                               value={block.title || ''}
                                               onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'title', e.target.value)}
-                                              placeholder="Link title"
+                                              placeholder="Video or link title"
                                               className={inp}
                                             />
                                             <input
                                               value={block.url || ''}
                                               onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'url', e.target.value)}
-                                              placeholder="https://example.com"
+                                              placeholder="YouTube, Google Drive, Loom, Dropbox, Vimeo, or other https:// link"
                                               className={inp}
                                             />
+                                            <div className="rounded-2xl border border-[#ece2c5] bg-[#fffdf4] px-3 py-2 text-[10px] leading-relaxed text-gray-600">
+                                              YouTube Unlisted is best for unlimited free lesson hosting. Google Drive videos must be shared as Anyone with the link. Loom and Dropbox links are supported, but their free storage and recording quotas are much smaller.
+                                            </div>
                                             <textarea
                                               value={block.description || ''}
                                               onChange={e => updateTextLessonBlock(moduleIndex, itemIndex, blockIndex, 'description', e.target.value)}
