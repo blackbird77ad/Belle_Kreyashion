@@ -2071,11 +2071,7 @@ function YouTubeLessonUploader({ token, currentTitle = '', onUploaded }) {
   }
 
   if (!status?.configured) {
-    return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-relaxed text-amber-900">
-        Add the YouTube OAuth values on the backend before direct channel uploads can be enabled. Pasting YouTube and Google Drive links still works.
-      </div>
-    );
+    return null;
   }
 
   if (!status.connected) {
